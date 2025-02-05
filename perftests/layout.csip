@@ -1,0 +1,173 @@
+# layout
+# layout
+# layout
+# layout
+# layout
+# layout
+# layout
+# layout
+# layout
+# layout
+
+Ty : Type
+ = (Ty           : Type)
+   (nat top bot  : Ty)
+   (arr prod sum : Ty -> Ty -> Ty)
+ -> Ty
+
+nat : Ty = \_ nat _ _ _ _ _-> nat
+top : Ty = \_ _ top _ _ _ _-> top
+bot : Ty = \_ _ _ bot _ _ _-> bot
+
+arr : Ty -> Ty -> Ty
+ = \A B Ty nat top bot arr prod sum->
+     arr (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+
+prod : Ty -> Ty -> Ty
+ = \A B Ty nat top bot arr prod sum->
+     prod (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+
+sum : Ty -> Ty -> Ty
+ = \A B Ty nat top bot arr prod sum->
+     sum (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+
+Con : Type
+ = (Con : Type)
+   (nil  : Con)
+   (snoc : Con -> Ty -> Con)
+ -> Con
+
+nil : Con
+ = \Con nil snoc-> nil
+
+snoc : Con -> Ty -> Con
+ = \G A Con nil snoc-> snoc (G Con nil snoc) A
+
+Var : Con -> Ty -> Type
+ = \G A->
+   (Var : Con -> Ty -> Type)
+   (vz  : {G A} -> Var (snoc G A) A)
+   (vs  : {G B A} -> Var G A -> Var (snoc G B) A)
+ -> Var G A
+
+vz : {G A} -> Var (snoc G A) A
+ = \Var vz vs-> vz
+
+vs : {G B A} -> Var G A -> Var (snoc G B) A
+ = \x Var vz vs-> vs (x Var vz vs)
+
+Tm : Con -> Ty -> Type
+ = \G A->
+   (Tm    : Con -> Ty -> Type)
+   (var   : {G A} -> Var G A -> Tm G A)
+   (lam   : {G A B} -> Tm (snoc G A) B -> Tm G (arr A B))
+   (app   : {G A B} -> Tm G (arr A B) -> Tm G A -> Tm G B)
+   (tt    : {G} -> Tm G top)
+   (pair  : {G A B} -> Tm G A -> Tm G B -> Tm G (prod A B))
+   (fst   : {G A B} -> Tm G (prod A B) -> Tm G A)
+   (snd   : {G A B} -> Tm G (prod A B) -> Tm G B)
+   (left  : {G A B} -> Tm G A -> Tm G (sum A B))
+   (right : {G A B} -> Tm G B -> Tm G (sum A B))
+   (case  : {G A B C} -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C)
+   (zero  : {G} -> Tm G nat)
+   (suc   : {G} -> Tm G nat -> Tm G nat)
+   (rec   : {G A} -> Tm G nat -> Tm G (arr nat (arr A A)) -> Tm G A -> Tm G A)
+ -> Tm G A
+
+var : {G A} -> Var G A -> Tm G A
+ = \x Tm var lam app tt pair fst snd left right case zero suc rec->
+     var x
+
+lam : {G A B} -> Tm (snoc G A) B -> Tm G (arr A B)
+ = \t Tm var lam app tt pair fst snd left right case zero suc rec->
+     lam (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+app : {G A B} -> Tm G (arr A B) -> Tm G A -> Tm G B
+ = \t u Tm var lam app tt pair fst snd left right case zero suc rec->
+     app (t Tm var lam app tt pair fst snd left right case zero suc rec)
+         (u Tm var lam app tt pair fst snd left right case zero suc rec)
+
+tt : {G} -> Tm G top
+ = \Tm var lam app tt pair fst snd left right case zero suc rec-> tt
+
+pair : {G A B} -> Tm G A -> Tm G B -> Tm G (prod A B)
+ = \t u Tm var lam app tt pair fst snd left right case zero suc rec->
+     pair (t Tm var lam app tt pair fst snd left right case zero suc rec)
+          (u Tm var lam app tt pair fst snd left right case zero suc rec)
+
+fst : {G A B} -> Tm G (prod A B) -> Tm G A
+ = \t Tm var lam app tt pair fst snd left right case zero suc rec->
+     fst (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+snd : {G A B} -> Tm G (prod A B) -> Tm G B
+ = \t Tm var lam app tt pair fst snd left right case zero suc rec->
+     snd (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+left : {G A B} -> Tm G A -> Tm G (sum A B)
+ = \t Tm var lam app tt pair fst snd left right case zero suc rec->
+     left (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+right : {G A B} -> Tm G B -> Tm G (sum A B)
+ = \t Tm var lam app tt pair fst snd left right case zero suc rec->
+     right (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+case : {G A B C} -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C
+ = \t u v Tm var lam app tt pair fst snd left right case zero suc rec->
+     case (t Tm var lam app tt pair fst snd left right case zero suc rec)
+          (u Tm var lam app tt pair fst snd left right case zero suc rec)
+          (v Tm var lam app tt pair fst snd left right case zero suc rec)
+
+zero  : {G} -> Tm G nat
+ = \Tm var lam app tt pair fst snd left right case zero suc rec-> zero
+
+suc : {G} -> Tm G nat -> Tm G nat
+ = \t Tm var lam app tt pair fst snd left right case zero suc rec->
+   suc (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+rec : {G A} -> Tm G nat -> Tm G (arr nat (arr A A)) -> Tm G A -> Tm G A
+ = \t u v Tm var lam app tt pair fst snd left right case zero suc rec->
+     rec (t Tm var lam app tt pair fst snd left right case zero suc rec)
+         (u Tm var lam app tt pair fst snd left right case zero suc rec)
+         (v Tm var lam app tt pair fst snd left right case zero suc rec)
+
+v0 : {G A} -> Tm (snoc G A) A
+ = var vz
+
+v1 : {G A B} -> Tm (snoc (snoc G A) B) A
+ = var (vs vz)
+
+v2 : {G A B C} -> Tm (snoc (snoc (snoc G A) B) C) A
+ = var (vs (vs vz))
+
+v3 : {G A B C D} -> Tm (snoc (snoc (snoc (snoc G A) B) C) D) A
+ = var (vs (vs (vs vz)))
+
+tbool : Ty = sum top top
+
+true : {G} -> Tm G tbool
+ = left tt
+
+tfalse : {G} -> Tm G tbool
+ = right tt
+
+ifthenelse : {G A} -> Tm G (arr tbool (arr A (arr A A)))
+ = lam (lam (lam (case v2 (lam v2) (lam v1))))
+/*
+times4 : {G A} -> Tm G (arr (arr A A) (arr A A))
+  = lam (lam (app v1 (app v1 (app v1 (app v1 v0)))))
+
+add : {G} -> Tm G (arr nat (arr nat nat))
+ = lam (rec v0
+       (lam (lam (lam (suc (app v1 v0)))))
+       (lam v0))
+
+mul : {G} -> Tm G (arr nat (arr nat nat))
+ = lam (rec v0
+       (lam (lam (lam (app (app add (app v1 v0)) v0))))
+       (lam zero))
+
+fact : {G} -> Tm G (arr nat nat)
+ = lam (rec v0 (lam (lam (app (app mul (suc v1)) v0)))
+               (suc zero))
+*/
+Type

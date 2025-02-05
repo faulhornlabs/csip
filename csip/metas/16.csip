@@ -1,0 +1,28 @@
+# source
+# elab
+# eval
+# type
+
+comp : {A}{B : A -> Type}{C : {a} -> B a -> Type}
+         (f : {a}(b : B a) -> C b)
+         (g : (a : A) -> B a)
+         (a : A)
+         -> C (g a)
+  = \f g a-> f (g a)
+
+Bool : Type
+  = (B : _) -> B -> B -> B
+true : Bool
+  = \B t f-> t
+false : Bool
+  = \B t f-> f
+
+List : Type -> Type
+  = \A-> (L : _) -> (A -> L -> L) -> L -> L
+nil : {A} -> List A
+  = \L cons nil-> nil
+cons : {A} -> A -> List A -> List A
+  = \x xs L cons nil-> cons x (xs L cons nil)
+
+comp (cons true) (cons false) nil
+

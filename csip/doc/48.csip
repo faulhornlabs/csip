@@ -1,0 +1,12 @@
+# source
+- Decimal natural number literals is easy to add
+
+- Support for string literals can be added
+   A) in the lexer (traditional)
+   B) as a separate phase before removing spaces
+
+  Csip has B) which fits better in its design.
+
+  Moreover, Csip's strings are locally parsable.
+  The tradeoff is that escape sequences are not
+  supported (but there is a workaround).

@@ -1,0 +1,46 @@
+# elab
+# eval
+
+Bool : Type
+True  : Bool
+False : Bool
+
+N : Type
+Z : N
+S : N -> N
+
+two  = S (S Z)
+five = S (S (S (S (S Z))))
+
+add : N -> N -> N
+add Z m = m
+add (S n) m = S (add n m)
+
+mul : N -> N -> N
+mul Z m = Z
+mul (S n) m = add m (mul n m)
+
+sqr : N -> N
+sqr n = mul n n
+
+Half : Type
+MkHalf : Bool -> N -> Half
+
+incHalf : Half -> Half
+incHalf (MkHalf odd n) = MkHalf odd (S n)
+
+half : N -> Half
+half Z = MkHalf False Z
+half (S Z) = MkHalf True Z
+half (S (S n)) = incHalf (half n)
+
+power : N -> N -> N
+
+powerHelper : N -> Half -> N
+powerHelper n (MkHalf True  k) = mul n (sqr (power n k))
+powerHelper n (MkHalf False k) = sqr (power n k)
+
+power n k = powerHelper n (half k)
+power n Z = S Z
+
+power two five

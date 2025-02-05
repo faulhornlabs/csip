@@ -1,0 +1,7 @@
+# elab
+
+x = Type
+
+y = f x
+
+x

@@ -1,0 +1,41 @@
+# source
+# elab
+
+the    : (A : _) -> A -> A = \_ x-> x
+
+Bool : Type
+  = (B : _) -> B -> B -> B
+true : Bool
+  = \B t f-> t
+false : Bool
+  = \B t f-> f
+not : Bool -> Bool
+  = \b B t f-> b B f t
+
+List : Type -> Type
+  = \A-> (L : _) -> (A -> L -> L) -> L -> L
+nil : {A} -> List A
+  = \L cons nil-> nil
+cons : {A} -> A -> List A -> List A
+  = \x xs L cons nil-> cons x (xs L cons nil)
+map : {A B} -> (A -> B) -> List A -> List B
+  = \{A}{B} f xs L c n-> xs L (\a-> c (f a)) n
+list1 : List Bool
+  = map not (cons false (cons true nil))
+
+comp : {A}{B : A -> Type}{C : {a} -> B a -> Type}
+         (f : {a}(b : B a) -> C b)
+         (g : (a : A) -> B a)
+         (a : A)
+         -> C (g a)
+  = \f g a-> f (g a)
+
+compExample = comp (cons true) (cons false) nil
+
+Eq : {A} -> A -> A -> Type
+  = \{A} x y-> (P : A -> Type) -> P x -> P y
+refl : {A}{x : A} -> Eq x x
+  = \_ px-> px
+
+the (Eq compExample list1) refl
+

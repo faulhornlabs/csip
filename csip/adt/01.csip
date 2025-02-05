@@ -1,0 +1,13 @@
+# source
+# scope
+# elab
+# eval
+# type
+
+N : Type
+Z : N
+S : N -> N
+
+five = S (S (S (S (S Z))))
+
+five

@@ -1,0 +1,9 @@
+# source
+# elab
+id: (a: Type) -> a -> a
+  = \_ x -> x
+
+const: (a b: Type) -> a -> b -> a
+  = \_ _ x _ -> x
+
+const _ _ (id _ "Hello") 123

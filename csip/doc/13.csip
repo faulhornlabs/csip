@@ -1,0 +1,14 @@
+# source
+Implementation
+--------------
+
+  mempty : Parsed Nil
+  mempty = Empty, _
+
+  (<>) : Parsed as -> Parsed bs -> Parsed (as ++ bs)
+  p <> q =
+     ...   // merging of trees
+
+  parse :: (os : List Op) -> Parsed os
+  parse Nil = mempty
+  parse (Cons a b) = singleton a <> parse b

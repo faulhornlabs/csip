@@ -1,0 +1,14 @@
+# source
+# elab
+u = Type             # Type : Type
+
+id: (a: u) -> a -> a
+  = \_ x -> x
+
+s = id Type String
+
+const: (a b: Type) -> a -> b -> a
+  = \_ _ x _ -> x
+
+const s u (id s "Hello World!")
+

@@ -1,0 +1,13 @@
+# source
+Notes
+
+- There are four general rules:
+  - the leftmost  precedence is maximal (let, var) or not (+)
+  - the rightmost precedence is maximal (")", var) or not (in)
+
+- If the rightmost precedence is maximal then the
+  rightmost branch is Empty (like in var).
+
+- Removing mixfix operators halts with an error if
+  operator parts are missing or mismatched
+  (for example "if else").

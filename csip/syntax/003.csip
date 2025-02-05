@@ -1,0 +1,30 @@
+# sugar
+x = a
+x = (((a)))
+x = a b (c d)
+x = (a b) (c d)
+x = a * b + c
+x = (a * b) + c
+x = a * (\b -> b) + d
+x = (a * \b -> b) + d
+x = a -> b
+x = (_ : a)-> b
+x = \a -> b
+x = \(a : _)-> b
+x = \a b -> c
+x = \a -> \b -> c
+x = \a b (c d: e) f -> g
+x = \(a : _)-> \(b : _)-> \(c : e)-> \(d : e)-> \(f : _) -> g
+x = (a b: c) -> d
+x = (a : c)(b : c)-> d
+x = (a: c) (b: e) -> d
+x = (a : c)-> (b : e)-> d
+# x = a b {h} -> c
+# x = (_ : a b {h})-> c
+# x = {a : c}(b : c)-> d
+# x = {a : c}-> (b : c)-> d
+# x = \a {b} {c: d} (e: f) -> g
+# x = \(a: _)-> \{b: _}-> \{c: d}-> \(e: f)-> g
+a = b
+a : _ = b
+main

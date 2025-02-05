@@ -1,0 +1,20 @@
+# source
+Indentation
+-----------
+
+  indent a
+    | isSingleLine a = a
+    | otherwise      = "\t\t" <> inc a <> "\r\r"
+
+  inc = <<increase nesting complexity>>
+
+
+Finally, the spacing algorithm is:
+
+  space Empty
+    = mempty
+  space (Node2 l op r)
+    = indent (space l <+> sing op <+> space r)
+  space (Node3 l o1 c o2 r)
+    = indent (space l <+> sing o1 <+> space c <+> sing o2 <+> space r)
+  ...

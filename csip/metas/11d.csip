@@ -1,0 +1,6 @@
+# source
+# elab
+id: (a: Type) -> a -> a
+  = \_ x -> x
+
+id _ (id _) (id _) 1

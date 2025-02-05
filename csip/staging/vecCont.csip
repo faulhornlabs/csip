@@ -1,0 +1,49 @@
+# stage
+
+// builtins
+Ty   : Type
+Code : Ty -> Type
+Arr  : Ty -> Ty -> Ty
+Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
+App  : {a b} -> Code (Arr a b) -> Code a -> Code b
+Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
+
+Prod : Ty -> Ty -> Ty
+Pair : {a b} -> Code a -> Code b -> Code (Prod a b)
+Fst  : {a b} -> Code (Prod a b) -> Code a
+Snd  : {a b} -> Code (Prod a b) -> Code b
+
+Unit :: Type
+TT   :: Unit
+
+// FFI
+Carry      :: Type
+ClearCarry :: Carry
+SetCarry   :: Carry
+
+W64    :: Type
+Zero64 :: W64
+PlusC  :: Carry -> W64 -> W64 -> Prod Carry W64
+
+
+N : Type
+Z : N
+S : N -> N
+
+vec : N -> Ty -> Ty
+vec    Z  t = Unit
+vec (S n) t = Prod (vec n t) t
+
+addHelper : {r} -> (n: N) -> Code Carry -> Code (vec n W64) -> Code (vec n W64) -> (Code Carry -> Code (vec n W64) -> Code r) -> Code r
+addHelper {r} Z     c a b pair = pair c TT
+addHelper {r} (S n) c a b pair =
+  (d := PlusC c (Snd a) (Snd b);
+   addHelper {r} n (Fst d) (Fst a) (Fst b) \e1 e2 ->
+   pair e1 (Pair e2 (Snd d))
+  )
+
+add : (n: N) -> Code (vec n W64) -> Code (vec n W64) -> Code (vec n W64)
+  = \n a b -> addHelper n ClearCarry a b \e1 e2 -> e2
+
+// main
+add (S (S (S Z)))

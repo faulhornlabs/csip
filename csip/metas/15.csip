@@ -1,0 +1,10 @@
+# source
+# elab
+# eval
+# type
+
+id : {A : Type} -> A -> A = \x -> x
+
+f : (Nat -> Nat) -> Type = \_ -> String
+
+f id

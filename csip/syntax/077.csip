@@ -1,0 +1,11 @@
+# source quote highlight
+# indent quote highlight
+# lex quote highlight
+# structure quote highlight
+# space quote highlight
+# exptree quote highlight
+# sugar quote highlight
+# scope quote highlight
+u = Type
+
+const String Nat (id String "Hello World!") 13

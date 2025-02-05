@@ -1,0 +1,20 @@
+# source
+Rules for removing comments:
+
+          newline
+          /     \
+       //        c   ~>   a <> spaceOf b <> newline' <> c
+     /    \
+    a      b
+
+        /*   */
+      /    |    \     ~>   a <> spaceOf b <> c
+     a     b     c
+
+Notes
+
+- the precedence of "//", newline, "/*" and "*/" tokens
+  should be adjusted to get the desired effect
+- newline is converted to newline' which has a difference
+  precedence and which is used in layout phase later
+- spaceOf preserves indentation tokens and erases everything else

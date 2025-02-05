@@ -1,0 +1,21 @@
+# source
+Gluing of spaced trees
+----------------------
+
+(a <+> b) is either:
+
+  A)        a <> b
+  B)    a <> " "  <> b
+  C)    a <> "\n" <> b
+
+A) is the default
+B) is used if the last char of (a) and the
+   first char of (b) should be separated
+C) is used if the shape of the result of A) or B)
+   is overweight.
+
+A shape is overweight if
+ - the length (of the first or the last line)
+   is greater than the maximum width
+ - the nesting complexity (of the first or the
+   last line) is greater than a limit

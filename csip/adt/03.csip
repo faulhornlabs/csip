@@ -1,0 +1,23 @@
+# scope
+# elab
+# eval
+# type
+
+Bool  : Type
+True  : Bool
+False : Bool
+
+Sum : (A : Type) -> (A -> Type) -> Type
+MkSum : {A : Type}{B : A -> Type}(a : A)(b : B a) -> Sum A B
+
+ite : {a : Type} -> a -> a -> Bool -> a
+ite {a} t f True = t
+ite {a} t f False = f
+
+either = \a b -> Sum _ (ite {Type} a b)
+left  : {a b : Type} -> a -> either a b = \{a} {b} x -> MkSum {_} {ite a b} True  x
+right : {a b : Type} -> b -> either a b = \{a} {b} x -> MkSum {_} {ite a b} False x
+
+the : (a : Type) -> a -> a = \_ x -> x
+
+the (either Nat String) (left 24)

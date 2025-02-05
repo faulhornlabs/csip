@@ -1,0 +1,20 @@
+# scope
+# elab
+# eval
+# type
+
+N : Type
+Z : N
+S : N -> N
+
+add : N -> N -> N
+add Z     m = m
+add (S n) m = S (add n m)
+
+mul : N -> N -> N
+mul Z     m = Z
+mul (S n) m = add m (mul n m)
+
+five = S (S (S (S (S Z))))
+
+mul five five

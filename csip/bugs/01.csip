@@ -1,0 +1,72 @@
+# elab
+
+// ghci> :main compile bug/01.csip
+
+Ty : Type
+ = (Ty           : Type)
+   (nat   : Ty)
+   (arr  : Ty -> Ty -> Ty)
+ -> Ty
+
+nat : Ty = \_ nat _-> nat
+
+arr : Ty -> Ty -> Ty
+ = \A B Ty nat  arr ->
+     arr (A Ty nat  arr ) (B Ty nat  arr )
+
+Con : Type
+ = (Con : Type)
+   (nil  : Con)
+   (snoc : Con -> Ty -> Con)
+ -> Con
+
+nil : Con
+ = \Con nil snoc-> nil
+
+snoc : Con -> Ty -> Con
+ = \G A Con nil snoc-> snoc (G Con nil snoc) A
+
+Var : Con -> Ty -> Type
+ = \G A->
+   (Var : Con -> Ty -> Type)
+   (vz  : {G A} -> Var (snoc G A) A)
+   (vs  : {G B A} -> Var G A -> Var (snoc G B) A)
+ -> Var G A
+
+vz : {G A} -> Var (snoc G A) A
+ = \Var vz vs-> vz
+
+vs : {G B A} -> Var G A -> Var (snoc G B) A
+ = \x Var vz vs-> vs (x Var vz vs)
+
+Tm : Con -> Ty -> Type
+ = \G A->
+   (Tm    : Con -> Ty -> Type)
+   (var   : {G A} -> Var G A -> Tm G A)
+   (lam   : {G A B} -> Tm (snoc G A) B -> Tm G (arr A B))
+   (app   : {G A B} -> Tm G (arr A B) -> Tm G A -> Tm G B)
+ -> Tm G A
+
+var : {G A} -> Var G A -> Tm G A
+ = \x Tm var lam app ->
+     var x
+
+lam : {G A B} -> Tm (snoc G A) B -> Tm G (arr A B)
+ = \t Tm var lam app ->
+     lam (t Tm var lam app )
+
+app : {G A B} -> Tm G (arr A B) -> Tm G A -> Tm G B
+ = \t u Tm var lam app ->
+     app (t Tm var lam app )
+         (u Tm var lam app )
+
+v0 : {G A} -> Tm (snoc G A) A
+ = var vz
+
+v1 : {G A B} -> Tm (snoc (snoc G A) B) A
+ = var (vs vz)
+
+times4 : {G A} -> Tm G (arr (arr A A) (arr A A))
+  = lam (lam (app v1 (app v1 (app v1 (app v1 v0)))))
+
+Type

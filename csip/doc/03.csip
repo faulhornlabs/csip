@@ -1,0 +1,19 @@
+# source
+Programming languages are viewed, edited and stored as strings.
+
+A good syntactic frontend is essential for compiler development.
+
+It is not easy to have one...
+
+
+                      layout rules
+                    desugaring rules
+                   name disambiguation
+                  pretty printed output
+                  extensible description
+                 highlighted source code
+                parser-printer consistency
+               ............................
+
+
+Let me reshape syntactic frontend design!

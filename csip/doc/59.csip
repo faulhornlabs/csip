@@ -1,0 +1,14 @@
+# source
+Higher-level comments
+---------------------
+
+Csip has a "definition comment", with which
+one can comment out definitions by one keystroke.
+
+General form:
+
+     a # b
+
+Specialized form:
+
+     # b

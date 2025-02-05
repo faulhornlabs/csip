@@ -1,0 +1,23 @@
+# source
+# elab
+
+id     : {A : Type} -> A -> A = \x-> x
+const  : {A B} -> A -> B -> A = \x y-> x
+group1 : {A B : Type}(x y z : A) -> B -> B = \x y z b-> b
+group2 : {A B}(x y z : A) -> B -> B = \x y z b-> b
+argTest1 = const {Type}{Type} Type
+id2    : {A} -> A -> A = \{A} x-> x
+insert : {A} -> A -> A = id
+the    : (A : _) -> A -> A = \_ x-> x
+noinsert = \{A} x-> the A x
+noinsertTest = noinsert {Type} Type
+insert2  = (\{A} x -> the A x) Type
+insert2Test : insert2 = Type
+
+Pair : Type -> Type -> Type
+  = \A B -> (P : _) -> (A -> B -> P) -> P
+pair : {A B} -> A -> B -> Pair A B
+  = \a b P p -> p a b
+
+// TODO:   pair 12 id
+pair 12 (id {Type})

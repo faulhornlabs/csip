@@ -1,0 +1,9 @@
+# eval
+
+Tup : Type
+MkTup : Nat -> Nat -> Tup
+
+fst : Tup -> Nat
+fst (MkTup a b) = a
+
+fst

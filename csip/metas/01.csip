@@ -1,0 +1,11 @@
+# source
+# elab
+id: (a: Type) -> a -> a
+  = \_ x -> x
+
+nat = Nat
+n = nat
+
+a : n = 23
+
+id _ a

@@ -1,0 +1,4 @@
+
+f : Type -> Type = \x -> x
+
+f "2"

@@ -1,0 +1,23 @@
+# source
+# elab
+
+the    : (A : _) -> A -> A = \_ x-> x
+
+Nat : Type
+  = (N : Type) -> (N -> N) -> N -> N
+mul : Nat -> Nat -> Nat
+  = \a b N s z-> a _ (b _ s) z
+five : Nat
+  = \N s z-> s (s (s (s (s z))))
+n25 = mul five five
+
+Eq : {A} -> A -> A -> Type
+  = \{A} x y-> (P : A -> Type) -> P x -> P y
+refl : {A}{x : A} -> Eq x x
+  = \_ px-> px
+
+sym : {A x y} -> Eq {A} x y -> Eq y x
+  = \{A}{x}{y} p-> p (\y-> Eq y x) refl
+
+sym (the (Eq (mul five five) n25) refl)
+

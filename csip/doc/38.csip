@@ -1,0 +1,25 @@
+# source
+Informal conversion rules
+-------------------------
+                      
+             +  
+            / \         <-->    _+_ a b
+           a   b
+
+            var
+           /            <-->    a var
+          a
+
+            ( )               
+           / |          <-->    a ((_) b)
+          a  b
+
+         let in
+        /   |  \        <-->    a (let_in_ b c)
+       a    b   c
+
+      if then else
+     /  |    |    \     <-->    a (if_then_else_ b c d)
+    a   b    c     d
+
+ 

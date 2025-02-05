@@ -1,0 +1,11 @@
+# source
+Node4, Node5, ... constructors are similar.
+The final tree data structure is
+
+  data Tree
+    = Empty
+    | Node Tree Op [(Tree, Op)] Tree
+
+Theorem:
+  For all (os : List Op),
+  (Parsed os) is a singleton set.

@@ -1,0 +1,18 @@
+# source
+Basic operator precedences
+--------------------------
+
+Notation:
+  _e_ = precedence e
+
+A precedence relation:
+
+    _var_  >  _*_  >  _+_
+
+Parse tree of "a*b+c":
+
+              +
+            /   \
+          *       c
+         / \
+        a   b

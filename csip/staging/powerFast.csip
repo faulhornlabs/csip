@@ -1,0 +1,49 @@
+# stage
+
+// builtins
+Ty   : Type
+Code : Ty -> Type
+Arr  : Ty -> Ty -> Ty
+Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
+App  : {a b} -> Code (Arr a b) -> Code a -> Code b
+Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
+// end of builtins
+
+N : Type
+Z : N
+S : N -> N
+
+Half : Type
+Even : N -> Half
+Odd  : N -> Half
+
+incHalf : Half -> Half
+incHalf (Even n) = Even (S n)
+incHalf (Odd  n) = Odd  (S n)
+
+half : N -> Half
+half Z = Even Z
+half (S Z) = Odd Z
+half (S (S n)) = incHalf (half n)
+
+// FFI
+Int : Ty
+One : Code Int
+Mul : Code (Int -> Int -> Int)
+
+sqr : Code Int -> Code Int
+    = \a -> (b := a; Mul b b)
+
+power : N -> Code Int -> Code Int
+
+powerHelper : Half -> Code Int -> Code Int
+powerHelper (Odd  k) a = Mul a (sqr (power k a))
+powerHelper (Even k) a = sqr (power k a)
+
+power k a = powerHelper (half k) a
+power (S Z) a = a
+power Z a = One
+
+power5 := \a -> power (S (S (S (S (S Z))))) a
+
+\a -> power5 (power5 a)

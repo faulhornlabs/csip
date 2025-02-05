@@ -1,0 +1,15 @@
+# source
+# source quote
+# indent quote
+# lex quote
+# structure quote
+# string quote
+# comment quote
+# comments quote
+# space quote
+# layout quote
+# op quote
+# exptree quote
+# sugar quote
+# scope quote
+(a: Type)-> a-> a

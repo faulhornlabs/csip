@@ -1,0 +1,44 @@
+# source
+# elab
+# eval
+# evalquote
+id : (A : _) -> A -> A
+  = \A x-> x
+
+List : Type -> Type
+  = \A-> (L : _) -> (A -> L -> L) -> L -> L
+
+nil : (A : _) -> List A
+  = \A L cons nil-> nil
+
+cons : (A : _) -> A -> List A -> List A
+  = \A x xs L cons nil-> cons x (xs _ cons nil)
+
+Bool : Type
+  = (B : _) -> B -> B -> B
+
+true : Bool
+  = \B t f-> t
+
+true' = id _ true
+
+false : Bool
+  = \B t f-> f
+
+not : Bool -> Bool
+  = \b B t f-> b B f t
+
+list1 : List Bool
+  = cons _ (id _ true') (cons _ (not true) (nil _))
+
+list2 : List Bool
+  = cons _ true (cons _ false (nil _))
+
+Eq : (A : _) -> A -> A -> Type
+  = \A x y-> (P : A -> Type) -> P x -> P y
+
+refl : (A : _) -> (x : A) -> Eq A x x
+  = \A x P px-> px
+
+eqTest : Eq _ list1 list2 = refl _ _
+eqTest

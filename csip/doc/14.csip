@@ -1,0 +1,24 @@
+# source
+Generalization to two-sided precedences
+---------------------------------------
+
+Notation:  _e  = leftPrec  e
+            e_ = rightPrec e
+
+
+  var_ > _var > *_ > _* > +_ > _+
+
+              +
+            /   \
+          +       a
+         / \     /
+        a   b   c
+
+
+  Ordered Empty = ()
+  Ordered (Node l op r)
+     =  Ordered l    /\    Ordered r
+    /\     l_ > _op  /\  op_ < _r
+
+  _Empty          = infinity
+  _(Node l op r)  = _op `min` _l

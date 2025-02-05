@@ -1,0 +1,17 @@
+# exptree
+Node (Node (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      )
+    (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      ))
+  (Node (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      )
+    (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      ))

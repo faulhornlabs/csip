@@ -1,0 +1,2 @@
+:set +s
+:set -fdefer-type-errors

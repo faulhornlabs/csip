@@ -1,0 +1,9 @@
+# source
+# indent quote
+# layout quote
+a = do
+  b
+   = c
+  d = b
+  d
+a

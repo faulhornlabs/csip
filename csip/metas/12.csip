@@ -1,0 +1,12 @@
+# source
+# elab
+Nat  = (N : Type) -> (N -> N) -> N -> N
+zero : Nat = \N s z -> z
+suc  : Nat -> Nat = \a N s z -> s (a N s z)
+add  : Nat -> Nat -> Nat = \a b N s z -> a N s (b N s z)
+mul  : Nat -> Nat -> Nat = \a b N s z -> a N (b N s) z
+two      = suc (suc zero)
+five     = suc (add two two)
+ten      = add five five
+hundred  = mul ten ten
+hundred

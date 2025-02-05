@@ -1,0 +1,20 @@
+# source
+# elab
+# eval
+# evalquote
+Eq : (A : _) -> A -> A -> Type
+  = \A x y-> (P : A -> Type) -> P x -> P y
+
+refl : (A : _) -> (x : A) -> Eq A x x
+  = \A x P px-> px
+
+Nat  = (N : Type) -> (N -> N) -> N -> N
+two  : Nat = \N s z-> s (s z)
+five : Nat = \N s z-> s (s (s (s (s z))))
+add  : Nat -> Nat -> Nat = \a b N s z-> a N s (b N s z)
+mul  : Nat -> Nat -> Nat = \a b N s z-> a N (b N s) z
+
+ten      : Nat = add five five
+
+eqTest : Eq _ ten (mul two five) = refl _ _
+eqTest

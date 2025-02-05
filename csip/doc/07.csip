@@ -1,0 +1,16 @@
+# source
+            ----- lex ----->
+            <--- unlex -----
+
+
+Essentially
+
+  unlex = concat
+
+  lex = groupBy glue   where
+
+      glue a b
+         = isAlphaNum a && isAlphaNum b
+        || isGraphic  a && isGraphic  b
+
+

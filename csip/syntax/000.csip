@@ -1,0 +1,33 @@
+# indent
+# source quote
+# indent quote
+ 
+
+a
+  b 
+ c 
+  d
+e
+
+a
+a
+  b
+  b 
+ c   
+ c
+  d
+  d
+e
+e
+
+
+a
+  
+  b 
+ 
+ c  
+ 
+  d 
+    
+e
+  

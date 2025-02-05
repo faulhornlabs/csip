@@ -1,0 +1,19 @@
+# source
+PPrint if for pretty printing any value:
+
+  class PPrint a
+   where
+    pprint :: a -> Raw
+
+Raw is the highest level data type in the syntactic pipeline.
+It is surprisingly simple to use it.
+
+For example, the instance for tuples is:
+
+  instance (PPrint a, PPrint b) => PPrint (a, b)
+   where
+    pprint (a, b) = ["(",",",")"] :@ pprint a :@ pprint b
+
+["(",",",")"] is converted to a mixfix operator on the fly
+and it encloses the pretty printed result of (a) and (b).
+

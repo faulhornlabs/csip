@@ -1,0 +1,19 @@
+# source highlight
+# indent highlight
+# lex highlight
+# structure highlight
+# layout highlight
+# exptree highlight
+# sugar highlight
+# scope highlight
+# elab highlight
+u = Type             # Type universe
+
+id: (a: Type) -> a -> a
+  = \_ x -> x
+
+const: (a b: Type) -> a -> b -> a
+  = \_ _ x _ -> x
+
+const String u (id String "Hello World!")
+

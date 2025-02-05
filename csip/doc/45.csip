@@ -1,0 +1,7 @@
+# source
+# scope
+x = a + b
+x = x * b
+x = x ^ x
+f x
+
