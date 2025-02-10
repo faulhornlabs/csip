@@ -20,14 +20,14 @@ build-type:    Simple
 
 extra-doc-files:
   README.md
-  tests/bugs/*.csip
-  tests/bugs/fixed/*.csip
-  tests/demo/*.csip
-  tests/syntax/*.csip
-  tests/typecheck/*.csip
-  tests/metas/*.csip
-  tests/adt/*.csip
-  tests/staging/*.csip
+  csip/doc/*.csip
+  csip/bugs/*.csip
+  csip/bugs/fixed/*.csip
+  csip/syntax/*.csip
+  csip/typecheck/*.csip
+  csip/metas/*.csip
+  csip/adt/*.csip
+  csip/staging/*.csip
   perftests/*.csip
 extra-source-files:
   .ghci

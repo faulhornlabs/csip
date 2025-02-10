@@ -125,7 +125,7 @@ Algebraic data types are also supported in the following way:
 - Rewrite rules of the same function are chained together, i.e.
   if the left hand side of a rule does not match, the next rule of the same function is tried.
   (no need to check *all* rewrite rules).
-  Not that the chained expression is not yet optimized.
+  Note that the chained expression is not yet optimized.
 - The right hand sides of the rewrite rules are marked.
   Unsaturated and blocked rewrite rule applications are cached.
 
@@ -220,12 +220,12 @@ remove unconsitent cache during development (when needed).
 
 ### Performance improvement workflow
 
-    cabal install --overwrite-policy=always
+    cabal install
     csip .
     time csip diff .
     <<< start_loop >>>
     <<< edit source files >>>
-    cabal install --overwrite-policy=always
+    cabal install
     time csip diff .
     <<< goto start_loop >>>
 
