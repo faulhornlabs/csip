@@ -6,6 +6,7 @@ with high-level abstractions.
 Compared to Agda, Csip can do staged compilation, it does not have termination checking
 and it has a minimal but practical set of language features.
 
+Warning: It is not advised to use Csip yet, it is under development.
 
 
 ## Installation
@@ -24,11 +25,22 @@ The first lines of `.csip` files are directives
 which tell the compiler what to do.  
 Main directives:
 
-| Directive | Description |
-| ---       | ---         |
-| `# elab`  | print the elaborated main expression |
-| `# eval`  | print the normalized main expression |
-| `# stage` | print the result of staged main expression |
+| Directive           | Description |
+| ---                 | ---         |
+| `# source`          | print the source code |
+| `# source quote`    | print the inner representation of the source code |
+| `# indent quote`    | print the inner representation of the unidented source code |
+| `# lex quote`       | print the token list |
+| `# structure quote` | print the parse tree with whitespace |
+| `# layout quote`    | print the parse tree |
+| `# op quote`        | print the parse expression |
+| `# exptree quote`   | print the parse expression with mixfix operators |
+| `# sugar quote`     | print the desugared source code |
+| `# scope quote`     | print the scope checked source code |
+| `# elab`            | print the elaborated main expression |
+| `# eval`            | print the normalized main expression |
+| `# stage`           | print the staged main expression |
+| `# haskell_stage`   | print the staged main expression parsable with Haskell Read instance |
 
 
 ### Compilation
@@ -80,22 +92,22 @@ Key features:
   The parsing and pretty printing algorithms used work for any operator grammar.
 - No semicolons are needed at the end of definitions (layout rules are supported).
 - Syntax sugaring is bidirectional too.
-- Source code locations are encapsulated in a custom String data structure.
+- Source code locations are encapsulated in a custom `String` data structure.
   There is no need to store and carry source code locations otherwise.
-  Highlighted error messages are derived from the custom String data.
+  Highlighted error messages are derived from the custom `String` data.
 
 
 ### Elaboration
 
 The dependent typechecking algorithm is based on Coquand's algorithm,
 as implemented in [András Kovács's elaboration-zoo](https://github.com/AndrasKovacs/elaboration-zoo).  
-Differences:
+Possible differences:
 
-- Csip uses globally unique names instead of De Bruijn indices  
-  (indices are still used in fully bound lambda bodies).
+- Csip uses globally unique names instead of De Bruijn indices.  
+  Indices are still used in supercombinators (lifted lambda bodies).
 - Csip's value representation uses observable implicit sharing.  
   Implicit sharing of Haskell is made visible by adding unique identifiers
-  (names) to each nodes of the value graph.
+  (names) to each node of the value graph.
   An important invariant is that if the identifiers of two nodes are
   equal then the two nodes are equal. This invariant is used
   to speed up conversion checking.
@@ -103,31 +115,31 @@ Differences:
   for efficiency. This information can be recovered after elaboration from
   the explicit/implicit distinction of Pi types.
 - Terms may contain closed values.
-- There is a dedicated consturctor for generated terms.
-  (Terms are generated for holes.)
+- There is a dedicated consturctor for terms generated during elaboration.
+- Forced flexible values are destructively updated.
 - Forcing of flexible values is speeded up by caching the main blocking metavariable
   in flexible values.  
   If the main metavariable is solved, forcing results in a rigid value
   or a flexible value with the next main blocking metavariable.
 - Glued representation is implemented currently with an extra constructor for values.
+- Algebraic data types are also supported.
 
-Algebraic data types are also supported in the following way:
+### Implementation details of algebraic data types
 
-- Currently type constructors, data constructors and function alternatives
+- Currently all data types and functions are open, which means
+  that type constructors, data constructors and function alternatives
   can be given in any order obeying dependency.
-  This means that data types and functions are open.
 - Type checking of functions alternatives happens separately for the left hand side
   and the right hand side. There is no need to compile pattern matching to eliminators
   and generate types for eliminators for typechecking.
-- Function alternatives are compiled to rewrite rules.
-- Rewrite rules are compiled to terms containing tag-checking conditional expressions
-  and selector functions to access the arguments of constructors.
+- Function alternatives are interpreted as rewrite rules.
+- Rewrite rules are compiled to conditional expressions branching on constructor tags
+  and projections to access the arguments of constructors.
 - Rewrite rules of the same function are chained together, i.e.
-  if the left hand side of a rule does not match, the next rule of the same function is tried.
-  (no need to check *all* rewrite rules).
-  Not that the chained expression is not yet optimized.
+  if the left hand side of a rule does not match, the next rule of the same function is tried
+  (not *all* rewrite rules are tried).
 - The right hand sides of the rewrite rules are marked.
-  Unsaturated and blocked rewrite rule applications are cached.
+  Rewrite rule application is successful only if the right hand side is reached.
 
 
 ### Staging
@@ -137,65 +149,61 @@ Staged compilation is defined in [András Kovács's staged repository](https://g
 Currently Csip implements a shallow form of staging;
 object code function type constructors, applications, lambdas and lets are
 inserted during elaboration. There are no splice and quote operations.
-The staging algoritm is normalization plus transformation of object code
+The staging algoritm is open normalization plus transformation of object code
 applications, lambdas and lets to raw applications, lambdas and lets.
 
 
 
-## Limitations
+## Limitations and bugs
 
-The following limitations are planned to be lifted:
+The following limitations and bugs are planned to be lifted:
 
-- syntax
-  - multiline comments interferes with layout rules;  
-    the solution is to move the indent pass after the comments pass
-  - the inverse of the string pass is missing
-  - desugared `(a b : c)` does not share `c`
-- printing of terms and values
-  - types are missing
-  - implicit/explicit distinction of lambdas and applications are missing
-  - sharing between values are sometimes lost
-  - recursive lets are not properly printed
-- unification
-  - no pruning
-  - currently flexible values cannot be refined to Pi types
-- algebraic data types
-  - order of function alternatives are reversed
-  - implict arguments in rules should be explicit
-  - local definitions are not supported
-- staging
-  - top level object language lets should be at the end
-  - staging is shallow(?)
+- implict arguments in rules should be explicitly given by braces
+- type classes are not supported
+- pattern matching compiled to object level constructs is not supported
+- there is no module system
+- support multiple object codes simultaneously
+- Bugs caused by not checking unsupported language constructs.  
+  The compiler may go into infinite loop because of this.
+- top level object language lets should be at the end
+- local definitions are not supported
+- local do notation is not supported
+- user defined operator precedences are not supported
+- recursive definitions are not properly printed
+- object level functions should be eta-expanded
+- closed data types and closed functions are not supported
+- sharing between values are sometimes lost during printing
+- flexible values cannot be refined to Pi types
+- no pruning during metavariable solving
+- types are not shown in printed output
+- implicit/explicit distinction of lambdas and applications are missing
+- multiline comments interferes with layout rules
+- string literal printing is not the inverse of the string literal parsing
+- desugared `(a b : c)` does not share `c`
 
-## Bugs
-
-- There is a serious scoping bug which is caused by
-  unique identifiers not being unique
 
 
 ## Performance
 
-Adding features (like supporting type classes) is preferred before
-performance improvements.
-
 Implemented performance improvements:
 
-- monad stacks are replaced with a custom solution
 - observable implicit sharing speeds up conversion checking
   and prevents sharing loss
+- unsaturated and blocked rewrite rule applications are cached
+- monad stacks in the Haskell source code are replaced with a custom solution
 
 Planned performance improvements:
 
+- optimize chained rewrite rules produced by pattern match compilation
+- fast head of spine access in terms and values
 - run staging on closed meta level values
 - identify names with `Int`s
 - use `IntMap`s instead of `Map`s
 - use linear maps (`IORef`s) instead of `IntMap`s
 - redirect graph nodes after conversion checking
 - parsing and pretty printing should be near linear time operation
-- fast head of spine access in terms and values
-- optimize pattern match compilation
 - faster supercombinator evaluation using interpreted register machines
-- use Strict pragma and UNPACK pragmas
+- use `Strict` pragma and `UNPACK` pragmas in the Haskell source files
 
 
 ## Development workflows
@@ -205,7 +213,7 @@ The Csip cache can be cleaned with
     csip clean
 
 The purpose of the clean command is to
-remove unconsitent cache during development (when needed).
+remove unconsitent cache during development when needed.
 
 ### Main development workflow
 
@@ -220,81 +228,36 @@ remove unconsitent cache during development (when needed).
 
 ### Performance improvement workflow
 
-    cabal install --overwrite-policy=always
+    cabal install
     csip .
     time csip diff .
     <<< start_loop >>>
     <<< edit source files >>>
-    cabal install --overwrite-policy=always
+    cabal install
     time csip diff .
     <<< goto start_loop >>>
 
 
-## Example
-
-Content of [csip/staging/powerFast.csip](csip/staging/powerFast.csip):
+## Examples
 
 ```haskell
-# stage
-
-// builtins
-Ty   : Type
-Code : Ty -> Type
-Arr  : Ty -> Ty -> Ty
-Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
-App  : {a b} -> Code (Arr a b) -> Code a -> Code b
-Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
-// end of builtins
-
-N : Type
-Z : N
-S : N -> N
-
-Half : Type
-Even : N -> Half
-Odd  : N -> Half
-
-incHalf : Half -> Half
-incHalf (Even n) = Even (S n)
-incHalf (Odd  n) = Odd  (S n)
-
-half : N -> Half
-half Z = Even Z
-half (S Z) = Odd Z
-half (S (S n)) = incHalf (half n)
-
-// FFI
-Int : Ty
-One : Code Int
-Mul : Code (Int -> Int -> Int)
-
-sqr : Code Int -> Code Int
-    = \a -> (b := a; Mul b b)
-
-power : N -> Code Int -> Code Int
-
-powerHelper : Half -> Code Int -> Code Int
-powerHelper (Odd  k) a = Mul a (sqr (power k a))
-powerHelper (Even k) a = sqr (power k a)
-
-power k a = powerHelper (half k) a
-power (S Z) a = a
-power Z a = One
-
-power5 := \a -> power (S (S (S (S (S Z))))) a
-
-\a -> power5 (power5 a)
+\a b -> ((a + b)^5 + b)^10
 ```
 
-Output of `csip csip/staging/powerFast.csip`:
+is compiled to
 
 ```haskell
-do
-  power5 = \a -> Mul a (do
-        b = a
-        b_1 = Mul b b
-        Mul b_1 b_1
-      )
-  \a -> power5 (power5 a)
+\a b -> (do
+    c = Add a b
+    b_1 = Mul c c
+    c_1 = Add
+      (Mul c (Mul b_1 b_1))
+      b
+    b_2 = Mul c_1 c_1
+    b_3 = Mul c_1 (Mul b_2 b_2)
+    Mul b_3 b_3
+  )
 ```
+
+given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast.csip).
 

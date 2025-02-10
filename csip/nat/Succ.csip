@@ -1,0 +1,12 @@
+# elab
+# eval
+
+// builtins
+Succ : Nat -> Nat
+
+f : Nat -> Nat
+f (Succ (Succ a)) = a
+f a = Succ a
+
+f (f 3)
+

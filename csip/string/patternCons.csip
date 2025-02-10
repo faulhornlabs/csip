@@ -1,0 +1,18 @@
+# elab
+# eval
+
+// builtins
+Cons : String -> String -> String
+ProdStr : Type
+PairStr : String -> String -> ProdStr
+AppendStr : ProdStr -> String
+
+appendStr : String -> String -> String
+  = \a b -> AppendStr (PairStr a b)
+
+f : String -> String
+f "" = ""
+f (Cons a b) = appendStr b a
+
+appendStr (f (f "alma")) (f "")
+

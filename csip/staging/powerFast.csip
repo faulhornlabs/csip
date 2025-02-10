@@ -7,43 +7,36 @@ Arr  : Ty -> Ty -> Ty
 Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
 App  : {a b} -> Code (Arr a b) -> Code a -> Code b
 Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
+Succ : Nat -> Nat
 // end of builtins
 
-N : Type
-Z : N
-S : N -> N
+Parity : Type
+Even : Parity
+Odd  : Parity
 
 Half : Type
-Even : N -> Half
-Odd  : N -> Half
+MkHalf : Parity -> Nat -> Half
 
-incHalf : Half -> Half
-incHalf (Even n) = Even (S n)
-incHalf (Odd  n) = Odd  (S n)
+half : Nat -> Half
+half 0 = MkHalf Even 0
+half 1 = MkHalf Odd  0
+half (Succ (Succ (half --> MkHalf p n))) = MkHalf p (Succ n)
 
-half : N -> Half
-half Z = Even Z
-half (S Z) = Odd Z
-half (S (S n)) = incHalf (half n)
-
-// FFI
-Int : Ty
-One : Code Int
-Mul : Code (Int -> Int -> Int)
+// object code types and functions (foreign function interface)
+Int :: Type
+One :: Int
+Mul :: Int -> Int -> Int
+Add :: Int -> Int -> Int
 
 sqr : Code Int -> Code Int
     = \a -> (b := a; Mul b b)
 
-power : N -> Code Int -> Code Int
+(+) = Add
 
-powerHelper : Half -> Code Int -> Code Int
-powerHelper (Odd  k) a = Mul a (sqr (power k a))
-powerHelper (Even k) a = sqr (power k a)
+(^) : Code Int -> Nat -> Code Int
+a ^ 1 = a
+a ^ 0 = One
+a ^ (half --> MkHalf Even k) =                 sqr (a ^ k)
+a ^ (half --> MkHalf Odd  k) = (c := a; Mul c (sqr (c ^ k)))
 
-power k a = powerHelper (half k) a
-power (S Z) a = a
-power Z a = One
-
-power5 := \a -> power (S (S (S (S (S Z))))) a
-
-\a -> power5 (power5 a)
+\a b -> ((a + b)^5 + b)^10

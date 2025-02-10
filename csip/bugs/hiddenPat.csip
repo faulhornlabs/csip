@@ -1,0 +1,10 @@
+# scope
+# elab
+
+
+id : (a : Type) -> a -> a
+id _ x = x
+
+
+id _ "hello"
+

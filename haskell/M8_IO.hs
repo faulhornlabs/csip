@@ -11,6 +11,7 @@ module M8_IO
   , printFile
   , CLI (Dir, Pure), command, runCLI
   , hashString
+  , versionString
   )
  where
 
@@ -20,16 +21,18 @@ import System.Directory as E
   ( doesFileExist, doesDirectoryExist, getTemporaryDirectory
   , listDirectory, createDirectoryIfMissing, {- renameFile, -} removeDirectoryRecursive)
 
-import Control.Exception (finally, bracket)
+import Control.Exception (finally)
 --import qualified System.Console.Terminal.Size as Terminal
 import System.Environment (getArgs)
-import System.IO (hReady, hFlush, hGetEcho, hSetEcho, BufferMode(..), hGetBuffering, hSetBuffering, hIsTerminalDevice, stdin, stdout)
+import System.IO (hReady, hFlush, hSetEcho, BufferMode(..), hSetBuffering, hIsTerminalDevice, stdin, stdout)
 import System.Exit (die)
 import Data.Char (digitToInt)
 import Crypto.Hash.MD5 (hash)
 import Data.ByteString.Char8 (pack, unpack)
 import Data.ByteString.Base64.URL (encode)
+import Data.Version (versionBranch)
 
+import Paths_csip (version)
 import M1_Base
 
 -----------------------------------------------
@@ -103,20 +106,15 @@ getTerminalSize = fromMaybe defaultTerminalSize <$> do
   if b then do
     putStr $ "\ESC7" -- save cursor
         <> setCursorPosition 9999 9999
-    mPos <- bracket (hGetBuffering stdin) (hSetBuffering stdin) $ \_ -> do
-      hSetBuffering stdin NoBuffering
-      bracket (hGetEcho stdin) (hSetEcho stdin) $ \_ -> do
-        hSetEcho stdin False
-        clearStdin
-        putStr $ CSI [6] 'n' ""
-        hFlush stdout
-        skip "\ESC["
-        as <- getInt 0 ';'
-        bs <- getInt 0 'R'
-        pure $ (,) <$> bs <*> as
+    clearStdin
+    putStr $ CSI [6] 'n' ""
+    hFlush stdout
+    skip "\ESC["
+    as <- getInt 0 ';'
+    bs <- getInt 0 'R'
     putStr "\ESC8" -- restore cursor
     hFlush stdout
-    pure mPos
+    pure $ (,) <$> bs <*> as
    else pure Nothing
  where
   clearStdin = do
@@ -157,6 +155,9 @@ getKey = getChar >>= \case
     ';' -> f "" (i: is)
     c | isDigit c -> f (c: i) is
     c -> pure (i: is, c)
+
+versionString :: String
+versionString = intercalate "." $ map show $ versionBranch version
 
 -------------------------------- command line interface
 

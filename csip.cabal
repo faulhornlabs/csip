@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          csip
-version:       0.1.0.0
+version:       0.1.1.0
 
 category:      Compiler
 synopsis:      compiler for writing efficient programs with high-level abstractions
@@ -10,74 +10,76 @@ description:
   high-level abstractions.
 
   Csip does staged compilation, without termination checking.
-  
+
 license:       BSD-2-Clause
 license-file:  LICENSE
 author:        Peter Divianszky
 maintainer:    peter.divianszky@faulhornlabs.com
 
-build-type:    Simple
-
 extra-doc-files:
   README.md
-  tests/bugs/*.csip
-  tests/bugs/fixed/*.csip
-  tests/demo/*.csip
-  tests/syntax/*.csip
-  tests/typecheck/*.csip
-  tests/metas/*.csip
-  tests/adt/*.csip
-  tests/staging/*.csip
-  perftests/*.csip
 extra-source-files:
   .ghci
+data-dir: .
+data-files:
+  precedences
+  csip/**/*.csip
+  perftests/**/*.csip
+
+source-repository head
+  type:     git
+  location: https://github.com/faulhornlabs/csip
 
 executable csip
-    build-depends:
-        base                  >= 4.0  && < 5.0
-      , array                 >= 0.5  && < 0.6
-      , containers            >= 0.6  && < 1.0
-      , bytestring            >= 0.10 && < 0.13
-      , base64-bytestring     >= 1.2  && < 1.3
-      , cryptohash-md5        >= 0.11 && < 0.12
-      , directory             >= 1.3  && < 1.4
+  build-depends:
+      base                  >= 4.0  && < 5.0
+    , array                 >= 0.5  && < 0.6
+    , containers            >= 0.6  && < 1.0
+    , bytestring            >= 0.10 && < 0.13
+    , base64-bytestring     >= 1.2  && < 1.3
+    , cryptohash-md5        >= 0.11 && < 0.12
+    , directory             >= 1.3  && < 1.4
 
-    hs-source-dirs: haskell
-    other-modules:
-        M0_Prelude
-      , M1_Base
-      , M2_OpSeq
-      , M3_Parse
-      , M4_Eval
-      , M5_Unify
-      , M6_Elab
-      , M7_Stage
-      , M8_IO
-    main-is:
-        M9_Main.hs
+  hs-source-dirs: haskell
+  other-modules:
+      M0_Prelude
+    , M1_Base
+    , M2_OpSeq
+    , M3_Parse
+    , M4_Eval
+    , M5_Unify
+    , M6_Elab
+    , M7_Stage
+    , M8_IO
+    , Paths_csip
+  main-is:
+      M9_Main.hs
+  autogen-modules:
+      Paths_csip
 
-    default-language:
-        Haskell2010
-    default-extensions:
-        NoImplicitPrelude
-      , BlockArguments
-      , LambdaCase
-      , BangPatterns
-      , ViewPatterns
-      , PatternSynonyms
-      , NoMonomorphismRestriction
-      , DataKinds
-      , KindSignatures
-      , OverloadedStrings
-      , FlexibleInstances
-      , FlexibleContexts
-      , GeneralizedNewtypeDeriving
+  default-language:
+      Haskell2010
+  default-extensions:
+      NoImplicitPrelude
+    , BlockArguments
+    , LambdaCase
+    , BangPatterns
+    , ViewPatterns
+    , PatternSynonyms
+    , NoMonomorphismRestriction
+    , DataKinds
+    , KindSignatures
+    , OverloadedStrings
+    , FlexibleInstances
+    , FlexibleContexts
+    , GeneralizedNewtypeDeriving
+  other-extensions:
+      CPP
 
-    ghc-options:
-      -fobject-code
-      -Wall
-      -Wno-missing-signatures
-      -Wno-missing-pattern-synonym-signatures
-      -Wno-name-shadowing
-      -Wno-orphans
---      -prof -fprof-auto "-with-rtsopts= -s -p"
+  ghc-options:
+    -fobject-code
+    -Wall
+    -Wno-missing-signatures
+    -Wno-missing-pattern-synonym-signatures
+    -Wno-name-shadowing
+    -Wno-orphans

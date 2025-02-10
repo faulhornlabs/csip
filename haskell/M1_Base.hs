@@ -45,14 +45,15 @@ module M1_Base
   , impossible, undefined, error, error', errorM, assert
 
   , walk, downUp, topDown, bottomUp
+
+  , precedenceTableString
   )
  where
 
 -----------------------------------------------
 
-import M0_Prelude
-
 import Prelude (IO, FilePath)
+import Prelude as IO (readFile)
 
 import Data.Char (digitToInt)
 --import qualified Data.IntMap as IM
@@ -67,6 +68,9 @@ import qualified Control.Exception as Excpetion (Exception, catch, throwIO)
 import GHC.TypeLits (KnownNat, Nat, SomeNat (SomeNat), someNatVal)
 import System.IO.Unsafe (unsafePerformIO)
 import GHC.Stack (HasCallStack, callStack, getCallStack, SrcLoc(..))
+
+import Paths_csip
+import M0_Prelude
 
 -----------------------------------------------
 
@@ -737,5 +741,11 @@ bottomUp
   -> RefM (Map a b)
 bottomUp init children up x
   = walk (\v -> (,) init <$> children v) (\_ -> pure) (\a _ b -> up a b) [x]
+
+
+precedenceTableString :: String
+precedenceTableString = unsafePerformIO do
+  f <- getDataFileName "precedences"
+  IO.readFile f
 
 

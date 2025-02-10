@@ -3,10 +3,11 @@ module M3_Parse
   , ISource, Token, OpSeq
 
   , Name (MkName, NNat, NString, NConst)
-  , mkName, mapName, rename, isConName
+  , mkName, mapName, rename, isConName, isVarName
+  , showMixfix, unscope
 
   , ExpTree
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp)
+    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)
   , PPrint (pprint)
   , zVar
 
@@ -30,63 +31,7 @@ class Arity a where arity :: a -> Int
 type Precedence = Int
 
 precedenceTable :: Map String (Bool, (Precedence, Precedence))
-precedenceTable = mkTable
-  [ " a_ )_ ]_ }_ !>_"
-  , "_a _( _[ _{ _<! _if _let _\\"
-  , " @_"
-  , "_@"
-  , " ._"
-  , "_."
-  , " ?_"
-  , "_?"
-  , "_^"
-  , " ^_"
-  , " *_ /_"
-  , "_* _/"
-  , " +_ -_"
-  , "_+ _-"
-  , "_<>"
-  , " <>_"
-  , " <_ <=_ >_ >=_ ==_ /=_"
-  , "_< _<= _> _>= _== _/="
-  , "_&&"
-  , " &&_"
-  , "_||"
-  , " ||_"
-  , " else_"
-  , "_<-"
-  , " <-_"
-  , "_-> _|-> _: _:: _** _==>"
-  , " ->_ |->_ :_ ::_ **_ ==>_"
-  , " in_"
-  , " \\_"
-  , "_= _:="
-  , " =_ :=_"
-  , "_|"
-  , " |_"
-  , "_,"
-  , " ,_"
-  , "_#"
-  , " #_"
-  , "_;"
-  , " ;_"
-  , " let_ _in if_ _then then_ _else"
-  , " [_ _] {_ _} (_ _) <!_ _!>"
-  , " END_ SEMI_"
-  , "_BEGIN _SEMI"
-  , " BEGIN_ _END"
-  , "_SPACE"
-  , " SPACE_"
-  , "_/*"
-  , " */_"
-  , " /*_ _*/"
-  , "_//"
-  , " //_"
-  , "_NEWLINE"
-  , " NEWLINE_"
-  , "_\""
-  , " \"_"
-  ]
+precedenceTable = mkTable (lines precedenceTableString)
  where
   mkTable
     = fmap (fromMaybe False . listToMaybe *** (head *** head))
@@ -101,12 +46,12 @@ precedenceTable = mkTable
   g s | last s == '_' = \p -> [(h $ init s, ([], [p]))]
   g _ = impossible
 
-  h "SEMI" = "\v"
-  h "END" = "\r"
-  h "BEGIN" = "\t"
+  h "SEMI"    = "\v"
+  h "END"     = "\r"
+  h "BEGIN"   = "\t"
   h "NEWLINE" = "\n"
-  h "SPACE" = " "
-  h s = s
+  h "SPACE"   = " "
+  h s         = s
 
   ff n f = [(a, (m, z)) | (a, z) <- fn]
     where
@@ -125,12 +70,17 @@ strPrecedence_ _ = impossible
 
 strPrecedence cs = snd $ strPrecedence_ cs
 
-(maxLeftPrec, maxRightPrec) = precedence "a"
+topPrec = precedence "a"
+maxPrec = precedence "MAXPREC"
+minPrec = precedence "MINPREC"
+
+isInfix :: Token a -> Bool
+isInfix (precedence -> p) = minPrec `less` p && p `less` maxPrec
+ where
+  (a, b) `less` (c, d) = a < c && b < d
 
 isAtom :: Token a -> Bool
-isAtom r = precedence r == (maxLeftPrec, maxRightPrec)
-
-isUserOp n = n `elem` ["+","-","*","^"]
+isAtom t = precedence t == topPrec || isInfix t
 
 operator [a] = not $ isMixfix a
 operator a = a `elem`
@@ -222,9 +172,15 @@ precedence = \case
   _ -> strPrecedence "a"
 
 isUpperToken :: Token a -> Bool
-isUpperToken = \case
-  MkToken s _  -> isUpper $ headCh s
+isUpperToken t = isAtom t && case t of
+  MkToken (headCh -> c) _  -> isUpper c || c == ':'
   _ -> False
+
+isLowerToken :: Token a -> Bool
+isLowerToken t = isAtom t && case t of
+  MkToken (headCh -> c) _  -> isLower c || (c /= ':' && isGraphic c)
+  _ -> False
+
 
 isMixfix (MkToken cs _) = fst $ strPrecedence_ $ chars cs
 isMixfix _ = False
@@ -401,9 +357,9 @@ instance Print (OpSeq' Unspaced) where
   print = print . space
 
 
--------------------------------------------------
---------------- unspace and space ---------------
--------------------------------------------------
+--------------------------------------
+--------------- layout ---------------
+--------------------------------------
 
 
 instance Parse (OpSeq' Layout) where
@@ -582,8 +538,8 @@ instance Semigroup (Mixfix a) where
 enrich os = f True os
  where
   f p (o: os)
-    = ["___" | p && fst (precedence o) /= maxLeftPrec]
-    ++ o: f (snd (precedence o) /= maxRightPrec) os
+    = ["___" | p && fst (precedence o) /= fst topPrec]
+    ++ o: f (snd (precedence o) /= snd topPrec) os
   f p [] = ["___" | p]
 
 showMixfix :: Mixfix a -> Source
@@ -626,6 +582,7 @@ pattern NAny   = MkM ["_"]
 pattern NHole :: Mixfix a
 pattern NHole  = MkM ["_"]
 pattern NArr   = MkM ["->"]
+pattern NView  = MkM ["-->"]
 pattern NPi    = MkM ["(",":",")","->"]
 pattern NHPi   = MkM ["{",":","}","->"]
 pattern NHArr  = MkM ["{","}","->"]
@@ -636,6 +593,7 @@ instance Arity (Mixfix t) where
   arity (MkM a) = arity a
 instance Arity [Token i] where
   arity ["_"] = 0
+  arity [t] | isInfix t = 0
   arity os = length . filter (== "___") $ enrich os
 
 
@@ -685,16 +643,17 @@ unop :: OpSeq' Layout -> ExpTree' Layout
 unop (topOp -> (os, l, ts, r)) = case os of
   [] -> RVar NEmpty
   os | not $ operator os -> error $ "Mismatched operator: " <> showMixfix (MkM os)
+  ["(",")"] | [t :> Empty] <- ts, isInfix t -> lf $ rf $ RVar $ MkM [t]           -- TODO: implement inverse of this in op
   _ -> lf $ rf $ Apps (MkM os) $ map unop $ fs ts
  where
   f Empty a = a
   f l a = unop l :@ a
 
   (lf, fs)
-    | fst (precedence $ head os) == maxLeftPrec = (f l, id)
+    | fst (precedence $ head os) == fst topPrec = (f l, id)
     | otherwise = (id, (l: ))
   rf
-    | snd (precedence $ last os) == maxRightPrec, Empty <- r = id
+    | snd (precedence $ last os) == snd topPrec, Empty <- r = id
     | otherwise = (:@ unop r)
 
 op :: ExpTree' Layout -> OpSeq' Layout
@@ -854,6 +813,7 @@ pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
 pattern RLetOTy n t  e = ZApps NLetOTy[RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
+pattern RView  a b     = ZApps NView  [a, b]
 
 unGLam = \case
   _ :@@ _ -> Nothing
@@ -893,27 +853,28 @@ lams :: [Mixfix a] -> ExpTree' a -> ExpTree' a
 lams [] e = e
 lams (n: ns) e = RPi n (ZVar NHole) $ lams ns e
 
-vars :: ExpTree' Desug -> [Mixfix Desug]
+vars :: ExpTree' POp -> [Mixfix POp]
 vars t = case t of
     Hole -> []
     RDot{} -> []
+    ZApps NView [_, e] -> vars e
     RHApp a b -> vars a <> vars b
     a :@ b -> vars a <> vars b
-    RVar n@(ZName (MkM [t])) -> [n | not $ isUpperToken t]
+    RVar n@(ZName (MkM [t])) -> [n | isLowerToken t]
     e -> error' $ ("invalid pattern: " <>) <$> print e
     
 
 desugar :: ExpTree' POp -> RefM (ExpTree' Desug)
-desugar e = pure $ etr3 $ etr2 $ etr e where
+desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
-  etr :: ExpTree' POp -> ExpTree' Desug
+  etr :: ExpTree' POp -> ExpTree' POp
   etr = \case
     Apps l [n :@ m, a, b] | l `elem` [NTLam, NTHLam, NPi, NHPi] -> etr $ xApps l [n, a, xApps l [m, a, b]]
     Apps l [a :@ b, e] | l == NLam || l == NHLam || l == NArr && isBind b || l == NHArr -> etr $ xApps l [a, xApps l [b, e]]
     a :@ b -> etr a :@ etr b
-    RVar l -> RVar $ coerce l
+    RVar l -> RVar l
 
-  etr2 :: ExpTree' Desug -> ExpTree' Desug
+  etr2 :: ExpTree' POp -> ExpTree' POp
   etr2 = \case
     RVar l@NLam  :@ a :@ b -> xApps l [xApps NExpl [etr2 a, RVar NHole], etr2 b]
     RVar l@NHLam :@ a :@ b -> xApps l [xApps NTy   [etr2 a, RVar NHole], etr2 b]
@@ -929,12 +890,13 @@ desugar e = pure $ etr3 $ etr2 $ etr e where
     a :@ b -> etr2 a :@ etr2 b
     RVar l -> RVar l
 
-  etr3 :: ExpTree' Desug -> ExpTree' Desug
+  etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NTLam, NTHLam, NBraces, NRule] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
-    RVar n@(MkM [t]) | isAtom t || isUserOp t   -> RVar n
-    e -> error' $ print e <&> \r -> "Expression expected\n" <> r
+    RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
+    e -> error' $ print ({- pprint $ op $ unpatch -} e) <&> \r -> "Expression expected\n" <> r
 
 
 
@@ -949,12 +911,17 @@ sugar = coerce . sug . sug0
       -> Apps (del 1 3 l) [RVar $ coerce n, sug0 b]
     Apps l@NPi [ZVar NAny, a, b]
       -> Apps (del 0 3 l) [sug0 a, sug0 b]
-    Apps l@NTLet [ZVar NAny, Hole, b, c]
-      -> Apps (del 0 2 l) [sug0 b, sug0 c]
+    Apps l@NTLet [ZVar NAny, Hole, b, c] | Just r <- getRule b
+      -> Apps (del 0 2 l) [sug0 r, sug0 c]
     Apps l@NTLet [RVar n, Hole, b, c]
       -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
     a :@ b -> sug0 a :@ sug0 b
     RVar a -> RVar (coerce a)
+
+  getRule e = case e of
+    Apps NRule _  ->  Just e
+    Apps NPi [RVar _, _, b] -> getRule b
+    _ -> Nothing
 
   sug :: ExpTree' Desug -> ExpTree' Desug
   sug = \case
@@ -1009,6 +976,9 @@ instance Arity Name where
 
 isConName (nameStr -> MkM [t]) = isUpperToken t
 isConName _ = False
+
+isVarName (nameStr -> MkM [t]) = isLowerToken t
+isVarName _ = False
 
 pattern RConst n  = RVar (NConst n)
 pattern NConst' n = NConst (MkM [n])
@@ -1139,7 +1109,7 @@ instance PPrint Source where
     co a b = RVar "<>" :@ a :@ pprint b
 
 srcRVar = RVar . NConst' . mkToken
-srcRVar' s = RVar . NConst' $ MkToken s $ MkCached (maxLeftPrec, maxRightPrec)
+srcRVar' s = RVar . NConst' $ MkToken s $ MkCached topPrec
 srcRStr s = RVar . NConst' $ MkString ("\"" <> s <> "\"") (chars s)
 
 instance PPrint ISource where
@@ -1163,7 +1133,7 @@ instance PPrint (Token a) where
     t -> pprint $ showToken t
 
 instance PPrint (Mixfix a) where
-  pprint (MkM [t]) | precedence t == (maxLeftPrec, maxRightPrec) = pprint t
+  pprint (MkM [t]) | precedence t == topPrec = pprint t
   pprint t = -- RVar $ NConst $ coerce t --
              srcRVar' $ showMixfix t
 

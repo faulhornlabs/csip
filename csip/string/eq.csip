@@ -1,0 +1,28 @@
+# elab
+# eval
+
+// builtins
+Cons      : String -> String -> String
+ProdStr   : Type
+PairStr   : String -> String -> ProdStr
+AppendStr : ProdStr -> String
+EqStr     : ProdStr -> Nat
+// end of builtins
+
+
+appendStr : String -> String -> String
+  = \a b -> AppendStr (PairStr a b)
+
+Bool  : Type
+True  : Bool
+False : Bool
+
+natToBool : Nat -> Bool
+natToBool 1 = True
+natToBool _ = False
+
+eqStr : String -> String -> Bool
+  = \a b -> natToBool (EqStr (PairStr a b))
+
+
+eqStr (appendStr "al" "ma") "alma"

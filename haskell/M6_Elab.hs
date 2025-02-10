@@ -214,6 +214,13 @@ infer env r = tag r $ case r of
     v <- vVar_ n
     tb <- check (define True n v va env) b CType
     pure (pi `TApp` ta `TApp` tLam n tb, CType)
+  RView a b -> do
+    (ta, ty) <- infer env a
+    (Expl, pa, pb) <- matchPi Expl ty
+    n <- mkName "t"
+    (v, vb) <- unlam n pb
+    tb <- check (define True n v pa env) b vb
+    pure (TView ta tb, pa)
   RHApp a b -> do
     inferApp Impl env a b
   RApp a b -> do
@@ -237,7 +244,33 @@ infer env r = tag r $ case r of
 
 --------------------
 
-inferTop = infer memptyEnv
+ruleHead :: Raw -> Maybe Name
+ruleHead = \case
+  RRule a _  -> f a
+  RPi _ _ b -> ruleHead b
+  _ -> Nothing
+ where
+  f = \case
+    RApp a _ -> f a
+    RVar n -> Just n
+    _ -> Nothing
+
+reverseRules :: Raw -> Raw
+reverseRules = g where
+  g = \case
+    RLet n t a b | Just h <- ruleHead a -> f h [(n, t, a)] b
+    RLet  n t a b -> RLet  n t a (g b)
+    RLetTy  n t b -> RLetTy  n t (g b)
+    ROLet   n a b -> ROLet   n a (g b)
+    RLetOTy n t b -> RLetOTy n t (g b)
+    r -> r  -- TODO
+
+  f h acc = \case
+    RLet n t a b | Just h' <- ruleHead a, h' == h -> f h ((n, t, a): acc) b
+    r -> foldr (\(n, t, a) b -> RLet n t a b) (g r) acc
+
+inferTop :: Raw -> RefM (Tm, Val)
+inferTop r = infer memptyEnv $ reverseRules r
 
 instance Parse (Tm, Val) where
   parse = parse >=> inferTop

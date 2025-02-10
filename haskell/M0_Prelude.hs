@@ -59,7 +59,6 @@ import Control.Arrow as P
 import Control.Monad as P
   ( void, when
   , Monad ((>>=), (>>)), join, (>=>), (<=<), (=<<), forM, forM_, filterM, foldM
-  , fail
   )
 import Data.Foldable as P
   ( Foldable (foldMap), toList, foldr, foldl, foldl1, foldr1, null, length, elem, maximum, minimum, sum, all, and, any, or
