@@ -527,6 +527,9 @@ quoteTm__ inl vtm opt v_ = do
       VCon  -> pure $ TVar $ name v
       VFun  -> lookupRule (name v) >>= gg
       VMeta -> pure $ TVal v
+      VSel i j e -> TSel i j <$> ff' e
+      VMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
+      VRet a -> undefined --rRet <$> quoteNF a
       _ -> undefined
 
   x <- ff v

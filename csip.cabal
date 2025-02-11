@@ -53,6 +53,7 @@ executable csip
       , M6_Elab
       , M7_Stage
       , M8_IO
+      , Paths_csip
     main-is:
         M9_Main.hs
 
