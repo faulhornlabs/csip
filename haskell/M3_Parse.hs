@@ -949,12 +949,17 @@ sugar = coerce . sug . sug0
       -> Apps (del 1 3 l) [RVar $ coerce n, sug0 b]
     Apps l@NPi [ZVar NAny, a, b]
       -> Apps (del 0 3 l) [sug0 a, sug0 b]
-    Apps l@NTLet [ZVar NAny, Hole, b, c]
-      -> Apps (del 0 2 l) [sug0 b, sug0 c]
+    Apps l@NTLet [ZVar NAny, Hole, b, c] | Just r <- getRule b
+      -> Apps (del 0 2 l) [sug0 r, sug0 c]
     Apps l@NTLet [RVar n, Hole, b, c]
       -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
     a :@ b -> sug0 a :@ sug0 b
     RVar a -> RVar (coerce a)
+
+  getRule e = case e of
+    Apps NRule _  ->  Just e
+    Apps NPi [RVar _, _, b] -> getRule b
+    _ -> Nothing
 
   sug :: ExpTree' Desug -> ExpTree' Desug
   sug = \case
