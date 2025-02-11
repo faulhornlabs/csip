@@ -6,6 +6,7 @@ with high-level abstractions.
 Compared to Agda, Csip can do staged compilation, it does not have termination checking
 and it has a minimal but practical set of language features.
 
+Warning: It is not advised to use Csip yet, it is under development.
 
 
 ## Installation
@@ -169,8 +170,7 @@ The following limitations are planned to be lifted:
 
 ## Bugs
 
-- There is a serious scoping bug which is caused by
-  unique identifiers not being unique
+There are lots of minor bugs, mostly missing validity checks.
 
 
 ## Performance

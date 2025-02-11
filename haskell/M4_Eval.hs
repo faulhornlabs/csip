@@ -5,8 +5,8 @@ module M4_Eval
   , Tm, tLam
 
   , Val (Con, Fun)
-  , View (VSup, VApp, VMeta, VMetaApp)
-  , vVar, vApp, vApps, vSup, vMeta, vTm, vLam
+  , View (VSup, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
+  , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams
   , name, rigid, closed, view
   , force_, force', force
 
@@ -15,8 +15,7 @@ module M4_Eval
   , quoteNF   -- Val -> Raw
   , quoteNF'
 
-  , showMetaEnv
-  , updateClosed, solveMeta
+  , showMetaEnv, lookupMeta, updateMeta
   , updateRule
   , addRule
   ) where
@@ -441,35 +440,6 @@ force' v = force_ v >>= \u -> case view u of
 
 force v = force' v <&> snd
 
-metaSpine v_ = force v_ >>= \v -> case view v of
-  VMeta          -> pure (v, [])
-  VApp_ a b _ Just{} -> force b >>= \case
-    u@(view -> VVar) -> metaSpine a <&> second (name u:)
-    _ -> undefined
-  _ -> impossible
-
-updateClosed a b = closeTm mempty b >>= update a
-
-solveMeta a b = do
-  (h, reverse -> vs) <- metaSpine a
-  b' <- closeTm (fromListSet vs) b
-  update h =<< vLams (map vVar vs) b'
-
-
-updatable v e = lookupMeta v >>= \case
-  Just{}  -> impossible
-  Nothing -> case view v of
---    FVar   | closed e, rigid e -> pure ()
---    FVar   -> undefined
-    VMeta | closed e        -> pure ()
-    VMeta   -> error' $ ("not closed:\n" <>) <$> (quoteNF' e <&> pprint >>= print)
---    VMetaApp{} -> pure ()
-    _ -> impossible
-
-update v e = do
-  () <- updatable v e
-  updateMeta v e
-
 
 -------------
 
@@ -485,7 +455,7 @@ quoteNF v_ = force v_ >>= \v ->
     VFun     -> lookupRule (name v) >>= quoteNF
     VApp_ t u _ _ -> (:@) <$> quoteNF t <*> quoteNF u
     VSup c _ -> do
-      n <- pure $ vVar $ varName c
+      n <- fmap vVar $ mkName $ varName c
       b <- vApp v n
       q <- quoteNF b
       pure $ Lam (name n) q
@@ -529,7 +499,7 @@ quoteTm__ inl vtm opt v_ = do
       VMeta -> pure $ TVal v
       VSel i j e -> TSel i j <$> ff' e
       VMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
-      VRet a -> undefined --rRet <$> quoteNF a
+      VRet a -> TRet <$> ff' a
       _ -> undefined
 
   x <- ff v
@@ -553,43 +523,6 @@ quoteTm__ inl vtm opt v_ = do
       VApp a b -> [a, b]
       _ -> []
 
-
-closeTm :: Set Name -> Val -> RefM Val
-closeTm allowed v_ = do
-  v <- force_ v_
-  m <- go v
-  pure $ snd $ fromJust $ lookup v m
- where
-  go v = downUp down up [v]
-   where
-    ret es = (,) [] <$> mapM force_ es
-
-    down v = case view v of
-      _ | closed v -> ret []
-      VApp a b -> ret [a, b]
-      VTm _ v -> ret [v]
-      VSup c _ -> do
-        let u = varName c
-        b <- vApp v $ vVar u
-        first ((u, b):) <$> down b
-      _ -> ret []
-
-    up :: Val -> [(Name, Val)] -> [(Val, (Set Name, Val))] -> RefM (Set Name, Val)
-    up _ ((u, b): vs) m = do
-      (s, x) <- up b vs m
-      (,) (delete u s) <$> vLam (vVar u) x
-    up v [] ts
-     | closed v  = pure (mempty, v)
-     | otherwise = case view v of
-      VSup{} -> impossible
-      VVar -> pure (singletonSet (name v), v)
-      VCon -> pure (mempty, v)
-      VFun -> pure (mempty, v)
-      VTm t _ | [(sa, a)] <- map snd ts -> (,) sa <$> vTm (name v) t a
-      VMetaApp{} | [(sa, a), (sb, b)] <- map snd ts, isSubsetOf sb allowed -> (,) (sa <> sb) <$> vApp a b
-      VMetaApp{} | [_, _] <- map snd ts -> undefined
-      VApp{} | [(sa, a), (sb, b)] <- map snd ts -> (,) (sa <> sb) <$> vApp a b
-      _ -> undefined
 
 -----------------------
 
