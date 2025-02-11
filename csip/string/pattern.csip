@@ -1,0 +1,11 @@
+# scope
+# elab
+# eval
+
+f : String -> String
+f s = s
+f "x" = "y"
+f "z" = "x"
+
+f (f (f "z"))
+

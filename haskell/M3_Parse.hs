@@ -226,6 +226,13 @@ isUpperToken = \case
   MkToken s _  -> isUpper $ headCh s
   _ -> False
 
+isLowerToken :: Token a -> Bool
+isLowerToken = \case
+  MkToken s _  -> not $ isUpper $ headCh s
+  _ -> False
+
+
+
 isMixfix (MkToken cs _) = fst $ strPrecedence_ $ chars cs
 isMixfix _ = False
 
@@ -899,7 +906,7 @@ vars t = case t of
     RDot{} -> []
     RHApp a b -> vars a <> vars b
     a :@ b -> vars a <> vars b
-    RVar n@(ZName (MkM [t])) -> [n | not $ isUpperToken t]
+    RVar n@(ZName (MkM [t])) -> [n | isLowerToken t]
     e -> error' $ ("invalid pattern: " <>) <$> print e
     
 
