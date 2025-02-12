@@ -5,8 +5,8 @@
 Succ : Nat -> Nat
 
 f : Nat -> Nat
-f a = Succ a
 f (Succ (Succ a)) = a
+f a = Succ a
 
 f (f 3)
 

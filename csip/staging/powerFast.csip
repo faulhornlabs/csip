@@ -40,9 +40,9 @@ powerHelper : Half -> Code Int -> Code Int
 powerHelper (Odd  k) a = Mul a (sqr (power k a))
 powerHelper (Even k) a = sqr (power k a)
 
-power k a = powerHelper (half k) a
 power (S Z) a = a
 power Z a = One
+power k a = powerHelper (half k) a
 
 power5 := \a -> power (S (S (S (S (S Z))))) a
 

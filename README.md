@@ -148,6 +148,7 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 The following limitations are planned to be lifted:
 
 - syntax
+  - local do notation is not yet supported
   - multiline comments interferes with layout rules;  
     the solution is to move the indent pass after the comments pass
   - the inverse of the string pass is missing
@@ -161,12 +162,11 @@ The following limitations are planned to be lifted:
   - no pruning
   - currently flexible values cannot be refined to Pi types
 - algebraic data types
-  - order of function alternatives are reversed
   - implict arguments in rules should be explicit
   - local definitions are not supported
 - staging
   - top level object language lets should be at the end
-  - staging is shallow(?)
+  - object functions should be eta-expanded
 
 ## Bugs
 
@@ -277,9 +277,9 @@ powerHelper : Half -> Code Int -> Code Int
 powerHelper (Odd  k) a = Mul a (sqr (power k a))
 powerHelper (Even k) a = sqr (power k a)
 
-power k a = powerHelper (half k) a
 power (S Z) a = a
 power Z a = One
+power k a = powerHelper (half k) a
 
 power5 := \a -> power (S (S (S (S (S Z))))) a
 

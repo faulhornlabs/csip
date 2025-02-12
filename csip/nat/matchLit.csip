@@ -3,9 +3,9 @@
 # eval
 
 f : Nat -> Nat
-f s = s
 f 3 = 1
 f 1 = 2
+f s = s
 
 f (f (f 3))
 

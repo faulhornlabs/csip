@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          csip
-version:       0.1.0.0
+version:       0.1.1.0
 
 category:      Compiler
 synopsis:      compiler for writing efficient programs with high-level abstractions

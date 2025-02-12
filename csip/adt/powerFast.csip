@@ -40,7 +40,7 @@ powerHelper : N -> Half -> N
 powerHelper n (MkHalf True  k) = mul n (sqr (power n k))
 powerHelper n (MkHalf False k) = sqr (power n k)
 
-power n k = powerHelper n (half k)
 power n Z = S Z
+power n k = powerHelper n (half k)
 
 power two five
