@@ -214,6 +214,13 @@ infer env r = tag r $ case r of
     v <- vVar_ n
     tb <- check (define True n v va env) b CType
     pure (pi `TApp` ta `TApp` tLam n tb, CType)
+  RView a b -> do
+    (ta, ty) <- infer env a
+    (Expl, pa, pb) <- matchPi Expl ty
+    n <- mkName "t"
+    (v, vb) <- unlam n pb
+    tb <- check (define True n v pa env) b vb
+    pure (TView ta tb, pa)
   RHApp a b -> do
     inferApp Impl env a b
   RApp a b -> do

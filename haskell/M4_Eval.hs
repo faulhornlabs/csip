@@ -1,7 +1,7 @@
 module M4_Eval
   ( Combinator, varName
 
-  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal)
+  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView)
   , Tm, tLam
 
   , Val (Con, Fun)
@@ -110,6 +110,9 @@ instance PPrint a => PPrint (Tm_ a) where
 -------------
 
 type Tm = Tm_ Name
+
+pattern TView :: Tm -> Tm -> Tm
+pattern TView a b = TApp (TApp (TVar "View") a) b
 
 getTApps (TApp (getTApps -> (a, es)) e) = (a, e: es)
 getTApps e = (e, [])
@@ -401,6 +404,7 @@ addRule lhs rhs = do
         (MkName "Succ" _, [a])
           -> TMatch "Succ" e (TLet a (TApp "dec" e) $ tLazy x) f
         _ -> TMatch (name c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
+    TView g p -> compilePat f p (TApp g e) m
     _ -> undefined
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v

@@ -13,18 +13,17 @@ N : Type
 Z : N
 S : N -> N
 
-Half : Type
-Even : N -> Half
-Odd  : N -> Half
+Parity : Type
+Even : Parity
+Odd  : Parity
 
-incHalf : Half -> Half
-incHalf (Even n) = Even (S n)
-incHalf (Odd  n) = Odd  (S n)
+Half : Type
+MkHalf : Parity -> N -> Half
 
 half : N -> Half
-half Z = Even Z
-half (S Z) = Odd Z
-half (S (S n)) = incHalf (half n)
+half Z     = MkHalf Even Z
+half (S Z) = MkHalf Odd  Z
+half (S (S (half --> MkHalf p n))) = MkHalf p (S n)
 
 // FFI
 Int : Ty
@@ -35,14 +34,10 @@ sqr : Code Int -> Code Int
     = \a -> (b := a; Mul b b)
 
 power : N -> Code Int -> Code Int
-
-powerHelper : Half -> Code Int -> Code Int
-powerHelper (Odd  k) a = Mul a (sqr (power k a))
-powerHelper (Even k) a = sqr (power k a)
-
 power (S Z) a = a
-power Z a = One
-power k a = powerHelper (half k) a
+power    Z  a = One
+power (half --> MkHalf Even k) a =        sqr (power k a)
+power (half --> MkHalf Odd  k) a = Mul a (sqr (power k a))
 
 power5 := \a -> power (S (S (S (S (S Z))))) a
 

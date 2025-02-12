@@ -6,7 +6,7 @@ module M3_Parse
   , mkName, mapName, rename, isConName, isVarName
 
   , ExpTree
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp)
+    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)
   , PPrint (pprint)
   , zVar
 
@@ -56,8 +56,8 @@ precedenceTable = mkTable
   , " else_"
   , "_<-"
   , " <-_"
-  , "_-> _|-> _: _:: _** _==>"
-  , " ->_ |->_ :_ ::_ **_ ==>_"
+  , "_-> _|-> _: _:: _** _==> _-->"
+  , " ->_ |->_ :_ ::_ **_ ==>_ -->_"
   , " in_"
   , " \\_"
   , "_= _:="
@@ -633,6 +633,7 @@ pattern NAny   = MkM ["_"]
 pattern NHole :: Mixfix a
 pattern NHole  = MkM ["_"]
 pattern NArr   = MkM ["->"]
+pattern NView  = MkM ["-->"]
 pattern NPi    = MkM ["(",":",")","->"]
 pattern NHPi   = MkM ["{",":","}","->"]
 pattern NHArr  = MkM ["{","}","->"]
@@ -861,6 +862,7 @@ pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
 pattern RLetOTy n t  e = ZApps NLetOTy[RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
+pattern RView  a b     = ZApps NView  [a, b]
 
 unGLam = \case
   _ :@@ _ -> Nothing
@@ -904,6 +906,7 @@ vars :: ExpTree' Desug -> [Mixfix Desug]
 vars t = case t of
     Hole -> []
     RDot{} -> []
+    ZApps NView [_, e] -> vars e
     RHApp a b -> vars a <> vars b
     a :@ b -> vars a <> vars b
     RVar n@(ZName (MkM [t])) -> [n | isLowerToken t]
@@ -938,7 +941,7 @@ desugar e = pure $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' Desug -> ExpTree' Desug
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NTLam, NTHLam, NBraces, NRule] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUserOp t   -> RVar n
     e -> error' $ print e <&> \r -> "Expression expected\n" <> r
