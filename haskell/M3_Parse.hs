@@ -3,7 +3,7 @@ module M3_Parse
   , ISource, Token, OpSeq
 
   , Name (MkName, NNat, NString, NConst)
-  , mkName, mapName, rename, isConName
+  , mkName, mapName, rename, isConName, isVarName
 
   , ExpTree
     (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp)
@@ -1021,6 +1021,9 @@ instance Arity Name where
 
 isConName (nameStr -> MkM [t]) = isUpperToken t
 isConName _ = False
+
+isVarName (nameStr -> MkM [t]) = isLowerToken t
+isVarName _ = False
 
 pattern RConst n  = RVar (NConst n)
 pattern NConst' n = NConst (MkM [n])

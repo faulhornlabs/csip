@@ -290,10 +290,9 @@ Output of `csip csip/staging/powerFast.csip`:
 
 ```haskell
 do
-  power5 = \a -> Mul a (do
-        b = a
-        b_1 = Mul b b
-        Mul b_1 b_1
+  power5 = \a -> (do
+        b = Mul a a
+        Mul a (Mul b b)
       )
   \a -> power5 (power5 a)
 ```
