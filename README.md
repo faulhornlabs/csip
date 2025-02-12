@@ -269,10 +269,10 @@ half 0 = MkHalf Even 0
 half 1 = MkHalf Odd  0
 half (Succ (Succ (half --> MkHalf p n))) = MkHalf p (Succ n)
 
-// FFI
-Int : Ty
-One : Code Int
-Mul : Code (Int -> Int -> Int)
+// object code types and functions (foreign function interface)
+Int :: Type
+One :: Int
+Mul :: Int -> Int -> Int
 
 sqr : Code Int -> Code Int
     = \a -> (b := a; Mul b b)
