@@ -7,23 +7,20 @@ Arr  : Ty -> Ty -> Ty
 Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
 App  : {a b} -> Code (Arr a b) -> Code a -> Code b
 Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
+Succ : Nat -> Nat
 // end of builtins
-
-N : Type
-Z : N
-S : N -> N
 
 Parity : Type
 Even : Parity
 Odd  : Parity
 
 Half : Type
-MkHalf : Parity -> N -> Half
+MkHalf : Parity -> Nat -> Half
 
-half : N -> Half
-half Z     = MkHalf Even Z
-half (S Z) = MkHalf Odd  Z
-half (S (S (half --> MkHalf p n))) = MkHalf p (S n)
+half : Nat -> Half
+half 0 = MkHalf Even 0
+half 1 = MkHalf Odd  0
+half (Succ (Succ (half --> MkHalf p n))) = MkHalf p (Succ n)
 
 // FFI
 Int : Ty
@@ -33,12 +30,12 @@ Mul : Code (Int -> Int -> Int)
 sqr : Code Int -> Code Int
     = \a -> (b := a; Mul b b)
 
-power : N -> Code Int -> Code Int
-power (S Z) a = a
-power    Z  a = One
+power : Nat -> Code Int -> Code Int
+power 1 a = a
+power 0 a = One
 power (half --> MkHalf Even k) a =        sqr (power k a)
 power (half --> MkHalf Odd  k) a = Mul a (sqr (power k a))
 
-power5 := \a -> power (S (S (S (S (S Z))))) a
+power5 := \a -> power 5 a
 
 \a -> power5 (power5 a)

@@ -25,11 +25,21 @@ The first lines of `.csip` files are directives
 which tell the compiler what to do.  
 Main directives:
 
-| Directive | Description |
-| ---       | ---         |
-| `# elab`  | print the elaborated main expression |
-| `# eval`  | print the normalized main expression |
-| `# stage` | print the result of staged main expression |
+| Directive           | Description |
+| ---                 | ---         |
+| `# source`          | print the source code |
+| `# source quote`    | print the inner representation of the source code |
+| `# indent quote`    | print the inner representation of the unidented source code |
+| `# lex quote`       | print the token list |
+| `# structure quote` | print the parse tree with whitespace |
+| `# layout quote`    | print the parse tree |
+| `# op quote`        | print the parse expression |
+| `# exptree quote`   | print the parse expression with mixfix operators |
+| `# sugar quote`     | print the desugared source code |
+| `# scope quote`     | print the scope checked source code |
+| `# elab`            | print the elaborated main expression |
+| `# eval`            | print the normalized main expression |
+| `# stage`           | print the staged main expression |
 
 
 ### Compilation
