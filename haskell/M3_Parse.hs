@@ -852,7 +852,7 @@ lams :: [Mixfix a] -> ExpTree' a -> ExpTree' a
 lams [] e = e
 lams (n: ns) e = RPi n (ZVar NHole) $ lams ns e
 
-vars :: ExpTree' Desug -> [Mixfix Desug]
+vars :: ExpTree' POp -> [Mixfix POp]
 vars t = case t of
     Hole -> []
     RDot{} -> []
@@ -864,16 +864,16 @@ vars t = case t of
     
 
 desugar :: ExpTree' POp -> RefM (ExpTree' Desug)
-desugar e = pure $ etr3 $ etr2 $ etr e where
+desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
-  etr :: ExpTree' POp -> ExpTree' Desug
+  etr :: ExpTree' POp -> ExpTree' POp
   etr = \case
     Apps l [n :@ m, a, b] | l `elem` [NTLam, NTHLam, NPi, NHPi] -> etr $ xApps l [n, a, xApps l [m, a, b]]
     Apps l [a :@ b, e] | l == NLam || l == NHLam || l == NArr && isBind b || l == NHArr -> etr $ xApps l [a, xApps l [b, e]]
     a :@ b -> etr a :@ etr b
-    RVar l -> RVar $ coerce l
+    RVar l -> RVar l
 
-  etr2 :: ExpTree' Desug -> ExpTree' Desug
+  etr2 :: ExpTree' POp -> ExpTree' POp
   etr2 = \case
     RVar l@NLam  :@ a :@ b -> xApps l [xApps NExpl [etr2 a, RVar NHole], etr2 b]
     RVar l@NHLam :@ a :@ b -> xApps l [xApps NTy   [etr2 a, RVar NHole], etr2 b]
@@ -889,12 +889,13 @@ desugar e = pure $ etr3 $ etr2 $ etr e where
     a :@ b -> etr2 a :@ etr2 b
     RVar l -> RVar l
 
-  etr3 :: ExpTree' Desug -> ExpTree' Desug
+  etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
     SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
-    e -> error' $ print e <&> \r -> "Expression expected\n" <> r
+    e -> error' $ print ({- pprint $ op $ unpatch -} e) <&> \r -> "Expression expected\n" <> r
 
 
 
