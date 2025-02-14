@@ -400,6 +400,7 @@ addRule lhs rhs = do
   compileLHS _ _ _ _ = undefined
 
   compilePat f p e m = case p of
+    TGen (TVal (view -> VMeta)) -> m
     TVar n -> TLet n e <$> m
     TApps (TVal c) ps -> do
       let len = length ps

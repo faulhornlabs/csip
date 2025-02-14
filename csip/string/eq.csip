@@ -19,7 +19,7 @@ False : Bool
 
 natToBool : Nat -> Bool
 natToBool 1 = True
-natToBool n = False
+natToBool _ = False
 
 eqStr : String -> String -> Bool
   = \a b -> natToBool (EqStr (PairStr a b))
