@@ -4,6 +4,7 @@ module M3_Parse
 
   , Name (MkName, NNat, NString, NConst)
   , mkName, mapName, rename, isConName, isVarName
+  , showMixfix, unscope
 
   , ExpTree
     (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)

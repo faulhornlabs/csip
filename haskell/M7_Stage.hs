@@ -1,10 +1,12 @@
 module M7_Stage
   ( stage
+  , convert
   ) where
 
 import M1_Base
-import M3_Parse
-import M4_Eval
+import M3_Parse hiding (Lam)
+import qualified M3_Parse as E
+import M4_Eval hiding (Con)
 
 stage t = quoteNF t <&> unquote
 
@@ -18,8 +20,8 @@ unquote = f []
     RVar (MkName "Snd" _) :@ _ :@ _ :@ a -> "Snd" .@ f e a
     RVar (MkName "App" _) :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
     RVar (MkName "Lam" _) :@ _ :@ _ :@ a -> f e a
-    RVar (MkName "Let" _) :@ _ :@ _ :@ RVar a :@ Lam n b | isVarName a -> f ((n, a): e) b
-    RVar (MkName "Let" _) :@ _ :@ _ :@ a :@ Lam n b -> rLet n (f e a) (f e b)
+    RVar (MkName "Let" _) :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f ((n, a): e) b
+    RVar (MkName "Let" _) :@ _ :@ _ :@ a :@ E.Lam n b -> rLet n (f e a) (f e b)
     a :@ b -> f e a :@ f e b
     RVar n -> RVar $ fromMaybe n $ lookupList n e
 
@@ -30,3 +32,23 @@ unquote = f []
   a .@ RLet m Hole b c = rLet m b (a .@ c)
   a .@ b = a :@ b
 
+--------------------------------- priting for backends in Haskell
+
+data Exp
+  = Lam String Exp
+  | Let String Exp Exp
+  | App Exp Exp
+  | Var String
+  | Con String
+  deriving Show
+
+convert :: ExpTree' Desug -> Exp
+convert = f  where
+  f = \case
+    E.Lam n e -> Lam (g n) $ f e
+    RLet n Hole a b -> Let (g n) (f a) (f b)
+    a :@ b -> App (f a) (f b)
+    RVar n | isConName $ MkName n (-1) -> Con $ g n
+    RVar n -> Var $ g n
+
+  g = chars . showMixfix

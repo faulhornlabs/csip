@@ -40,6 +40,7 @@ Main directives:
 | `# elab`            | print the elaborated main expression |
 | `# eval`            | print the normalized main expression |
 | `# stage`           | print the staged main expression |
+| `# haskell_stage`   | print the staged main expression parsable with Haskell Read instance |
 
 
 ### Compilation

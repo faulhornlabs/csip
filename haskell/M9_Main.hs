@@ -68,6 +68,8 @@ doCmd quote cmd s = case cmd of
   "type"      -> sh =<< (parse s >>= inferTop <&> snd >>= quoteNF')
   "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= eval [] >>= quoteNF')
   "stage"     -> sh =<< ((parse s :: RefM Tm) >>= eval [] >>= stage)
+  "haskell_stage"
+              -> sh =<< ((parse s :: RefM Tm) >>= eval [] >>= stage >>= unscope <&> (fromString :: String -> Source) . show . convert)
   _ -> error $ "Unknown command: " <> cmd
  where
   sh = if quote then sh' else print

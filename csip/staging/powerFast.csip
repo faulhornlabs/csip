@@ -1,6 +1,5 @@
 # stage
 
-
 // builtins
 Ty   : Type
 Code : Ty -> Type
