@@ -282,32 +282,39 @@ vTm n t v = mkValue n (rigid v) (closed v) $ VTm t v
 vApp :: Val -> Val -> RefM Val
 vApp a_ u = do
   (aa, a) <- force' a_
+  let def = mkApp aa u Nothing (metaDep a)
   case view a of
-    VCon | MkName "Succ" _ <- name a -> force u >>= \fu -> case view fu of
-      VCon | NNat t <- name fu -> pure $ Con $ NNat $ t + 1
-      _              -> mkApp aa u Nothing (metaDep a)
-    VCon | "dec" <- name a -> force u >>= \fu -> case view fu of
-      VCon | NNat t <- name fu -> pure $ Con $ NNat $ t - 1
-      _              -> mkApp aa u Nothing (metaDep a)
-    VCon | "tail" <- name a -> force u >>= \fu -> case view fu of
-      VCon | NString (_: t) <- name fu -> pure $ Con $ NString t
-      _              -> mkApp aa u Nothing (metaDep a)
-    VCon | "head" <- name a -> force u >>= \fu -> case view fu of
-      VCon | NString (h: _) <- name fu -> pure $ Con $ NString [h]
-      _              -> mkApp aa u Nothing (metaDep a)
-    VCon | MkName "AppendStr" _ <- name a -> spine u >>= \case
-      (h, [va, vb]) | VCon <- view h, MkName "PairStr" _ <- name h
-        -> force va >>= \va -> case view va of
-          VCon | NString va <- name va
-            -> force vb >>= \vb -> case view vb of
-              VCon | NString vb <- name vb -> pure $ Con $ NString $ vb <> va
-              _              -> mkApp aa u Nothing (metaDep a)
-          _              -> mkApp aa u Nothing (metaDep a)
-      _              -> mkApp aa u Nothing (metaDep a)
+    VCon
+      | MkName "Succ" _ <- name a -> force u >>= \fu -> case view fu of
+        VCon | NNat t <- name fu -> pure $ Con $ NNat $ t + 1
+        _          -> def
+      | "dec" <- name a -> force u >>= \fu -> case view fu of
+        VCon | NNat t <- name fu -> pure $ Con $ NNat $ t - 1
+        _          -> def
+      | "tail" <- name a -> force u >>= \fu -> case view fu of
+        VCon | NString (_: t) <- name fu -> pure $ Con $ NString t
+        _          -> def
+      | "head" <- name a -> force u >>= \fu -> case view fu of
+        VCon | NString (h: _) <- name fu -> pure $ Con $ NString [h]
+        _          -> def
+      | MkName "AppendStr" _ <- name a -> forcedSpine u >>= \case
+        (h, [va, vb])
+          | VCon <- view h, MkName "PairStr" _ <- name h
+          , VCon <- view va, NString va <- name va
+          , VCon <- view vb, NString vb <- name vb
+                   -> pure $ Con $ NString $ vb <> va
+        _          -> def
+      | MkName "EqStr" _ <- name a -> forcedSpine u >>= \case
+        (h, [va, vb])
+          | VCon <- view h, MkName "PairStr" _ <- name h
+          , VCon <- view va, NString va <- name va
+          , VCon <- view vb, NString vb <- name vb
+                   -> pure $ Con $ NNat $ if vb == va then 1 else 0
+        _          -> def
     VSup c vs      -> evalCombinator c $ vs ++ [u]
     VFun           -> lookupRule (name a) >>= \f -> app_ aa f u
     VApp_ _ _ (Just f) _                         -> app_ aa f u
-    _              -> mkApp aa u Nothing (metaDep a)
+    _              -> def
  where
   app_ aa f u = vApp f u >>= \vv -> mkApp aa u (Just vv) Nothing
 
@@ -438,6 +445,10 @@ metaDep v = case view v of
 
 spine v_ = force v_ >>= \v -> case view v of
   VApp_ a b Nothing Nothing -> spine a <&> second (b:)
+  _        -> pure (v, [])
+
+forcedSpine v_ = force v_ >>= \v -> case view v of
+  VApp_ a b Nothing Nothing -> (\b t -> second (b:) t) <$> force b <*> spine a
   _        -> pure (v, [])
 
 
