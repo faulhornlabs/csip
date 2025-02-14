@@ -1,0 +1,9 @@
+# layout quote
+# op quote
+
+(+) : AddType
+(+) = Add
+
+Zero + a = a
+
+f (+) a b

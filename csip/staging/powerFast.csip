@@ -1,5 +1,6 @@
 # stage
 
+
 // builtins
 Ty   : Type
 Code : Ty -> Type
@@ -26,16 +27,17 @@ half (Succ (Succ (half --> MkHalf p n))) = MkHalf p (Succ n)
 Int :: Type
 One :: Int
 Mul :: Int -> Int -> Int
+Add :: Int -> Int -> Int
 
 sqr : Code Int -> Code Int
     = \a -> (b := a; Mul b b)
 
-power : Nat -> Code Int -> Code Int
-power 1 a = a
-power 0 a = One
-power (half --> MkHalf Even k) a =        sqr (power k a)
-power (half --> MkHalf Odd  k) a = Mul a (sqr (power k a))
+(+) = Add
 
-power5 := \a -> power 5 a
+(^) : Code Int -> Nat -> Code Int
+a ^ 1 = a
+a ^ 0 = One
+a ^ (half --> MkHalf Even k) =                 sqr (a ^ k)
+a ^ (half --> MkHalf Odd  k) = (c := a; Mul c (sqr (c ^ k)))
 
-\a -> power5 (power5 a)
+\a b -> ((a + b)^5 + b)^10

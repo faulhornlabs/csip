@@ -73,11 +73,13 @@ topPrec = precedence "a"
 maxPrec = precedence "MAXPREC"
 minPrec = precedence "MINPREC"
 
-isAtom :: Token a -> Bool
-isAtom (precedence -> p)
-  =  p == topPrec || minPrec `less` p && p `less` maxPrec
+isInfix :: Token a -> Bool
+isInfix (precedence -> p) = minPrec `less` p && p `less` maxPrec
  where
   (a, b) `less` (c, d) = a < c && b < d
+
+isAtom :: Token a -> Bool
+isAtom t = precedence t == topPrec || isInfix t
 
 operator [a] = not $ isMixfix a
 operator a = a `elem`
@@ -590,6 +592,7 @@ instance Arity (Mixfix t) where
   arity (MkM a) = arity a
 instance Arity [Token i] where
   arity ["_"] = 0
+  arity [t] | isInfix t = 0
   arity os = length . filter (== "___") $ enrich os
 
 
@@ -639,6 +642,7 @@ unop :: OpSeq' Layout -> ExpTree' Layout
 unop (topOp -> (os, l, ts, r)) = case os of
   [] -> RVar NEmpty
   os | not $ operator os -> error $ "Mismatched operator: " <> showMixfix (MkM os)
+  ["(",")"] | [t :> Empty] <- ts, isInfix t -> lf $ rf $ RVar $ MkM [t]           -- TODO: implement inverse of this in op
   _ -> lf $ rf $ Apps (MkM os) $ map unop $ fs ts
  where
   f Empty a = a

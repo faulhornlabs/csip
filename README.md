@@ -167,7 +167,7 @@ The following limitations and bugs are planned to be lifted:
 - top level object language lets should be at the end
 - local definitions are not supported
 - local do notation is not supported
-- user defined operators are not supported
+- user defined operator precedences are not supported
 - recursive definitions are not properly printed
 - object level functions should be eta-expanded
 - closed data types and closed functions are not supported
@@ -239,14 +239,24 @@ remove unconsitent cache during development when needed.
 
 ## Examples
 
-Output of `csip` [`csip/staging/powerFast.csip`](csip/staging/powerFast.csip):
+```haskell
+\a b -> ((a + b)^5 + b)^10
+```
+
+is compiled to
 
 ```haskell
-do
-  power5 = \a -> (do
-        b = Mul a a
-        Mul a (Mul b b)
-      )
-  \a -> power5 (power5 a)
+\a b -> (do
+    c = Add a b
+    b_1 = Mul c c
+    c_1 = Add
+      (Mul c (Mul b_1 b_1))
+      b
+    b_2 = Mul c_1 c_1
+    b_3 = Mul c_1 (Mul b_2 b_2)
+    Mul b_3 b_3
+  )
 ```
+
+given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast.csip).
 
