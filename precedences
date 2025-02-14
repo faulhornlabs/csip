@@ -6,6 +6,7 @@
     _.
      ?_
     _?
+    _MAXPREC MAXPREC_
     _^
      ^_
      *_ /_
@@ -20,6 +21,7 @@
      &&_
     _||
      ||_
+    _MINPREC MINPREC_
      else_
     _<-
      <-_
