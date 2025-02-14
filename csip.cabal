@@ -25,6 +25,7 @@ extra-doc-files:
 extra-source-files:
   .ghci
 data-files:
+  precedences
   csip/**/*.csip
   perftests/**/*.csip
 

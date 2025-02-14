@@ -30,63 +30,7 @@ class Arity a where arity :: a -> Int
 type Precedence = Int
 
 precedenceTable :: Map String (Bool, (Precedence, Precedence))
-precedenceTable = mkTable
-  [ " a_ )_ ]_ }_ !>_"
-  , "_a _( _[ _{ _<! _if _let _\\"
-  , " @_"
-  , "_@"
-  , " ._"
-  , "_."
-  , " ?_"
-  , "_?"
-  , "_^"
-  , " ^_"
-  , " *_ /_"
-  , "_* _/"
-  , " +_ -_"
-  , "_+ _-"
-  , "_<>"
-  , " <>_"
-  , " <_ <=_ >_ >=_ ==_ /=_"
-  , "_< _<= _> _>= _== _/="
-  , "_&&"
-  , " &&_"
-  , "_||"
-  , " ||_"
-  , " else_"
-  , "_<-"
-  , " <-_"
-  , "_-> _|-> _: _:: _** _==> _-->"
-  , " ->_ |->_ :_ ::_ **_ ==>_ -->_"
-  , " in_"
-  , " \\_"
-  , "_= _:="
-  , " =_ :=_"
-  , "_|"
-  , " |_"
-  , "_,"
-  , " ,_"
-  , "_#"
-  , " #_"
-  , "_;"
-  , " ;_"
-  , " let_ _in if_ _then then_ _else"
-  , " [_ _] {_ _} (_ _) <!_ _!>"
-  , " END_ SEMI_"
-  , "_BEGIN _SEMI"
-  , " BEGIN_ _END"
-  , "_SPACE"
-  , " SPACE_"
-  , "_/*"
-  , " */_"
-  , " /*_ _*/"
-  , "_//"
-  , " //_"
-  , "_NEWLINE"
-  , " NEWLINE_"
-  , "_\""
-  , " \"_"
-  ]
+precedenceTable = mkTable (lines precedenceTableString)
  where
   mkTable
     = fmap (fromMaybe False . listToMaybe *** (head *** head))
@@ -101,12 +45,12 @@ precedenceTable = mkTable
   g s | last s == '_' = \p -> [(h $ init s, ([], [p]))]
   g _ = impossible
 
-  h "SEMI" = "\v"
-  h "END" = "\r"
-  h "BEGIN" = "\t"
+  h "SEMI"    = "\v"
+  h "END"     = "\r"
+  h "BEGIN"   = "\t"
   h "NEWLINE" = "\n"
-  h "SPACE" = " "
-  h s = s
+  h "SPACE"   = " "
+  h s         = s
 
   ff n f = [(a, (m, z)) | (a, z) <- fn]
     where
@@ -125,12 +69,15 @@ strPrecedence_ _ = impossible
 
 strPrecedence cs = snd $ strPrecedence_ cs
 
-(maxLeftPrec, maxRightPrec) = precedence "a"
+topPrec = precedence "a"
+maxPrec = precedence "MAXPREC"
+minPrec = precedence "MINPREC"
 
 isAtom :: Token a -> Bool
-isAtom r = precedence r == (maxLeftPrec, maxRightPrec)
-
-isUserOp n = n `elem` ["+","-","*","^"]
+isAtom (precedence -> p)
+  =  p == topPrec || minPrec `less` p && p `less` maxPrec
+ where
+  (a, b) `less` (c, d) = a < c && b < d
 
 operator [a] = not $ isMixfix a
 operator a = a `elem`
@@ -222,15 +169,14 @@ precedence = \case
   _ -> strPrecedence "a"
 
 isUpperToken :: Token a -> Bool
-isUpperToken = \case
-  MkToken s _  -> isUpper $ headCh s
+isUpperToken t = isAtom t && case t of
+  MkToken (headCh -> c) _  -> isUpper c || c == ':'
   _ -> False
 
 isLowerToken :: Token a -> Bool
-isLowerToken = \case
-  MkToken s _  -> not $ isUpper $ headCh s
+isLowerToken t = isAtom t && case t of
+  MkToken (headCh -> c) _  -> isLower c || (c /= ':' && isGraphic c)
   _ -> False
-
 
 
 isMixfix (MkToken cs _) = fst $ strPrecedence_ $ chars cs
@@ -408,9 +354,9 @@ instance Print (OpSeq' Unspaced) where
   print = print . space
 
 
--------------------------------------------------
---------------- unspace and space ---------------
--------------------------------------------------
+--------------------------------------
+--------------- layout ---------------
+--------------------------------------
 
 
 instance Parse (OpSeq' Layout) where
@@ -589,8 +535,8 @@ instance Semigroup (Mixfix a) where
 enrich os = f True os
  where
   f p (o: os)
-    = ["___" | p && fst (precedence o) /= maxLeftPrec]
-    ++ o: f (snd (precedence o) /= maxRightPrec) os
+    = ["___" | p && fst (precedence o) /= fst topPrec]
+    ++ o: f (snd (precedence o) /= snd topPrec) os
   f p [] = ["___" | p]
 
 showMixfix :: Mixfix a -> Source
@@ -699,10 +645,10 @@ unop (topOp -> (os, l, ts, r)) = case os of
   f l a = unop l :@ a
 
   (lf, fs)
-    | fst (precedence $ head os) == maxLeftPrec = (f l, id)
+    | fst (precedence $ head os) == fst topPrec = (f l, id)
     | otherwise = (id, (l: ))
   rf
-    | snd (precedence $ last os) == maxRightPrec, Empty <- r = id
+    | snd (precedence $ last os) == snd topPrec, Empty <- r = id
     | otherwise = (:@ unop r)
 
 op :: ExpTree' Layout -> OpSeq' Layout
@@ -943,7 +889,7 @@ desugar e = pure $ etr3 $ etr2 $ etr e where
   etr3 = \case
     SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     a :@ b  -> etr3 a :@ etr3 b
-    RVar n@(MkM [t]) | isAtom t || isUserOp t   -> RVar n
+    RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
     e -> error' $ print e <&> \r -> "Expression expected\n" <> r
 
 
@@ -1157,7 +1103,7 @@ instance PPrint Source where
     co a b = RVar "<>" :@ a :@ pprint b
 
 srcRVar = RVar . NConst' . mkToken
-srcRVar' s = RVar . NConst' $ MkToken s $ MkCached (maxLeftPrec, maxRightPrec)
+srcRVar' s = RVar . NConst' $ MkToken s $ MkCached topPrec
 srcRStr s = RVar . NConst' $ MkString ("\"" <> s <> "\"") (chars s)
 
 instance PPrint ISource where
@@ -1181,7 +1127,7 @@ instance PPrint (Token a) where
     t -> pprint $ showToken t
 
 instance PPrint (Mixfix a) where
-  pprint (MkM [t]) | precedence t == (maxLeftPrec, maxRightPrec) = pprint t
+  pprint (MkM [t]) | precedence t == topPrec = pprint t
   pprint t = -- RVar $ NConst $ coerce t --
              srcRVar' $ showMixfix t
 
