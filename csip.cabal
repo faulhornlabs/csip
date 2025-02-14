@@ -16,18 +16,19 @@ license-file:  LICENSE
 author:        Peter Divianszky
 maintainer:    peter.divianszky@faulhornlabs.com
 
-source-repository head
-  type:     git
-  location: https://github.com/faulhornlabs/csip
-
 extra-doc-files:
   README.md
 extra-source-files:
   .ghci
+data-dir: .
 data-files:
   precedences
   csip/**/*.csip
   perftests/**/*.csip
+
+source-repository head
+  type:     git
+  location: https://github.com/faulhornlabs/csip
 
 executable csip
   build-depends:
