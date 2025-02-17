@@ -3,12 +3,14 @@ module M3_Parse
   , ISource, Token, OpSeq
 
   , Name (MkName, NNat, NString, NConst)
-  , mkName, mapName, rename, isConName, isVarName
+  , NameStr, nameStr
+  , mkName, mkName', mapName, rename, isConName, isVarName
   , showMixfix, unscope
 
   , ExpTree
     (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)
   , PPrint (pprint)
+  , showM
   , zVar
 
   , Mixfix, addSuffix
@@ -961,8 +963,10 @@ instance Print (ExpTree' Desug) where
 ----------------------------------------------
 
 
+type NameStr = Mixfix Desug
+
 data Name = MkName
-  { nameStr :: Mixfix Desug
+  { nameStr :: NameStr
   , nameId  :: Int
   }
 
@@ -1006,10 +1010,10 @@ nameStr' v = nameStr v
 instance IsString Name where
   fromString t = NConst (ZName $ MkM [fromString t])
 
-mkName :: Name -> RefM Name
-mkName s = mkName_ (nameStr s)
+mkName :: NameStr -> RefM Name
+mkName s = newId <&> \i -> MkName s i
 
-mkName_ s = newId <&> \i -> MkName s i
+mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
 
 type Raw = ExpTree Name
 
@@ -1033,7 +1037,7 @@ scope t = runReader mempty ff  where
         Just m  -> pure $ RVar $ rename n m
         Nothing -> pure $ RConst n
       GLam es n a
-        | n == ZName NAny -> GLam <$> mapM f es <*> mkName_ n <*> f a
+        | n == ZName NAny -> GLam <$> mapM f es <*> mkName n <*> f a
         | otherwise -> do
           i <- newId
           let m = MkName n i
@@ -1145,4 +1149,7 @@ instance (Eq a, PPrint a, Arity a) => PPrint (ExpTree a) where
     f = \case
       RVar n     -> pprint n
       a :@ b     -> RVar "@" :@ f a :@ f b
+
+
+showM a = print a <&> chars
 

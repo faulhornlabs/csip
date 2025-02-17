@@ -7,6 +7,7 @@ Arr  : Ty -> Ty -> Ty
 Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
 App  : {a b} -> Code (Arr a b) -> Code a -> Code b
 Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
+Succ : Nat -> Nat
 
 Prod : Ty -> Ty -> Ty
 Pair : {a b} -> Code a -> Code b -> Code (Prod a b)
@@ -26,24 +27,20 @@ Zero64 :: W64
 PlusC  :: Carry -> W64 -> W64 -> Prod Carry W64
 
 
-N : Type
-Z : N
-S : N -> N
+vec : Nat -> Ty -> Ty
+vec 0        t = Unit
+vec (Succ n) t = Prod (vec n t) t
 
-vec : N -> Ty -> Ty
-vec    Z  t = Unit
-vec (S n) t = Prod (vec n t) t
-
-addHelper : {r} -> (n: N) -> Code Carry -> Code (vec n W64) -> Code (vec n W64) -> (Code Carry -> Code (vec n W64) -> Code r) -> Code r
-addHelper {r} Z     c a b pair = pair c TT
-addHelper {r} (S n) c a b pair =
+addHelper : {r} -> (n: Nat) -> Code Carry -> Code (vec n W64) -> Code (vec n W64) -> (Code Carry -> Code (vec n W64) -> Code r) -> Code r
+addHelper 0        c a b pair = pair c TT
+addHelper (Succ n) c a b pair =
   (d := PlusC c (Snd a) (Snd b);
-   addHelper {r} n (Fst d) (Fst a) (Fst b) \e1 e2 ->
+   addHelper n (Fst d) (Fst a) (Fst b) \e1 e2 ->
    pair e1 (Pair e2 (Snd d))
   )
 
-add : (n: N) -> Code (vec n W64) -> Code (vec n W64) -> Code (vec n W64)
+add : (n: Nat) -> Code (vec n W64) -> Code (vec n W64) -> Code (vec n W64)
   = \n a b -> addHelper n ClearCarry a b \e1 e2 -> e2
 
 // main
-add (S (S (S Z)))
+add 3

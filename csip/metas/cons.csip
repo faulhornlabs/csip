@@ -1,4 +1,3 @@
-# source
 # elab
 
 id : {A} -> A -> A
@@ -28,4 +27,13 @@ nil : {A} -> Vec A zero
 cons : {A}{n:Nat} -> A -> Vec A n -> Vec A (suc n)
  = \a as V c n-> c a (as V c n)
 
-cons
+u = Type
+
+// TODO
+test =
+  (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u
+  (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u
+   nil
+  )))))))))) ))))))))))
+
+test

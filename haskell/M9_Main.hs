@@ -38,44 +38,44 @@ getSource f = parseFile' "" f >>= \case
 showCmd :: [Source] -> String
 showCmd = concat . intersperse " " . map chars
 
-doCmds' :: [Source] -> Source -> RefM String
-doCmds' cmd s = catchError mainException (\e -> show <$> print e) $ doCmds cmd s
-
 doCmds :: [Source] -> Source -> RefM String
-doCmds [cmd]                       s = doCmd False cmd s <&> chars
-doCmds [cmd, "highlight"]          s = doCmd False cmd s <&> show
-doCmds [cmd, "quote"]              s = doCmd True  cmd s <&> chars
-doCmds [cmd, "quote", "highlight"] s = doCmd True  cmd s <&> show
-doCmds cmds _ =  error $ "Unknown commands: " <> mconcat (intersperse " " cmds)
-
-doCmd :: Bool -> Source -> Source -> RefM Source
-doCmd quote cmd s = case cmd of
-  "source"    -> sh =<< (parse s :: RefM Source)
-  "indent"    -> sh =<< (parse s :: RefM ISource)
-  "lex"       -> sh =<< (parse s :: RefM [Token Spaced])
-  "structure" -> sh =<< (parse s :: RefM (OpSeq' Spaced))
-  "string"    -> sh =<< (parse s :: RefM (OpSeq' Stringed))
-  "comment"   -> sh =<< (parse s :: RefM (OpSeq' Uncomment))
-  "comments"  -> sh =<< (parse s :: RefM (OpSeq' Uncomments))
-  "space"     -> sh =<< (parse s :: RefM (OpSeq' Unspaced))
-  "layout"    -> sh =<< (parse s :: RefM (OpSeq' Layout))
-  "op"        -> sh =<< (parse s :: RefM (ExpTree' Layout))
-  "exptree"   -> sh =<< (parse s :: RefM (ExpTree' POp))
-  "sugar"     -> sh =<< (parse s :: RefM (ExpTree' Desug))
-  "scope"     -> sh =<< (parse s :: RefM Raw)
-  "elab"      -> sh =<< (parse s :: RefM Tm)
-  "eval"      -> sh =<< ((parse s :: RefM Tm) >>= eval [])
-  "type"      -> sh =<< (parse s >>= inferTop <&> snd >>= quoteNF')
-  "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= eval [] >>= quoteNF')
-  "stage"     -> sh =<< ((parse s :: RefM Tm) >>= eval [] >>= stage)
-  "haskell_stage"
-              -> sh =<< ((parse s :: RefM Tm) >>= eval [] >>= stage >>= unscope <&> (fromString :: String -> Source) . show . convert)
-  _ -> error $ "Unknown command: " <> cmd
+doCmds cmd s = do
+ () <- reset
+ catchError mainException (\e -> show <$> print e) $ case cmd of
+  [cmd]                       -> doCmd False cmd s <&> chars
+  [cmd, "highlight"]          -> doCmd False cmd s <&> show
+  [cmd, "quote"]              -> doCmd True  cmd s <&> chars
+  [cmd, "quote", "highlight"] -> doCmd True  cmd s <&> show
+  cmds ->  error $ "Unknown commands: " <> mconcat (intersperse " " cmds)
  where
-  sh = if quote then sh' else print
+  doCmd :: Bool -> Source -> Source -> RefM Source
+  doCmd quote cmd s = case cmd of
+    "source"    -> sh =<< (parse s :: RefM Source)
+    "indent"    -> sh =<< (parse s :: RefM ISource)
+    "lex"       -> sh =<< (parse s :: RefM [Token Spaced])
+    "structure" -> sh =<< (parse s :: RefM (OpSeq' Spaced))
+    "string"    -> sh =<< (parse s :: RefM (OpSeq' Stringed))
+    "comment"   -> sh =<< (parse s :: RefM (OpSeq' Uncomment))
+    "comments"  -> sh =<< (parse s :: RefM (OpSeq' Uncomments))
+    "space"     -> sh =<< (parse s :: RefM (OpSeq' Unspaced))
+    "layout"    -> sh =<< (parse s :: RefM (OpSeq' Layout))
+    "op"        -> sh =<< (parse s :: RefM (ExpTree' Layout))
+    "exptree"   -> sh =<< (parse s :: RefM (ExpTree' POp))
+    "sugar"     -> sh =<< (parse s :: RefM (ExpTree' Desug))
+    "scope"     -> sh =<< (parse s :: RefM Raw)
+    "elab"      -> sh =<< (parse s :: RefM Tm)
+    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF)
+    "type"      -> sh =<< (parse s >>= inferTop <&> snd >>= quoteNF')
+    "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF')
+    "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage)
+    "haskell_stage"
+                -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage >>= unscope <&> (fromString :: String -> Source) . show . convert)
+    _ -> error $ "Unknown command: " <> cmd
+   where
+    sh = if quote then sh' else print
 
-sh' :: (PPrint a) => a -> RefM Source
-sh' m = print $ pprint m
+  sh' :: (PPrint a) => a -> RefM Source
+  sh' m = print $ pprint m
 
 
 ----------------------------
@@ -97,7 +97,7 @@ getResult odir fn s cmd _i n = do
 
 getResult' odir fn s cmd i n = do
   (printres, r) <- getResult odir fn s cmd i n
-  maybe (doCmds' cmd s >>= \r -> printres r >> pure r) pure r
+  maybe (doCmds cmd s >>= \r -> printres r >> pure r) pure r
 
 parseFile' dir f | fn <- dir </> f = doesFileExist fn >>= \case
   False -> pure Nothing
@@ -128,7 +128,7 @@ testFiles accept dir odir = do
           <> r <> "\n"
      else do
       (printres, r2) <- getResult odir fn s cmd i (length cmds)
-      r <- doCmds' cmd s
+      r <- doCmds cmd s
       when (r2 /= Just r) do
         putStr
            $ maybe "" (\r -> 

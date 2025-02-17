@@ -1,0 +1,20 @@
+# elab
+# stage
+
+// builtins
+Ty   : Type
+Code : Ty -> Type
+Arr  : Ty -> Ty -> Ty
+Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
+App  : {a b} -> Code (Arr a b) -> Code a -> Code b
+Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
+// end of builtins
+
+Int :: Type
+
+F : ((Code Int -> Code Int) -> Code Int) -> Code Int
+
+G : Code ((Int -> Int) -> Int)
+
+// F \x -> App G (Lam \y -> x y)
+F G

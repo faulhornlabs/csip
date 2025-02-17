@@ -1,0 +1,12 @@
+# elab
+
+N : Type
+S : N -> N
+
+t : N -> Type
+t (S n) = t n
+
+f : (n: N) -> t n
+f (S n) = f n
+
+f

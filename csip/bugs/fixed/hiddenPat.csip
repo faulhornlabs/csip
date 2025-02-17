@@ -1,0 +1,8 @@
+# elab
+# eval
+
+id : (a : Type) -> (z : a) -> a
+id _ y = y
+
+id _ "hello"
+

@@ -3,7 +3,7 @@ module M0_Prelude
 
   , lookupList
   , singletonSet, insertSet, fromListSet
-  , assocs
+  , filterMap, assocs
 
   , stripSuffix
   , firstJust
@@ -36,7 +36,7 @@ import Data.String as P
 import Data.Set as P
   ( Set, member, delete, isSubsetOf)
 import Data.Map as P
-  ( Map, size, insert, lookup, singleton, fromList, unionsWith, restrictKeys, withoutKeys )
+  ( Map, size, insert, lookup, singleton, fromList, keys, unionWith, unionsWith, restrictKeys, withoutKeys )
 
 import Prelude as P
   ( Eq ((==)), (/=)
@@ -67,7 +67,7 @@ import Data.Foldable as P
 import Data.Traversable as P
   ( Traversable (sequenceA), traverse, sequence, mapM )
 
--- import Debug.Trace as P (trace)
+import Debug.Trace as P (trace, traceM)
 import Data.Coerce as P (coerce)
 
 ----------------------------------------------- private imports
@@ -91,3 +91,5 @@ stripSuffix a b = fmap reverse $ stripPrefix (reverse a) (reverse b)
 
 firstJust :: Maybe a -> Maybe a -> Maybe a
 firstJust = (Q.<|>)
+
+filterMap = Map.filter

@@ -1,0 +1,63 @@
+# eval
+
+// builtin
+instanceOf : (a : Type) -> a
+
+
+// class Num a  where
+//   add : a -> a -> a
+Num : Type -> Type
+MkNum : (a : Type) -> (a -> a -> a) -> Num a
+
+add : {a : Type} -> Num a -> a -> a -> a
+add {a} (MkNum a f) = f
+
+
+
+N : Type
+Z : N
+S : N -> N
+
+addN : N -> N -> N
+addN Z n = n
+addN (S n) m = S (addN n m)
+
+// instance Num N  where
+//   add = addN
+numN : Num N
+numN = MkNum _ addN
+
+instanceOf (Num N) = numN
+
+
+N2 : Type
+Z2 : N2
+AddN2 : N2 -> N2 -> N2
+
+// instance Num N2 where add = addN2
+numN2 : Num N2
+numN2 = MkNum _ AddN2
+
+instanceOf (Num N2) = numN2
+
+
+Wrap : Type -> Type
+MkWrap : {a : Type} -> a -> Wrap a
+
+// instance Num a => Num (Wrap a)  where
+//    add (MkWrap x) (MkWrap y) = MkWrap (x + y)
+addWrap : (a : Type) -> (a -> a -> a) -> Wrap a -> Wrap a -> Wrap a
+addWrap a f (MkWrap {a} x) (MkWrap {a} y) = MkWrap {a} (f x y)
+
+numWrap : (a : Type) -> Num a -> Num (Wrap a)
+numWrap a (MkNum a f) = MkNum (Wrap a) (addWrap a f)
+
+instanceOf (Num (Wrap a)) = numWrap a (instanceOf (Num a))
+
+
+// double : Num a => a -> a
+double : {a : Type} -> Num a -> a -> a
+double {a} d x = add {a} d x x
+
+double (instanceOf _) (MkWrap (MkWrap Z2))
+// double (MkWrap (MkWrap Z2))
