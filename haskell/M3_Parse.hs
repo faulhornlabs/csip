@@ -3,6 +3,7 @@ module M3_Parse
   , ISource, Token, OpSeq
 
   , Name (MkName, NNat, NString, NConst)
+  , NameStr, nameStr
   , mkName, mapName, rename, isConName, isVarName
   , showMixfix, unscope
 
@@ -961,8 +962,10 @@ instance Print (ExpTree' Desug) where
 ----------------------------------------------
 
 
+type NameStr = Mixfix Desug
+
 data Name = MkName
-  { nameStr :: Mixfix Desug
+  { nameStr :: NameStr
   , nameId  :: Int
   }
 
@@ -1006,10 +1009,8 @@ nameStr' v = nameStr v
 instance IsString Name where
   fromString t = NConst (ZName $ MkM [fromString t])
 
-mkName :: Name -> RefM Name
-mkName s = mkName_ (nameStr s)
-
-mkName_ s = newId <&> \i -> MkName s i
+mkName :: NameStr -> RefM Name
+mkName s = newId <&> \i -> MkName s i
 
 type Raw = ExpTree Name
 
@@ -1033,7 +1034,7 @@ scope t = runReader mempty ff  where
         Just m  -> pure $ RVar $ rename n m
         Nothing -> pure $ RConst n
       GLam es n a
-        | n == ZName NAny -> GLam <$> mapM f es <*> mkName_ n <*> f a
+        | n == ZName NAny -> GLam <$> mapM f es <*> mkName n <*> f a
         | otherwise -> do
           i <- newId
           let m = MkName n i

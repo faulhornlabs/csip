@@ -10,7 +10,7 @@ module M4_Eval
   , name, rigid, closed, view
   , force_, force', force
 
-  , eval      -- Tm  -> Val
+  , eval, evalClosed      -- Tm  -> Val
 --  , quoteTm   -- Val -> Tm
   , quoteNF   -- Val -> Raw
   , quoteNF'
@@ -25,9 +25,10 @@ import M3_Parse
 
 -------------
 
+-- De Bruijn index
 data DB = MkDB
   { dbIndex :: !Int
-  , dbName  :: !Name    -- used only for printing
+  , dbName  :: !NameStr
   }
 
 instance Print  DB where print  = print  . dbName
@@ -35,20 +36,19 @@ instance PPrint DB where pprint = pprint . dbName
 instance Eq  DB where (==)    = (==)    `on` dbIndex
 instance Ord DB where compare = compare `on` dbIndex
 
-class Eq a => HasName a where  getName :: a -> Name
-instance HasName Name where  getName = id
-instance HasName DB   where  getName = dbName
-
 -------------
 
 data Combinator         -- supercombinator (rigid, closed)
-  = Lams [Name] (Tm_ DB)     -- \x1 ... xN -> t
+  = Lams [NameStr] (Tm_ DB)     -- \x1 ... xN -> t
 
 evalCombinator :: Combinator -> [Val] -> RefM Val
-evalCombinator (Lams ns t) vs = eval' (zip (zipWith MkDB [0..] ns) vs) t
+evalCombinator (Lams ns t) vs = eval (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+
+evalCombinatorTm :: Combinator -> [Tm] -> RefM Tm
+evalCombinatorTm (Lams ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
 
 mkCombinator :: Name -> Tm_ Name -> (Combinator, [Name])
-mkCombinator n t = (Lams nsA $ f (fromList $ zip nsA [0..]) t, ns_)   where
+mkCombinator n t = (Lams (map nameStr nsA) $ f (fromList $ zip nsA [0..]) t, ns_)   where
 
   ns' = fvs t
   isconst = not $ member n ns'
@@ -67,11 +67,11 @@ mkCombinator n t = (Lams nsA $ f (fromList $ zip nsA [0..]) t, ns_)   where
     TRet e -> fvs e
 
   f env = \case
-    TVar n -> TVar $ MkDB (fromJust $ lookup n env) n
+    TVar n -> TVar $ MkDB (fromJust $ lookup n env) (nameStr n)
     TGen e -> TGen $ f env e
     TVal v -> TVal v
     TApp a b -> TApp (f env a) (f env b)
-    TLet n a b | i <- size env -> TLet (MkDB i n) (f env a) (f (insert n i env) b)
+    TLet n a b | i <- size env -> TLet (MkDB i $ nameStr n) (f env a) (f (insert n i env) b)
     TSup c ts -> TSup c $ map (f env) ts
     TMatch n a b c -> TMatch n (f env a) (f env b) (f env c)
     TSel i j e -> TSel i j $ f env e
@@ -80,7 +80,7 @@ mkCombinator n t = (Lams nsA $ f (fromList $ zip nsA [0..]) t, ns_)   where
 instance PPrint Combinator where
   pprint (Lams ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
-varName (Lams ns _) = last ns
+varName (Lams ns _) = mkName $ last ns
 
 
 -------------
@@ -112,7 +112,7 @@ instance PPrint a => PPrint (Tm_ a) where
 type Tm = Tm_ Name
 
 pattern TView :: Tm -> Tm -> Tm
-pattern TView a b = TApp (TApp (TVar "View") a) b
+pattern TView a b = TApp (TApp (TVal (Con "View")) a) b
 
 getTApps (TApp (getTApps -> (a, es)) e) = (a, e: es)
 getTApps e = (e, [])
@@ -130,38 +130,39 @@ instance IsString Tm where
 
 ---------
 
+notDefined x = error' $ fmap ("not defined: " <>) $ print x
+
 eval_
-  :: (Print a, Eq a)
+  :: (Print a, Ord a)
   => (Val -> RefM b)
   -> (b -> RefM b)
   -> (b -> b -> RefM b)
   -> (Combinator -> [b] -> RefM b)
-  -> (a -> RefM b)
   -> (Name -> b -> b -> b -> RefM b)
   -> (Int -> Int -> b -> RefM b)
   -> (b -> RefM b)
-  -> [(a, b)]
+  -> Map a b
   -> Tm_ a
   -> RefM b
-eval_ val box vApp vSup var match sel ret = go
+eval_ val box vApp vSup match sel ret = go
  where
   go env = \case
     TVal v     -> val v
     TGen x     -> box =<< go env x
-    TVar x     -> maybe (var x) pure $ lookupList x env
+    TVar x     -> maybe (notDefined x) pure $ lookup x env
     TApp t u   -> join $ vApp <$> go env t <*> go env u
     TSup c ts  -> join $ vSup c <$> mapM (go env) ts
-    TLet x t u -> go env t >>= \v -> go ((x, v): env) u
+    TLet x t u -> go env t >>= \v -> go (insert x v env) u
     TMatch n a b c -> join $ match n <$> go env a <*> go env b <*> go env c
     TSel i j e -> join $ sel i j <$> go env e
     TRet e     -> join $ ret <$> go env e
 
+evalTm :: Map DB Tm -> Tm_ DB -> RefM Tm
 evalTm  = eval_
   (pure . TVal)
   (pure . TGen)
   (\a b -> pure $ TApp a b)
   (\a b -> pure $ TSup a b)
-  (pure . TVar . dbName)
   (\n a b c -> pure $ TMatch n a b c)
   (\i j -> pure . TSel i j)
   (pure . TRet)
@@ -199,24 +200,26 @@ tmToRaw t = do
 
   basic :: Tm -> RefM (Raw, Map Name Val)
   basic t = runWriter ff <&> second snd where
-    ff wst = f t  where
-      f = \case
+    ff wst = f mempty t  where
+      add n env = insert n (vVar n) env
+
+      f env = \case
         TVal v | n@NNat{}    <- name v -> pure (RVar n)
         TVal v | n@NString{} <- name v -> pure (RVar n)
         TVal v | n@NConst{}  <- name v -> pure (RVar n)
         TVal v | VCon  <- view v -> pure (RVar $ name v)
         TVal v | n <- name v -> force_ v >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
-        TGen e -> eval [] e >>= quoteTm >>= f
+        TGen e -> eval env e >>= quoteTm >>= f env
         TVar n  -> pure $ RVar n
-        TApp a b -> (:@) <$> f a <*> f b
-        TLet n a b -> tell wst (singletonSet n, mempty) >> (RLet (getName n) Hole <$> f a <*> f b)
-        TSup (Lams ns e) ts -> do
-          n <- pure $ last ns
-          t <- evalTm (zip (zipWith MkDB [0..] ns) $ ts) e
-          Lam n <$> f t
-        TMatch n a b c -> rMatch n <$> f a <*> f b <*> f c
-        TSel i j a -> rSel i j <$> f a
-        TRet a -> rRet <$> f a
+        TApp a b -> (:@) <$> f env a <*> f env b
+        TLet n a b -> tell wst (singletonSet n, mempty) >> (RLet n Hole <$> f env a <*> f (add n env) b)
+        TSup c ts -> do
+          n <- varName c
+          t <- evalCombinatorTm c $ ts <> [TVar n]
+          Lam n <$> f (add n env) t
+        TMatch n a b c -> rMatch n <$> f env a <*> f env b <*> f env c
+        TSel i j a -> rSel i j <$> f env a
+        TRet a -> rRet <$> f env a
 
 instance Print Tm where
   print t = print =<< tmToRaw t
@@ -273,7 +276,7 @@ vMeta n = MkVal n False True VMeta
 
 mkValue :: Name -> Bool -> Bool -> View Val -> RefM Val
 mkValue n r c v = do
-  n <- mkName n
+  n <- mkName $ nameStr n
   pure $ MkVal n r c v
 
 vTm :: Name -> Tm -> Val -> RefM Val
@@ -380,14 +383,14 @@ addRule lhs rhs = do
   (n, ns) <- ruleName [] lhs
   old <- lookupRule n
   new <- compileLHS (TVal old) ns lhs $ TRet rhs
-  updateRule n =<< eval [] new
+  updateRule n =<< evalClosed new
   pure ()
  where
   ruleName ns = \case
     TVal v -> pure (name v, ns)
     TApp a b -> do
       n <- mkName $ case b of
-        TVar m -> m
+        TVar m -> nameStr m
         _ -> "v"
       ruleName (n: ns) a
     _ -> undefined
@@ -402,6 +405,7 @@ addRule lhs rhs = do
   compilePat f p e m = case p of
     TGen (TVal (view -> VMeta)) -> m
     TVar n -> TLet n e <$> m
+    TView g p -> compilePat f p (TApp g e) m
     TApps (TVal c) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
@@ -412,7 +416,6 @@ addRule lhs rhs = do
         (MkName "Succ" _, [a])
           -> TMatch "Succ" e (TLet a (TApp "dec" e) $ tLazy x) f
         _ -> TMatch (name c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
-    TView g p -> compilePat f p (TApp g e) m
     _ -> undefined
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
@@ -493,8 +496,10 @@ force v = force' v <&> snd
 
 -------------
 
-eval  = eval_ pure pure vApp vSup (pure . vVar)          vMatch vSel vRet
-eval' = eval_ pure pure vApp vSup (pure . vVar . dbName) vMatch vSel vRet
+eval :: (Print a, Ord a) => Map a Val -> Tm_ a -> RefM Val
+eval = eval_ pure pure vApp vSup vMatch vSel vRet
+
+evalClosed = eval mempty
 
 quoteNF :: Val -> RefM Raw
 quoteNF v_ = force v_ >>= \v ->
@@ -505,7 +510,7 @@ quoteNF v_ = force v_ >>= \v ->
     VFun     -> lookupRule (name v) >>= quoteNF
     VApp_ t u _ _ -> (:@) <$> quoteNF t <*> quoteNF u
     VSup c _ -> do
-      n <- fmap vVar $ mkName $ varName c
+      n <- fmap vVar $ varName c
       b <- vApp v n
       q <- quoteNF b
       pure $ Lam (name n) q

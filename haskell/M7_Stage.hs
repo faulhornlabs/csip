@@ -11,7 +11,7 @@ import M4_Eval hiding (Con)
 stage t = quoteNF t <&> unquote
 
 unquote :: Raw -> Raw
-unquote = f []
+unquote = f mempty
  where
   f e = \case
     RVar (MkName "Prod" _) :@ _ :@ _ :@ a :@ b -> "Prod" .@ f e a .@ f e b
@@ -20,10 +20,10 @@ unquote = f []
     RVar (MkName "Snd" _) :@ _ :@ _ :@ a -> "Snd" .@ f e a
     RVar (MkName "App" _) :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
     RVar (MkName "Lam" _) :@ _ :@ _ :@ a -> f e a
-    RVar (MkName "Let" _) :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f ((n, a): e) b
+    RVar (MkName "Let" _) :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
     RVar (MkName "Let" _) :@ _ :@ _ :@ a :@ E.Lam n b -> rLet n (f e a) (f e b)
     a :@ b -> f e a :@ f e b
-    RVar n -> RVar $ fromMaybe n $ lookupList n e
+    RVar n -> RVar $ fromMaybe n $ lookup n e
 
   rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
   rLet n a b = RLet n Hole a b

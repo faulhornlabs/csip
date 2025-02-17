@@ -10,17 +10,17 @@ import M5_Unify
 -------------
 
 pattern CType, CPi, CHPi :: Val
-pattern CType = "Type" --Con (MkName "Type" (-2))
-pattern CPi   = "Pi"   --Con (MkName "Pi"   (-3))
-pattern CHPi  = "HPi"  --Con (MkName "HPi"  (-4))
+pattern CType = "Type"
+pattern CPi   = "Pi"
+pattern CHPi  = "HPi"
 
 data Icit = Impl | Expl
   deriving Eq
 
-volatile = \case
-  VMeta   -> True
+flexible = \case
+  VMeta      -> True
   VMetaApp{} -> True
-  _      -> False
+  _          -> False
 
 matchCode :: Env -> Val -> RefM Bool
 matchCode env v_ = force v_ >>= \v -> case view v of
@@ -31,7 +31,7 @@ matchCode env v_ = force v_ >>= \v -> case view v of
 
 matchPi :: Icit -> Val -> RefM (Icit, Val, Val)
 matchPi _icit v_ = force v_ >>= \v -> case view v of
-  x | volatile x -> undefined
+  x | flexible x -> undefined
   VApp f pb -> force f >>= \f -> case view f of
     VApp p pa -> force p >>= \case
       CPi  -> pure (Expl, pa, pb)
@@ -51,36 +51,51 @@ matchHPi v_ = force v_ >>= \v -> case view v of
 --------------------
 
 data Env = MkEnv
-  { locals :: [(Name, (Bool, Val, Val))]
-  , globals :: Map Name (Val, Val)
+  { boundVars   :: [Name]
+  , localVals   :: Map Name Val
+  , localTypes  :: Map Name Val
+  , globals     :: Map Name (Val, Val)
+  , globalNames :: Map NameStr Name          -- TODO: remove
   }
 
 memptyEnv :: Env
-memptyEnv = MkEnv mempty $ fromList
-  [(n, (v, CType)) | (n, v) <- [("Nat", "Nat"), ("String", "String"), ("Type", CType)]]
+memptyEnv = foldr def (MkEnv mempty mempty mempty mempty mempty)
+  [("Nat", "Nat"), ("String", "String"), ("Type", CType)]
+ where
+  def (n, v) = define False n v CType
 
-evalEnv :: Env -> Tm -> RefM Val
-evalEnv env = eval $ second (\(_, v, _) -> v) <$> locals env
-
-evalEnv' env n t = evalEnv env t >>= \v -> if closed v then vTm n t v else pure v
-
-onTop = null . locals
+onTop :: Env -> Bool
+onTop = null . boundVars
 
 define :: Bool -> Name -> Val -> Val -> Env -> Env
 define bound n v t env
-  | bound || not (onTop env) = env {locals = (n, (bound, v, t)): locals env}
-  | otherwise                = env {globals = insert n (v, t) $ globals env}
+  | bound || not (onTop env)
+  = env { localTypes = insert n t $ localTypes env
+        , localVals = insert n v $ localVals env
+        , boundVars = (if bound then (n:) else id) $ boundVars env
+        }
+  | otherwise
+  = env { globals = insert n (v, t) $ globals env
+        , globalNames = insert (nameStr n) n $ globalNames env
+        }
 
-lookupLocal  v env = lookupList v (locals env)
-lookupGlobal v env = lookup v (globals env)
-lookupGlobal' v env = lookupList v [(a, b) | (MkName a _, (b, _)) <- assocs (globals env)]
-lookupGlobal'' v env = lookupList v [(a, TVal b) | (MkName a _, (b, _)) <- assocs (globals env)]
-lookupGlobal''' v env = lookupList v [(a, RVar n) | (n@(MkName a _), _) <- assocs (globals env)]
+lookupLocal      v env = lookup v (localTypes  env)
+lookupGlobal     v env = lookup v (globals     env)
+lookupGlobalName v env = lookup v (globalNames env)
+
+lookupGlobal' v env = do
+  n <- lookupGlobalName v env
+  fst <$> lookupGlobal n env
+
+evalEnv :: Env -> Tm -> RefM Val
+evalEnv env = eval $ localVals env
+
+evalEnv' env n t = evalEnv env t >>= \v -> if closed v then vTm n t v else pure v
 
 freshMeta :: Env -> RefM Tm
 freshMeta env = do
   m <- mkName "m" <&> TVal . vMeta
-  pure $ TGen $ TApps m $ reverse [TVar n | (n, (True, _, _)) <- locals env]
+  pure $ TGen $ TApps m $ reverse $ TVar <$> boundVars env
 
 typeName = mapName (`addSuffix` "_t")
 
@@ -97,9 +112,9 @@ insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
 
 vVar_ n = pure $ vVar n
 
-lamName n x = force x <&> \v -> case view v of
+lamName n x = force x >>= \v -> case view v of
   VSup c _ -> varName c
-  _ -> n
+  _ -> pure n
 
 unlam n f = do
   n' <- lamName n f
@@ -115,10 +130,10 @@ getPi _ = Nothing
 
 check :: Env -> Raw -> Val -> RefM Tm
 check env r ty = tag r $ case r of
-  RPi  (MkName "_" _) a b | Just ty' <- lookupGlobal' "Ty" env, ty == ty', Just arr <- lookupGlobal'' "Arr" env -> do
+  RPi  (MkName "_" _) a b | Just ty' <- lookupGlobal' "Ty" env, ty == ty', Just arr <- lookupGlobal' "Arr" env -> do
     ta <- check env a ty'
     tb <- check env b ty'
-    pure $ arr `TApp` ta `TApp` tb
+    pure $ TVal arr `TApp` ta `TApp` tb
   RHLam n Hole a -> do
     (icit, pa, pb) <- matchPi Impl ty
     case icit of
@@ -128,8 +143,8 @@ check env r ty = tag r $ case r of
         pure $ tLam n ta
       Expl -> undefined
   RLam n Hole a -> matchCode env ty >>= \case
-   True | Just lam <- lookupGlobal''' "Lam" env -> do
-    check env (lam `RApp` r) ty
+   True | Just lam <- lookupGlobalName "Lam" env -> do
+    check env (RVar lam `RApp` r) ty
    _ -> do
     (icit, pa, pb) <- matchPi Expl ty
     case icit of
@@ -146,8 +161,8 @@ check env r ty = tag r $ case r of
       check env (RHLam n' Hole r) ty
     Nothing -> case r of
       RLet{} -> undefined
-      ROLet n a b | Just let_ <- lookupGlobal''' "Let" env ->
-        check env (let_ `RApp` a `RApp` RLam n Hole b) ty
+      ROLet n a b | Just let_ <- lookupGlobalName "Let" env ->
+        check env (RVar let_ `RApp` a `RApp` RLam n Hole b) ty
       r -> do
         (a, t) <- insertH env $ infer env r
         conv t ty
@@ -174,8 +189,8 @@ infer env r = tag r $ case r of
     pure (t, m)
   RVar n@NNat{}    -> pure (TVal $ Con n, "Nat")
   RVar n@NString{} -> pure (TVal $ Con n, "String")
-  RVar n | Just (v_, ty) <- lookupGlobal n env -> pure (TVal v_, ty)
-  RVar n | Just (_bound, _, ty) <- lookupLocal n env -> pure (TVar n, ty)
+  RVar n | Just (v, ty) <- lookupGlobal n env -> pure (TVal v, ty)
+  RVar n | Just ty <- lookupLocal n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"
   RLetOTy n "Type" b | onTop env, Just vta <- lookupGlobal' "Ty" env -> do
     let c = Con n
@@ -191,8 +206,8 @@ infer env r = tag r $ case r of
       updateRule n $ Con "Fail"
       pure $ Fun n
     infer (define False n c vta env) b
-  ROLet n a b | Just let_ <- lookupGlobal''' "Let" env ->
-    infer env $ let_ `RApp` a `RApp` RLam n Hole b
+  ROLet n a b | Just let_ <- lookupGlobalName "Let" env ->
+    infer env $ RVar let_ `RApp` a `RApp` RLam n Hole b
   RLet n t a b -> do
     (ta, vta) <- case t of
       Hole -> infer env a
@@ -228,8 +243,8 @@ infer env r = tag r $ case r of
   _ -> errorM "can't infer"
  where
   inferApp i env a b = infer env a >>= \(av, ty) -> matchCode env ty >>= \case
-   True | Expl <- i, Just app <- lookupGlobal''' "App" env ->
-        infer env $ RApp (RApp app a) b
+   True | Expl <- i, Just app <- lookupGlobalName "App" env ->
+        infer env $ RApp (RApp (RVar app) a) b
    _ -> do
     (icit, pa, pb) <- matchPi i ty
     if icit == i then do

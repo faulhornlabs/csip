@@ -52,7 +52,7 @@ closeTm allowed v_ = do
       VApp a b -> ret [a, b]
       VTm _ v -> ret [v]
       VSup c _ -> do
-        let u = varName c
+        u <- varName c
         b <- vApp v $ vVar u
         first ((u, b):) <$> down b
       _ -> ret []
@@ -92,12 +92,12 @@ conv aa bb = go aa bb where
     (VMeta, _) -> updateClosed va fb
     (_, VMeta) -> updateClosed vb fa
     (VSup c _, _) -> do
-      v <- mkName (varName c) <&> vVar
+      v <- varName c <&> vVar
       va' <- vApp fa v
       vb' <- vApp fb v
       go va' vb'
     (_, VSup c _) -> do
-      v <- mkName (varName c) <&> vVar
+      v <- varName c <&> vVar
       va' <- vApp fa v
       vb' <- vApp fb v
       go va' vb'
