@@ -138,18 +138,19 @@ eval_
   -> (b -> RefM b)
   -> (b -> b -> RefM b)
   -> (Combinator -> [b] -> RefM b)
+  -> (a -> RefM b)
   -> (Name -> b -> b -> b -> RefM b)
   -> (Int -> Int -> b -> RefM b)
   -> (b -> RefM b)
   -> Map a b
   -> Tm_ a
   -> RefM b
-eval_ val box vApp vSup match sel ret = go
+eval_ val box vApp vSup var match sel ret = go
  where
   go env = \case
     TVal v     -> val v
     TGen x     -> box =<< go env x
-    TVar x     -> maybe (notDefined x) pure $ lookup x env
+    TVar x     -> maybe (var x) pure $ lookup x env
     TApp t u   -> join $ vApp <$> go env t <*> go env u
     TSup c ts  -> join $ vSup c <$> mapM (go env) ts
     TLet x t u -> go env t >>= \v -> go (insert x v env) u
@@ -163,6 +164,7 @@ evalTm  = eval_
   (pure . TGen)
   (\a b -> pure $ TApp a b)
   (\a b -> pure $ TSup a b)
+  notDefined
   (\n a b c -> pure $ TMatch n a b c)
   (\i j -> pure . TSel i j)
   (pure . TRet)
@@ -209,7 +211,7 @@ tmToRaw t = do
         TVal v | n@NConst{}  <- name v -> pure (RVar n)
         TVal v | VCon  <- view v -> pure (RVar $ name v)
         TVal v | n <- name v -> force_ v >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
-        TGen e -> eval env e >>= quoteTm >>= f env
+        TGen e -> eval' env e >>= quoteTm >>= f env
         TVar n  -> pure $ RVar n
         TApp a b -> (:@) <$> f env a <*> f env b
         TLet n a b -> tell wst (singletonSet n, mempty) >> (RLet n Hole <$> f env a <*> f (add n env) b)
@@ -497,7 +499,10 @@ force v = force' v <&> snd
 -------------
 
 eval :: (Print a, Ord a) => Map a Val -> Tm_ a -> RefM Val
-eval = eval_ pure pure vApp vSup vMatch vSel vRet
+eval = eval_ pure pure vApp vSup notDefined vMatch vSel vRet
+
+eval' :: Map Name Val -> Tm -> RefM Val
+eval' = eval_ pure pure vApp vSup (pure . vVar) vMatch vSel vRet
 
 evalClosed = eval mempty
 
@@ -550,8 +555,8 @@ quoteTm__ inl vtm opt v_ = do
       VTm t v -> if vtm then pure t else ff' v
       VVar  -> pure $ TVar $ name v
       VCon  -> pure $ TVar $ name v
+      VMeta -> pure $ TVar $ name v
       VFun  -> lookupRule (name v) >>= gg
-      VMeta -> pure $ TVal v
       VSel i j e -> TSel i j <$> ff' e
       VMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
       VRet a -> TRet <$> ff' a
@@ -564,8 +569,9 @@ quoteTm__ inl vtm opt v_ = do
   go v wst = walk ch share up [v]
    where
     share v _ = case view v of
-       VVar -> pure False
-       VCon -> pure False
+       VMeta -> pure False
+       VVar  -> pure False
+       VCon  -> pure False
 --       VFun -> pure False
        _ -> pure True
 

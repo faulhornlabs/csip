@@ -32,10 +32,13 @@ metaSpine v_ = force v_ >>= \v -> case view v of
   _ -> impossible
 
 solveMeta a b = do
+  traceShow $ "solve " <<>> showM a <<>> " := " <<>> showM b
   (h, reverse -> vs) <- metaSpine a
   b' <- closeTm (fromListSet vs) b
   update h =<< vLams (map vVar vs) b'
 
+updateClosed a b
+  = solveMeta a b --closeTm mempty b >>= update a
 
 closeTm :: Set Name -> Val -> RefM Val
 closeTm allowed v_ = do
@@ -43,7 +46,7 @@ closeTm allowed v_ = do
   m <- go v
   pure $ snd $ fromJust $ lookup v m
  where
-  go v = downUp down up [v]
+  go v = downUp down (up allowed) [v]
    where
     ret es = (,) [] <$> mapM force_ es
 
@@ -52,29 +55,27 @@ closeTm allowed v_ = do
       VApp a b -> ret [a, b]
       VTm _ v -> ret [v]
       VSup c _ -> do
-        u <- varName c
+        u <- {- mapName (`addSuffix` "v") <$> -} varName c
         b <- vApp v $ vVar u
         first ((u, b):) <$> down b
       _ -> ret []
 
-    up :: Val -> [(Name, Val)] -> [(Val, (Set Name, Val))] -> RefM (Set Name, Val)
-    up _ ((u, b): vs) m = do
-      (s, x) <- up b vs m
+    up :: Set Name -> Val -> [(Name, Val)] -> [(Val, (Set Name, Val))] -> RefM (Set Name, Val)
+    up allowed _ ((u, b): vs) m = do
+      (s, x) <- up ({- insertSet u -} allowed) b vs m
       (,) (delete u s) <$> vLam (vVar u) x
-    up v [] ts
+    up allowed v [] ts
      | closed v  = pure (mempty, v)
      | otherwise = case view v of
       VSup{} -> impossible
-      VVar -> pure (singletonSet (name v), v)
+      VVar -> pure (singletonSet ({-mapName (`addSuffix` "w") $ -} name v), v)
       VCon -> pure (mempty, v)
       VFun -> pure (mempty, v)
       VTm t _ | [(sa, a)] <- map snd ts -> (,) sa <$> vTm (name v) t a
       VMetaApp{} | [(sa, a), (sb, b)] <- map snd ts, isSubsetOf sb allowed -> (,) (sa <> sb) <$> vApp a b
-      VMetaApp{} | [_, (sb, _)] <- map snd ts -> error' $ fmap ("TODO: " <>) $ print $ pprint (toList sb, toList allowed)
+      VMetaApp{} | [_, (sb, _)] <- map snd ts -> error' $ quoteNF' v >>= \v -> fmap ("TODO: " <>) $ print $ pprint (v, (toList sb, toList allowed))
       VApp{} | [(sa, a), (sb, b)] <- map snd ts -> (,) (sa <> sb) <$> vApp a b
       _ -> undefined
-
-updateClosed a b = closeTm mempty b >>= update a
 
 
 -------------

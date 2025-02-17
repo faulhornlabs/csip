@@ -4,12 +4,13 @@ module M3_Parse
 
   , Name (MkName, NNat, NString, NConst)
   , NameStr, nameStr
-  , mkName, mapName, rename, isConName, isVarName
+  , mkName, mkName', mapName, rename, isConName, isVarName
   , showMixfix, unscope
 
   , ExpTree
     (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)
   , PPrint (pprint)
+  , showM
   , zVar
 
   , Mixfix, addSuffix
@@ -1012,6 +1013,8 @@ instance IsString Name where
 mkName :: NameStr -> RefM Name
 mkName s = newId <&> \i -> MkName s i
 
+mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
+
 type Raw = ExpTree Name
 
 
@@ -1146,4 +1149,7 @@ instance (Eq a, PPrint a, Arity a) => PPrint (ExpTree a) where
     f = \case
       RVar n     -> pprint n
       a :@ b     -> RVar "@" :@ f a :@ f b
+
+
+showM a = print a <&> chars
 

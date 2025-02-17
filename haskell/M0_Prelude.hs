@@ -67,7 +67,7 @@ import Data.Foldable as P
 import Data.Traversable as P
   ( Traversable (sequenceA), traverse, sequence, mapM )
 
--- import Debug.Trace as P (trace)
+import Debug.Trace as P (trace, traceM)
 import Data.Coerce as P (coerce)
 
 ----------------------------------------------- private imports

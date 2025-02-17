@@ -47,6 +47,8 @@ module M1_Base
   , walk, downUp, topDown, bottomUp
 
   , precedenceTableString
+
+  , traceShow, (<<>>)
   )
  where
 
@@ -748,4 +750,12 @@ precedenceTableString = unsafePerformIO do
   f <- getDataFileName "precedences"
   IO.readFile f
 
+traceShow :: RefM String -> RefM ()
+--traceShow m = m >>= \s -> traceM s
+traceShow _ = pure ()
+
+a <<>> b = (<>) <$> a <*> b
+
+instance IsString a => IsString (RefM a) where
+  fromString s = pure $ fromString s
 

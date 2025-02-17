@@ -94,7 +94,7 @@ evalEnv' env n t = evalEnv env t >>= \v -> if closed v then vTm n t v else pure 
 
 freshMeta :: Env -> RefM Tm
 freshMeta env = do
-  m <- mkName "m" <&> TVal . vMeta
+  m <- mkName' "m" <&> TVal . vMeta
   pure $ TGen $ TApps m $ reverse $ TVar <$> boundVars env
 
 typeName = mapName (`addSuffix` "_t")
@@ -129,7 +129,15 @@ getPi _ = Nothing
 --------------------
 
 check :: Env -> Raw -> Val -> RefM Tm
-check env r ty = tag r $ case r of
+check env r ty = do
+  traceShow $ "check " <<>> showM r <<>> "\n :? " <<>> showM ty
+  tag r $ do
+    t <- check_ env r ty
+    traceShow $ "check end " <<>> showM r <<>> "\n ==> " <> showM t
+    pure t
+
+check_ env r ty = case r of
+  Hole -> freshMeta env
   RPi  (MkName "_" _) a b | Just ty' <- lookupGlobal' "Ty" env, ty == ty', Just arr <- lookupGlobal' "Arr" env -> do
     ta <- check env a ty'
     tb <- check env b ty'
@@ -169,7 +177,14 @@ check env r ty = tag r $ case r of
         pure a
 
 infer :: Env -> Raw -> RefM (Tm, Val)
-infer env r = tag r $ case r of
+infer env r = do
+  traceShow $ "infer " <<>> showM r
+  tag r $ do
+    (t, v) <- infer_ env r
+    traceShow $ "infer end " <<>> showM r <<>> "\n ==> " <<>> showM t <<>> "\n :: " <<>> showM v 
+    pure (t, v)
+
+infer_ env r = case r of
   RLam n_ t a -> do
     n <- pure n_
     vt <- check env t CType >>= evalEnv' env (typeName n)
@@ -190,7 +205,7 @@ infer env r = tag r $ case r of
   RVar n@NNat{}    -> pure (TVal $ Con n, "Nat")
   RVar n@NString{} -> pure (TVal $ Con n, "String")
   RVar n | Just (v, ty) <- lookupGlobal n env -> pure (TVal v, ty)
-  RVar n | Just ty <- lookupLocal n env -> pure (TVar n, ty)
+  RVar n | Just ty      <- lookupLocal  n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"
   RLetOTy n "Type" b | onTop env, Just vta <- lookupGlobal' "Ty" env -> do
     let c = Con n
