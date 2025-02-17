@@ -168,7 +168,16 @@ check_ env r ty = case r of
       n' <- lamName "z" pb
       check env (RHLam n' Hole r) ty
     Nothing -> case r of
-      RLet{} -> undefined
+      RLet n t a b -> do
+        (ta, vta) <- case t of
+          Hole -> infer env a
+          t -> do
+            vta <- check env t CType >>= evalEnv' env (typeName n)
+            ta <- check env a vta
+            pure (ta, vta)
+        va <- evalEnv' env n ta
+        tb <- check (define False n va vta env) b ty
+        pure $ if onTop env then tb else TLet n ta tb
       ROLet n a b | Just let_ <- lookupGlobalName "Let" env ->
         check env (RVar let_ `RApp` a `RApp` RLam n Hole b) ty
       r -> do
