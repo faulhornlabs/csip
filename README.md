@@ -160,17 +160,18 @@ The following limitations and bugs are planned to be lifted:
 
 - implict arguments in rules should be explicitly given by braces
 - type classes are not supported
+- object level functions should be eta-expanded
+- top level object language lets should be at the end
 - pattern matching compiled to object level constructs is not supported
+- object level recursion compiled to object level constructs is not supported
 - there is no module system
 - support multiple object codes simultaneously
 - Bugs caused by not checking unsupported language constructs.  
   The compiler may go into infinite loop because of this.
-- top level object language lets should be at the end
 - local definitions are not supported
 - local do notation is not supported
 - user defined operator precedences are not supported
 - recursive definitions are not properly printed
-- object level functions should be eta-expanded
 - closed data types and closed functions are not supported
 - sharing between values are sometimes lost during printing
 - flexible values cannot be refined to Pi types
