@@ -5,7 +5,7 @@ module M4_Eval
   , Tm, tLam
 
   , Val (Con, Fun)
-  , View (VSup, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
+  , View (VSup, VLam, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
   , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams
   , name, rigid, closed, view
   , force_, force', force
@@ -81,6 +81,8 @@ instance PPrint Combinator where
   pprint (Lams ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
 varName (Lams ns _) = mkName $ last ns
+
+pattern VLam n <- VSup (varName -> n) _
 
 
 -------------
@@ -243,7 +245,7 @@ data View a
 pattern VApp a b <- VApp_ a b _ _
 
 -- volatile App depending on a meta
-pattern VMetaApp <- VApp_ _ _ _ Just{}
+pattern VMetaApp a <- VApp_ _ _ _ (Just a)
 
 -----
 
@@ -405,10 +407,9 @@ addRule lhs rhs = do
   compileLHS _ _ _ _ = undefined
 
   compilePat f p e m = case p of
-    TGen (TVal (view -> VMeta)) -> m
     TVar n -> TLet n e <$> m
     TView g p -> compilePat f p (TApp g e) m
-    TApps (TVal c) ps -> do
+    TApps (TVal c) ps | VCon <- view c -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat f) m $ zip ps $ map TVar ns
@@ -418,6 +419,9 @@ addRule lhs rhs = do
         (MkName "Succ" _, [a])
           -> TMatch "Succ" e (TLet a (TApp "dec" e) $ tLazy x) f
         _ -> TMatch (name c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
+    TGen _ -> m   -- TODO?
+    TVal v -> force v >>= \v -> case view v of
+      _     -> undefined
     _ -> undefined
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
@@ -514,8 +518,8 @@ quoteNF v_ = force v_ >>= \v ->
     VMeta    -> pure $ RVar $ name v
     VFun     -> lookupRule (name v) >>= quoteNF
     VApp_ t u _ _ -> (:@) <$> quoteNF t <*> quoteNF u
-    VSup c _ -> do
-      n <- fmap vVar $ varName c
+    VLam c -> do
+      n <- fmap vVar c
       b <- vApp v n
       q <- quoteNF b
       pure $ Lam (name n) q
@@ -531,19 +535,20 @@ rRet e = "return" :@ e
 quoteNF' = quoteTm >=> tmToRaw
 
 quoteTm, quoteTm' :: Val -> RefM Tm
-quoteTm  = quoteTm_ True True False
-quoteTm' = quoteTm_ True True True
+quoteTm  = quoteTm_ True False
+quoteTm' = quoteTm_ True True
 
-quoteTm_ inl vtm opt v =
-  quoteTm__ inl vtm opt v <&> \(vs, x) -> foldl (\t (n, v) -> TLet n v t) x vs
+quoteTm_ vtm opt v =
+  quoteTm__ vtm opt v <&> \(vs, x) -> foldl (\t (n, v) -> TLet n v t) x vs
 
-quoteTm__ inl vtm opt v_ = do
-  v <- force_ v_
-  (ma_, vs_) <- runWriter $ go v
-  let ma = if inl then \v -> fromJust $ lookup v ma_ else \_ -> True
-      vs = filter ma vs_
+quoteTm__ vtm opt v_ = do
+  v <- force__ v_
+  ma_ <- go v
   let
-    ff' = force_ >=> ff
+    ma v = fromJust $ lookup v ma_
+    vs = [k | (k, True) <- assocs ma_]
+
+    ff' = force__ >=> ff
 
     ff v | opt, closed v = pure $ TVal v
     ff v | ma v = pure $ TVar $ name v
@@ -552,34 +557,36 @@ quoteTm__ inl vtm opt v_ = do
     gg v = case view v of
       VSup c vs -> TSup c <$> mapM ff' vs
       VApp a b -> TApp <$> ff' a <*> ff' b
-      VTm t v -> if vtm then pure t else ff' v
+      VTm t _ -> pure t
       VVar  -> pure $ TVar $ name v
+      _ | opt -> impossible
       VCon  -> pure $ TVar $ name v
-      VMeta -> pure $ TVar $ name v
+      VMeta -> pure $ TVal v -- $ TVar $ name v
       VFun  -> lookupRule (name v) >>= gg
       VSel i j e -> TSel i j <$> ff' e
       VMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
       VRet a -> TRet <$> ff' a
-      _ -> undefined
+      _ -> impossible
 
   x <- ff v
   vs' <- mapM gg vs
   pure (zip (name <$> vs) vs', x)
  where
-  go v wst = walk ch share up [v]
+  force__ = if vtm then force_ else force
+
+  go v = walk ch share up [v]
    where
     share v _ = case view v of
+       _ | opt, closed v -> pure False
        VMeta -> pure False
        VVar  -> pure False
        VCon  -> pure False
---       VFun -> pure False
        _ -> pure True
 
-    up v sh _ = tell wst [v] >> pure sh
+    up _ sh _ = pure sh
 
-    ch v = fmap ((,) False) $ mapM force_ $ case view v of
+    ch v = fmap ((,) False) $ mapM force__ $ case view v of
       _ | opt, closed v -> []
-      VTm _ v | not vtm -> [v]
       VSup _ vs -> vs
       VApp a b -> [a, b]
       _ -> []

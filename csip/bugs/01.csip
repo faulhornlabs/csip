@@ -65,8 +65,8 @@ v0 : {G A} -> Tm (snoc G A) A
 
 v1 : {G A B} -> Tm (snoc (snoc G A) B) A
  = var (vs vz)
-
+/*
 times4 : {G A} -> Tm G (arr (arr A A) (arr A A))
   = lam (lam (app v1 (app v1 (app v1 (app v1 v0)))))
-
+*/
 Type

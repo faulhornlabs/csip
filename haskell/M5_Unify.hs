@@ -8,13 +8,13 @@ import M4_Eval
 
 ---------------------------
 
-updatable v e = lookupMeta v >>= \case
+updatable v _e = lookupMeta v >>= \case
   Just{}  -> impossible
   Nothing -> case view v of
 --    FVar   | closed e, rigid e -> pure ()
 --    FVar   -> undefined
-    VMeta | closed e        -> pure ()
-    VMeta   -> error' $ ("not closed:\n" <>) <$> (quoteNF' e <&> pprint >>= print)
+    VMeta {- | closed e -}       -> pure ()
+--    VMeta   -> error' $ ("not closed:\n" <>) <$> (quoteNF' e <&> pprint >>= print)
 --    VMetaApp{} -> pure ()
     _ -> impossible
 
@@ -31,6 +31,11 @@ metaSpine v_ = force v_ >>= \v -> case view v of
     _ -> undefined
   _ -> impossible
 
+metaArgNum v_ = force v_ >>= \v -> case view v of
+  VMeta          -> pure 0
+  VApp_ a _ _ Just{} -> (+1) <$> metaArgNum a
+  _ -> undefined
+
 solveMeta a b = do
   traceShow $ "solve " <<>> showM a <<>> " := " <<>> showM b
   (h, reverse -> vs) <- metaSpine a
@@ -40,43 +45,77 @@ solveMeta a b = do
 updateClosed a b
   = solveMeta a b --closeTm mempty b >>= update a
 
+
+type SVal = (Val, Set Name)
+
+type PruneSet = Maybe (Map Val (Set Int))
+
+(<.>) = unionWith (<>)
+
+pruneMeta :: Val -> Set Int -> RefM ()
+pruneMeta m (toList -> is) = do
+  m' <- mkName' "m" <&> TVal . vMeta
+  let
+    mk _ [] vs = pure $ TApps m' $ reverse vs
+    mk n (i: is) vs = do
+      v <- mkName "v"
+      tLam v <$> if n == i then mk (n+1) is vs else mk (n+1) (i: is) (TVar v: vs)
+  t <- mk 0 is []
+  v <- eval mempty t
+  update m v
+
 closeTm :: Set Name -> Val -> RefM Val
 closeTm allowed v_ = do
   v <- force_ v_
-  m <- go v
-  pure $ snd $ fromJust $ lookup v m
+  let sv = (v, allowed)
+  m <- go [sv]
+  () <- case fromJust $ lookup sv m of
+    Just s -> forM_ (assocs s) \(v, s) -> pruneMeta v s
+    Nothing -> undefined
+  pure v
  where
-  go v = downUp down (up allowed) [v]
+  go sv = downUp down up sv
    where
-    ret es = (,) [] <$> mapM force_ es
-
-    down v = case view v of
-      _ | closed v -> ret []
-      VApp a b -> ret [a, b]
-      VTm _ v -> ret [v]
-      VSup c _ -> do
-        u <- {- mapName (`addSuffix` "v") <$> -} varName c
+    down :: SVal -> RefM ((), [SVal])
+    down (v, allowed) = case view v of
+      _ | closed v -> ret allowed []
+      VLam c -> do
+        u <- c
         b <- vApp v $ vVar u
-        first ((u, b):) <$> down b
-      _ -> ret []
+        ret (insertSet u allowed) [b]
+      VApp a b     -> ret allowed [a, b]
+      VTm _ v      -> ret allowed [v]
+      _            -> ret allowed []
+     where
+      ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force_ es
 
-    up :: Set Name -> Val -> [(Name, Val)] -> [(Val, (Set Name, Val))] -> RefM (Set Name, Val)
-    up allowed _ ((u, b): vs) m = do
-      (s, x) <- up ({- insertSet u -} allowed) b vs m
-      (,) (delete u s) <$> vLam (vVar u) x
-    up allowed v [] ts
-     | closed v  = pure (mempty, v)
-     | otherwise = case view v of
-      VSup{} -> impossible
-      VVar -> pure (singletonSet ({-mapName (`addSuffix` "w") $ -} name v), v)
-      VCon -> pure (mempty, v)
-      VFun -> pure (mempty, v)
-      VTm t _ | [(sa, a)] <- map snd ts -> (,) sa <$> vTm (name v) t a
-      VMetaApp{} | [(sa, a), (sb, b)] <- map snd ts, isSubsetOf sb allowed -> (,) (sa <> sb) <$> vApp a b
-      VMetaApp{} | [_, (sb, _)] <- map snd ts -> error' $ quoteNF' v >>= \v -> fmap ("TODO: " <>) $ print $ pprint (v, (toList sb, toList allowed))
-      VApp{} | [(sa, a), (sb, b)] <- map snd ts -> (,) (sa <> sb) <$> vApp a b
+    up :: SVal -> () -> [(SVal, PruneSet)] -> RefM PruneSet
+    up (v, allowed) _ ts = case view v of
+      _ | closed v  -> pure $ Just mempty
+      VSup{} -> case sequence (map snd ts) of
+        Nothing -> pure Nothing
+        Just [sa] -> pure $ Just sa
+        _ -> impossible
+      VVar | name v `member` allowed -> pure $ Just mempty
+           | otherwise               -> pure Nothing
+      VCon -> pure $ Just mempty
+      VFun -> pure $ Just mempty
+      VTm _ _ -> case sequence (map snd ts) of
+        Nothing -> pure Nothing
+        Just [sa] -> pure $ Just sa
+        _ -> impossible
+      VMetaApp dep -> case map snd ts of
+        [Nothing, _] -> pure Nothing
+        [Just sa, Nothing] -> do
+           n <- metaArgNum v
+           pure $ Just $ sa <.> singleton dep (singletonSet $ n - 1)
+        [Just sa, Just sb] -> pure $ Just (sa <.> sb)
+        _ -> impossible
+      VApp{} -> case sequence (map snd ts) of
+        Nothing -> pure Nothing
+        Just [sa, sb] -> pure $ Just (sa <.> sb)
+        _ -> impossible
       _ -> undefined
-
 
 -------------
 
@@ -92,13 +131,13 @@ conv aa bb = go aa bb where
     _ | va == vb -> pure ()
     (VMeta, _) -> updateClosed va fb
     (_, VMeta) -> updateClosed vb fa
-    (VSup c _, _) -> do
-      v <- varName c <&> vVar
+    (VLam c, _) -> do
+      v <- c <&> vVar
       va' <- vApp fa v
       vb' <- vApp fb v
       go va' vb'
-    (_, VSup c _) -> do
-      v <- varName c <&> vVar
+    (_, VLam c) -> do
+      v <- c <&> vVar
       va' <- vApp fa v
       vb' <- vApp fb v
       go va' vb'
