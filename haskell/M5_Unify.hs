@@ -22,28 +22,13 @@ update v e = do
   () <- updatable v e
   updateMeta v e
 
-
-
-metaSpine v_ = force v_ >>= \v -> case view v of
-  VMeta          -> pure (v, [])
-  VApp_ a b _ Just{} -> force b >>= \case
-    u@(view -> VVar) -> metaSpine a <&> second (name u:)
-    _ -> undefined
-  _ -> impossible
-
 metaArgNum v_ = force v_ >>= \v -> case view v of
   VMeta          -> pure 0
   VApp_ a _ _ Just{} -> (+1) <$> metaArgNum a
   _ -> undefined
 
-solveMeta a b = do
-  traceShow $ "solve " <<>> showM a <<>> " := " <<>> showM b
-  (h, reverse -> vs) <- metaSpine a
-  b' <- closeTm (fromListSet vs) b
-  update h =<< vLams (map vVar vs) b'
-
 updateClosed a b
-  = solveMeta a b --closeTm mempty b >>= update a
+  = closeTm b >>= update a
 
 
 type SVal = (Val, Set Name)
@@ -64,10 +49,10 @@ pruneMeta m (toList -> is) = do
   v <- eval mempty t
   update m v
 
-closeTm :: Set Name -> Val -> RefM Val
-closeTm allowed v_ = do
+closeTm :: Val -> RefM Val
+closeTm v_ = do
   v <- force_ v_
-  let sv = (v, allowed)
+  let sv = (v, mempty)
   m <- go [sv]
   () <- case fromJust $ lookup sv m of
     Just s -> forM_ (assocs s) \(v, s) -> pruneMeta v s
@@ -124,28 +109,38 @@ expr a = foreground yellow a
 conv  :: Val -> Val -> RefM ()
 conv aa bb = go aa bb where
 
+ ff v | VApp_ _ b _ Just{} <- view v = do
+   b <- force b
+   pure (v, case view b of VVar -> Just b; _ -> Nothing)
+ ff v = pure (v, Nothing)
+
  go a_ b_ = do
   (fa, va) <- force' a_
   (fb, vb) <- force' b_
   case (view va, view vb) of
-    _ | va == vb -> pure ()
-    (VMeta, _) -> updateClosed va fb
-    (_, VMeta) -> updateClosed vb fa
-    (VLam c, _) -> do
-      v <- c <&> vVar
-      va' <- vApp fa v
-      vb' <- vApp fb v
-      go va' vb'
-    (_, VLam c) -> do
-      v <- c <&> vVar
-      va' <- vApp fa v
-      vb' <- vApp fb v
-      go va' vb'
-    (VMetaApp{}, VMetaApp{}) -> solveMeta va fb  -- TODO!
-    (VMetaApp{}, _) -> solveMeta va fb
-    (_, VMetaApp{}) -> solveMeta vb fa
-    (VApp f a, VApp g b) -> go f g >> go a b
-    _ -> do
+   _ | va == vb -> pure ()
+   (VMeta, _) -> updateClosed va fb
+   (_, VMeta) -> updateClosed vb fa
+   _ -> do
+    (va, arga) <- ff va
+    (vb, argb) <- ff vb
+    case (view va, view vb) of
+     (VApp_ a _ _ Just{}, _) | Just u <- arga -> vLam u fb >>= \x -> go a x
+     (_, VApp_ a _ _ Just{}) | Just u <- argb -> vLam u fa >>= \x -> go x a
+     (VApp_ a _ _ Just{}, _) -> vConst fb >>= \x -> go a x
+     (_, VApp_ a _ _ Just{}) -> vConst fa >>= \x -> go x a
+     (VLam c, _) -> do
+       v <- c <&> vVar
+       va' <- vApp fa v
+       vb' <- vApp fb v
+       go va' vb'
+     (_, VLam c) -> do
+       v <- c <&> vVar
+       va' <- vApp fa v
+       vb' <- vApp fb v
+       go va' vb'
+     (VApp f a, VApp g b) -> go f g >> go a b
+     _ -> do
       sa <- print =<< force_ aa
       sb <- print =<< force_ bb
       error $ fromString $ chars $ "Expected type\n " <> expr sb <> "\ninstead of\n " <> expr sa

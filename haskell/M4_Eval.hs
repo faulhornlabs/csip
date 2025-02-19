@@ -6,7 +6,7 @@ module M4_Eval
 
   , Val (Con, Fun)
   , View (VSup, VLam, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
-  , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams
+  , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams, vConst
   , name, rigid, closed, view
   , force_, force', force
 
@@ -352,6 +352,12 @@ vLam :: Val -> Val -> RefM Val
 vLam n v = do
   t <- quoteTm' v
   vLam_ n t
+
+vConst :: Val -> RefM Val
+vConst v = do
+  n <- mkName "_"
+  vLam (vVar n) v
+
 
 vLams [] x = pure x
 vLams (v: vs) x = vLams vs x >>= vLam v
