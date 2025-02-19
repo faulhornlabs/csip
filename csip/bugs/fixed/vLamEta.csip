@@ -1,0 +1,11 @@
+# elab
+
+Env : Type -> Type
+EntryEnv : Nat -> (a : Type) -> a -> Env a
+
+ite : (a : Type) -> a -> a -> a
+
+envLookup : (a : Type) -> Env a -> a
+envLookup _ (EntryEnv n _ v) = ite _ v v
+
+3

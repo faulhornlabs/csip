@@ -349,9 +349,20 @@ vLam_ n t = do
   vSup c $ vVar <$> ns
 
 vLam :: Val -> Val -> RefM Val
-vLam n v = do
-  t <- quoteTm' v
-  vLam_ n t
+vLam n v = force v >>= \case
+  fv | VApp a b <- view fv -> force b >>= \case
+    b | VVar <- view b, b == n -> do
+      ta <- quoteTm' a
+      let (c@(Lams vs _), ns) = mkCombinator (name n) ta
+      case last vs of
+        "_" -> pure a
+        _ -> def   -- TODO: optimize this
+    _ -> def
+  _ -> def
+ where
+  def = do
+    t <- quoteTm' v
+    vLam_ n t
 
 vConst :: Val -> RefM Val
 vConst v = do
@@ -532,7 +543,7 @@ quoteNF v_ = force v_ >>= \v ->
     VSel i j e -> rSel i j <$> quoteNF e
     VMatch n a b c _ -> rMatch n <$> quoteNF a <*> quoteNF b <*> quoteNF c
     VRet a -> rRet <$> quoteNF a
-    VTm{} -> impossible
+    _ -> impossible
 
 rMatch n a b c = "match" :@ RVar n :@ a :@ b :@ c
 rSel i j e = "sel" :@ RVar (NNat $ fromIntegral i) :@ RVar (NNat $ fromIntegral j) :@ e

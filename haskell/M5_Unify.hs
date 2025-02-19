@@ -27,8 +27,9 @@ metaArgNum v_ = force v_ >>= \v -> case view v of
   VApp_ a _ _ Just{} -> (+1) <$> metaArgNum a
   _ -> undefined
 
-updateClosed a b
-  = closeTm b >>= update a
+updateClosed a b = do
+  traceShow $ "update " <<>> showM a <<>> "\n := " <<>> showM b
+  closeTm b >>= update a
 
 
 type SVal = (Val, Set Name)
@@ -51,13 +52,13 @@ pruneMeta m (toList -> is) = do
 
 closeTm :: Val -> RefM Val
 closeTm v_ = do
-  v <- force_ v_
+  v <- force v_
   let sv = (v, mempty)
   m <- go [sv]
   () <- case fromJust $ lookup sv m of
     Just s -> forM_ (assocs s) \(v, s) -> pruneMeta v s
     Nothing -> undefined
-  pure v
+  pure v_
  where
   go sv = downUp down up sv
    where
@@ -69,10 +70,9 @@ closeTm v_ = do
         b <- vApp v $ vVar u
         ret (insertSet u allowed) [b]
       VApp a b     -> ret allowed [a, b]
-      VTm _ v      -> ret allowed [v]
       _            -> ret allowed []
      where
-      ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force_ es
+      ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force es
 
     up :: SVal -> () -> [(SVal, PruneSet)] -> RefM PruneSet
     up (v, allowed) _ ts = case view v of
@@ -85,10 +85,6 @@ closeTm v_ = do
            | otherwise               -> pure Nothing
       VCon -> pure $ Just mempty
       VFun -> pure $ Just mempty
-      VTm _ _ -> case sequence (map snd ts) of
-        Nothing -> pure Nothing
-        Just [sa] -> pure $ Just sa
-        _ -> impossible
       VMetaApp dep -> case map snd ts of
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
@@ -107,8 +103,10 @@ closeTm v_ = do
 expr a = foreground yellow a
 
 conv  :: Val -> Val -> RefM ()
-conv aa bb = go aa bb where
-
+conv aa bb = do
+  traceShow $ "check " <<>> showM aa <<>> "\n ==? " <<>> showM bb
+  go aa bb
+ where
  ff v | VApp_ _ b _ Just{} <- view v = do
    b <- force b
    pure (v, case view b of VVar -> Just b; _ -> Nothing)
