@@ -158,8 +158,6 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- implict arguments in rules should be explicitly given by braces
-- type classes are not supported
 - object level functions should be eta-expanded
 - top level object language lets should be at the end
 - pattern matching compiled to object level constructs is not supported
@@ -174,8 +172,6 @@ The following limitations and bugs are planned to be lifted:
 - recursive definitions are not properly printed
 - closed data types and closed functions are not supported
 - sharing between values are sometimes lost during printing
-- flexible values cannot be refined to Pi types
-- no pruning during metavariable solving
 - types are not shown in printed output
 - implicit/explicit distinction of lambdas and applications are missing
 - multiline comments interferes with layout rules

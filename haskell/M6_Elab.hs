@@ -29,9 +29,15 @@ matchCode env v_ = force v_ >>= \v -> case view v of
     _ -> False
   _ -> pure False
 
-matchPi :: Icit -> Val -> RefM (Icit, Val, Val)
-matchPi _icit v_ = force v_ >>= \v -> case view v of
-  x | flexible x -> undefined
+matchPi :: Env -> Icit -> Val -> RefM (Icit, Val, Val)
+matchPi env icit v_ = force v_ >>= \v -> case view v of
+  x | flexible x -> do
+    m1 <- freshMeta env >>= evalEnv env
+    m2 <- freshMeta env >>= evalEnv env
+    let pi = case icit of Impl -> CHPi; Expl -> CPi
+    v2 <- vApp pi m1 >>= \x -> vApp x m2
+    conv v v2
+    pure (icit, m1, m2)
   VApp f pb -> force f >>= \f -> case view f of
     VApp p pa -> force p >>= \case
       CPi  -> pure (Expl, pa, pb)
@@ -143,7 +149,7 @@ check_ env r ty = case r of
     tb <- check env b ty'
     pure $ TVal arr `TApp` ta `TApp` tb
   RHLam n Hole a -> do
-    (icit, pa, pb) <- matchPi Impl ty
+    (icit, pa, pb) <- matchPi env Impl ty
     case icit of
       Impl -> do
         (v, t) <- unlam n pb
@@ -154,7 +160,7 @@ check_ env r ty = case r of
    True | Just lam <- lookupGlobalName "Lam" env -> do
     check env (RVar lam `RApp` r) ty
    _ -> do
-    (icit, pa, pb) <- matchPi Expl ty
+    (icit, pa, pb) <- matchPi env Expl ty
     case icit of
       Expl -> do
         (v, t) <- unlam n pb
@@ -255,7 +261,7 @@ infer_ env r = case r of
     pure (pi `TApp` ta `TApp` tLam n tb, CType)
   RView a b -> do
     (ta, ty) <- infer env a
-    (Expl, pa, pb) <- matchPi Expl ty
+    (Expl, pa, pb) <- matchPi env Expl ty
     n <- mkName "t"
     (v, vb) <- unlam n pb
     tb <- check (define True n v pa env) b vb
@@ -270,7 +276,7 @@ infer_ env r = case r of
    True | Expl <- i, Just app <- lookupGlobalName "App" env ->
         infer env $ RApp (RApp (RVar app) a) b
    _ -> do
-    (icit, pa, pb) <- matchPi i ty
+    (icit, pa, pb) <- matchPi env i ty
     if icit == i then do
         tb <- check env b pa
         n <- lamName "t" pb

@@ -1,4 +1,3 @@
-# source
 # elab
 
 Ty : Type
@@ -142,7 +141,6 @@ true : {G} -> Tm G tbool
 tfalse : {G} -> Tm G tbool
  = right tt
 
-/*
 ifthenelse : {G A} -> Tm G (arr tbool (arr A (arr A A)))
  = lam (lam (lam (case v2 (lam v2) (lam v1))))
 
@@ -162,7 +160,5 @@ mul : {G} -> Tm G (arr nat (arr nat nat))
 fact : {G} -> Tm G (arr nat nat)
  = lam (rec v0 (lam (lam (app (app mul (suc v1)) v0)))
                (suc zero))
-*/
 
-
-rec
+fact

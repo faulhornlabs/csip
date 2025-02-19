@@ -1,4 +1,3 @@
-# source
 # elab
 
 Pair : Type -> Type -> Type
@@ -93,10 +92,10 @@ EvalTm : {G A} -> Tm G A -> EvalCon G -> EvalTy A
           EvalVar
           (\t env a-> t (pair env a))
           (\t u env-> t env (u env))
-/* TODO
+
 test : Tm nil (fun (fun i i) (fun i i))
   = lam (lam (app (var (vs vz)) (app (var (vs vz))
              (app (var (vs vz)) (app (var (vs vz))
              (app (var (vs vz)) (app (var (vs vz)) (var vz))))))))
-*/
-EvalTm
+
+test

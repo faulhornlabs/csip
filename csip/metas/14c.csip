@@ -19,5 +19,5 @@ Pair : Type -> Type -> Type
 pair : {A B} -> A -> B -> Pair A B
   = \a b P p -> p a b
 
-// TODO:   pair 12 id
-pair 12 (id {Type})
+// unsolved meta
+pair 12 id

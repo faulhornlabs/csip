@@ -353,7 +353,7 @@ vLam n v = force v >>= \case
   fv | VApp a b <- view fv -> force b >>= \case
     b | VVar <- view b, b == n -> do
       ta <- quoteTm' a
-      let (c@(Lams vs _), ns) = mkCombinator (name n) ta
+      let (Lams vs _, _) = mkCombinator (name n) ta
       case last vs of
         "_" -> pure a
         _ -> def   -- TODO: optimize this
