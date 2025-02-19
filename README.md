@@ -164,12 +164,12 @@ The following limitations and bugs are planned to be lifted:
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - there is no module system
-- support multiple object codes simultaneously
-- Bugs caused by not checking unsupported language constructs.  
-  The compiler may go into infinite loop because of this.
+- foralls for functions and constructors should be explicitly given
+- no support for multiple object codes
+- missing check that pattern matching is not allowed on object language constructors
+- missing check that the main expression should be Code in staging mode
 - local definitions are not supported
 - local do notation is not supported
-- user defined operator precedences are not supported
 - recursive definitions are not properly printed
 - closed data types and closed functions are not supported
 - sharing between values are sometimes lost during printing
@@ -178,7 +178,7 @@ The following limitations and bugs are planned to be lifted:
 - multiline comments interferes with layout rules
 - string literal printing is not the inverse of the string literal parsing
 - desugared `(a b : c)` does not share `c`
-
+- user defined operator precedences are not supported
 
 
 ## Performance
