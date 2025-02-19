@@ -158,6 +158,7 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
+- type classes are not supported
 - object level functions should be eta-expanded
 - top level object language lets should be at the end
 - pattern matching compiled to object level constructs is not supported
