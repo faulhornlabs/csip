@@ -11,13 +11,15 @@ module M4_Eval
   , force_, force', force
 
   , eval, evalClosed      -- Tm  -> Val
---  , quoteTm   -- Val -> Tm
+  , quoteTm'   -- Val -> Tm
   , quoteNF   -- Val -> Raw
   , quoteNF'
 
   , showMetaEnv, lookupMeta, updateMeta
   , updateRule
   , addRule
+
+  , spine, forcedSpine
   ) where
 
 import M1_Base
@@ -312,14 +314,14 @@ vApp a_ u = do
           | VCon <- view h, MkName "PairStr" _ <- name h
           , VCon <- view va, NString va <- name va
           , VCon <- view vb, NString vb <- name vb
-                   -> pure $ Con $ NString $ vb <> va
+                   -> pure $ Con $ NString $ va <> vb
         _          -> def
       | MkName "EqStr" _ <- name a -> forcedSpine u >>= \case
         (h, [va, vb])
           | VCon <- view h, MkName "PairStr" _ <- name h
           , VCon <- view va, NString va <- name va
           , VCon <- view vb, NString vb <- name vb
-                   -> pure $ Con $ NNat $ if vb == va then 1 else 0
+                   -> pure $ Con $ NNat $ if va == vb then 1 else 0
         _          -> def
     VSup c vs      -> evalCombinator c $ vs ++ [u]
     VFun           -> lookupRule (name a) >>= \f -> app_ aa f u
@@ -448,7 +450,7 @@ vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
 
 vSel :: Int -> Int -> Val -> RefM Val
 vSel i j v = spine v >>= \case
-  (h, vs) | VCon <- view h, length vs == i -> pure $ vs !! (i-j-1)
+  (h, vs) | VCon <- view h, length vs == i -> pure $ vs !! j
   _ -> mkValue "sel" True True $ VSel i j v
 
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
@@ -465,13 +467,15 @@ metaDep v = case view v of
   VMatch _ _ _ _ m -> m
   _ -> Nothing
 
-spine v_ = force v_ >>= \v -> case view v of
-  VApp_ a b Nothing Nothing -> spine a <&> second (b:)
-  _        -> pure (v, [])
+spine v_ = second reverse <$> f v_ where
+  f v_ = force v_ >>= \v -> case view v of
+    VApp_ a b Nothing Nothing -> f a <&> second (b:)
+    _        -> pure (v, [])
 
-forcedSpine v_ = force v_ >>= \v -> case view v of
-  VApp_ a b Nothing Nothing -> (\b t -> second (b:) t) <$> force b <*> spine a
-  _        -> pure (v, [])
+forcedSpine v_ = second reverse <$> f v_ where
+  f v_ = force v_ >>= \v -> case view v of
+    VApp_ a b Nothing Nothing -> (\b t -> second (b:) t) <$> force b <*> f a
+    _        -> pure (v, [])
 
 
 -----------

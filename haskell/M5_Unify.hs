@@ -1,5 +1,5 @@
 module M5_Unify
-  ( conv
+  ( unify
   ) where
 
 import M1_Base
@@ -102,9 +102,9 @@ closeTm v_ = do
 
 expr a = foreground yellow a
 
-conv  :: Val -> Val -> RefM ()
-conv aa bb = do
-  traceShow $ "check " <<>> showM aa <<>> "\n ==? " <<>> showM bb
+unify :: Val -> Val -> RefM ()
+unify aa{-actual-} bb{-expected-} = do
+  traceShow $ "conv " <<>> showM aa <<>> "\n ==? " <<>> showM bb
   go aa bb
  where
  ff v | VApp_ _ b _ Just{} <- view v = do
@@ -112,13 +112,14 @@ conv aa bb = do
    pure (v, case view b of VVar -> Just b; _ -> Nothing)
  ff v = pure (v, Nothing)
 
+ go :: Val -> Val -> RefM ()
  go a_ b_ = do
   (fa, va) <- force' a_
   (fb, vb) <- force' b_
   case (view va, view vb) of
    _ | va == vb -> pure ()
-   (VMeta, _) -> updateClosed va fb
-   (_, VMeta) -> updateClosed vb fa
+   (VMeta, _) -> updateClosed va fb >> pure ()
+   (_, VMeta) -> updateClosed vb fa >> pure ()
    _ -> do
     (va, arga) <- ff va
     (vb, argb) <- ff vb
