@@ -295,14 +295,17 @@ vApp a_ u = do
       | MkName "Succ" _ <- name a -> force u >>= \fu -> case view fu of
         VCon | NNat t <- name fu -> pure $ Con $ NNat $ t + 1
         _          -> def
-      | "dec" <- name a -> force u >>= \fu -> case view fu of
-        VCon | NNat t <- name fu -> pure $ Con $ NNat $ t - 1
+      | "dec" <- name a -> spine u >>= \(h, vs) -> case name h of
+        NNat t -> pure $ Con $ NNat $ t - 1
+        MkName "Succ" _ | [v] <- vs -> pure v
         _          -> def
-      | "tail" <- name a -> force u >>= \fu -> case view fu of
-        VCon | NString (_: t) <- name fu -> pure $ Con $ NString t
+      | "tail" <- name a -> spine u >>= \(h, vs) -> case name h of
+        NString (_: t) -> pure $ Con $ NString t
+        MkName "Cons" _ | [_, v] <- vs -> pure v
         _          -> def
-      | "head" <- name a -> force u >>= \fu -> case view fu of
-        VCon | NString (h: _) <- name fu -> pure $ Con $ NString [h]
+      | "head" <- name a -> spine u >>= \(h, vs) -> case name h of
+        NString (h: _) -> pure $ Con $ NString [h]
+        MkName "Cons" _ | [v, _] <- vs -> pure v
         _          -> def
       | MkName "AppendStr" _ <- name a -> forcedSpine u >>= \case
         (h, [va, vb])
@@ -432,9 +435,9 @@ addRule lhs rhs = do
       x <- foldr (uncurry $ compilePat f) m $ zip ps $ map TVar ns
       pure $ case (name c, ns) of
         (MkName "Cons" _, [a, b])
-          -> TMatch "Cons" e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
+          -> TMatch (name c) e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
         (MkName "Succ" _, [a])
-          -> TMatch "Succ" e (TLet a (TApp "dec" e) $ tLazy x) f
+          -> TMatch (name c) e (TLet a (TApp "dec" e) $ tLazy x) f
         _ -> TMatch (name c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
     TGen _ -> m   -- TODO?
     TVal v -> force v >>= \v -> case view v of
@@ -449,19 +452,11 @@ vSel i j v = spine v >>= \case
   _ -> mkValue "sel" True True $ VSel i j v
 
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
-vMatch n@"Succ" v ok fail = force v >>= \fv -> case view fv of
-  VCon | NNat i <- name fv, i > 0 -> vEval ok
-       | NNat _ <- name fv        -> vEval fail
-  _ -> mkValue "match" True True $ VMatch n v ok fail Nothing
-vMatch n@"Cons" v ok fail = force v >>= \fv -> case view fv of
-  VCon | NString (_:_) <- name fv -> vEval ok
-       | NString ""    <- name fv -> vEval fail
-  _ -> mkValue "match" True True $ VMatch n v ok fail Nothing
 vMatch n v ok fail = spine v >>= \case
-  (h, _vs) | VCon <- view h ->
-    if name h == n
-      then vEval ok
-      else vEval fail
+  (h, _vs) | MkName "Succ" _ <- n, NNat i <- name h, i > 0 -> vEval ok
+  (h, _vs) | MkName "Cons" _ <- n, NString (_:_) <- name h -> vEval ok
+  (h, _vs) | VCon <- view h, name h == n          -> vEval ok
+  (h, _vs) | VCon <- view h                       -> vEval fail
   (h, _) -> mkValue "match" True True $ VMatch n v ok fail $ metaDep h
 
 metaDep v = case view v of
@@ -612,7 +607,7 @@ quoteTm__ vtm opt v_ = do
 -----------------------
 
 instance Print Val where
-  print v = quoteNF v >>= print
+  print v = quoteNF' v >>= print
 
 -- TODO
 instance PPrint Val where

@@ -64,7 +64,7 @@ doCmds cmd s = do
     "sugar"     -> sh =<< (parse s :: RefM (ExpTree' Desug))
     "scope"     -> sh =<< (parse s :: RefM Raw)
     "elab"      -> sh =<< (parse s :: RefM Tm)
-    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed)
+    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF)
     "type"      -> sh =<< (parse s >>= inferTop <&> snd >>= quoteNF')
     "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF')
     "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage)
