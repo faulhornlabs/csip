@@ -560,10 +560,10 @@ quoteTm_ vtm opt v =
 
 quoteTm__ vtm opt v_ = do
   v <- force__ v_
-  ma_ <- go v
+  (ma_, vs_) <- runWriter $ go v  -- writer is needed for the right order
   let
     ma v = fromJust $ lookup v ma_
-    vs = [k | (k, True) <- assocs ma_]
+    vs = filter ma vs_
 
     ff' = force__ >=> ff
 
@@ -591,7 +591,7 @@ quoteTm__ vtm opt v_ = do
  where
   force__ = if vtm then force_ else force
 
-  go v = walk ch share up [v]
+  go v wst = walk ch share up [v]
    where
     share v _ = case view v of
        _ | opt, closed v -> pure False
@@ -600,7 +600,7 @@ quoteTm__ vtm opt v_ = do
        VCon  -> pure False
        _ -> pure True
 
-    up _ sh _ = pure sh
+    up v sh _ = tell wst [v] >> pure sh
 
     ch v = fmap ((,) False) $ mapM force__ $ case view v of
       _ | opt, closed v -> []
