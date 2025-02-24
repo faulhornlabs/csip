@@ -1,0 +1,13 @@
+# elab
+# stage
+
+import Builtins
+
+Int : Ty
+
+F : (Code Int -> Code Int -> Code Int) -> Code Int
+
+G : Code (Int -> Int -> Int)
+
+// F \x y -> App (App (G x) y)
+F G

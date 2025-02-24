@@ -1,0 +1,37 @@
+
+Ap : {a b} -> (a ~> b) -> a -> b
+
+Nat       : Type
+ProdNat   : Type
+PairNat   : Nat -> Nat -> ProdNat
+Succ      : Nat -> Nat
+EqNat     : ProdNat -> Nat
+
+String    : Type
+ProdStr   : Type
+PairStr   : String -> String -> ProdStr
+Cons      : String -> String -> String
+AppendStr : ProdStr -> String
+EqStr     : ProdStr -> Nat
+
+Ty        : Type
+Arr       : Ty -> Ty -> Ty
+Prod      : Ty -> Ty -> Ty
+
+Code      : Ty -> Type
+Lam       : {a b : Ty} -> (a -> b) -> Arr a b
+App       : {a b} -> Arr a b -> a -> b
+Let       : {a b : Ty} -> a -> (a -> b) -> b
+TopLet    : {a b : Ty} -> a -> a -> b -> b
+Pair      : {a b : Ty} -> a -> b -> Prod a b
+Fst       : {a b} -> Prod a b -> a
+Snd       : {a b} -> Prod a b -> b
+
+instanceOf : (a : Type) -> a
+
+Bool : Type
+True  : Bool
+False : Bool
+
+
+"end of Builtins"

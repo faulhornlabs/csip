@@ -20,11 +20,13 @@ extra-doc-files:
   README.md
 extra-source-files:
   .ghci
-data-dir: .
+  test/**/*.csip
+  perftests/**/*.csip
+data-dir: src
 data-files:
   precedences
-  csip/**/*.csip
-  perftests/**/*.csip
+  Builtins.csip
+  Prelude.csip
 
 source-repository head
   type:     git
@@ -40,9 +42,12 @@ executable csip
     , cryptohash-md5        >= 0.11 && < 0.12
     , directory             >= 1.3  && < 1.4
 
-  hs-source-dirs: haskell
+  hs-source-dirs: src
+  autogen-modules:
+      Paths_csip
   other-modules:
-      M0_Prelude
+      Paths_csip
+    , M0_Prelude
     , M1_Base
     , M2_OpSeq
     , M3_Parse
@@ -51,11 +56,8 @@ executable csip
     , M6_Elab
     , M7_Stage
     , M8_IO
-    , Paths_csip
   main-is:
       M9_Main.hs
-  autogen-modules:
-      Paths_csip
 
   default-language:
       Haskell2010
@@ -63,7 +65,7 @@ executable csip
       NoImplicitPrelude
     , BlockArguments
     , LambdaCase
-    , BangPatterns
+    , Strict
     , ViewPatterns
     , PatternSynonyms
     , NoMonomorphismRestriction

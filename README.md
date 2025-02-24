@@ -74,11 +74,11 @@ Available commands in interactive mode:
 
 You can read the documentation of Csip (currently only about the syntactic frontend) with
 
-    csip show csip/doc
+    csip show test/doc
 
 If needed, the documentation is readable without the interactive mode:
 
-    csip export csip/doc | less -R
+    csip export test/doc | less -R
 
 ## Features
 
@@ -146,12 +146,13 @@ Possible differences:
 
 Staged compilation is defined in [András Kovács's staged repository](https://github.com/AndrasKovacs/staged).
 
-Currently Csip implements a shallow form of staging;
-object code function type constructors, applications, lambdas and lets are
-inserted during elaboration. There are no splice and quote operations.
+In csip, the representations of terms and values are not affected by staged compilation.
+The representation of object code constructs are the same as the representation of user defined constructors.
+There are no splice and quote operations.
+Object code function applications and lambdas are inserted during converstion checking.
+Object code lets are inserted during elaboration.
 The staging algoritm is open normalization plus transformation of object code
 applications, lambdas and lets to raw applications, lambdas and lets.
-
 
 
 ## Limitations and bugs
@@ -159,19 +160,25 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 The following limitations and bugs are planned to be lifted:
 
 - type classes are not supported
-- top level object language lets should be at the end
+- missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
-- there is no module system
+- object code constructor definitions are not included in object code
 - foralls for functions and constructors should be explicitly given
-- no support for multiple object codes
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
+- missing check that constructors are saturated in patterns
+- missing check to rule out recursive meta solutions
+- missing documentation
+- dot patterns (in dependent pattern matching) are not supported
 - local definitions are not supported
 - local do notation is not supported
 - recursive definitions are not properly printed
 - closed data types and closed functions are not supported
 - sharing between values are sometimes lost during printing
+- `import` acts as an "include"
+- only the Builtin module can be imported
+- no support for multiple object codes
 - types are not shown in printed output
 - implicit/explicit distinction of lambdas and applications are missing
 - multiline comments interferes with layout rules
@@ -200,7 +207,6 @@ Planned performance improvements:
 - redirect graph nodes after conversion checking
 - parsing and pretty printing should be near linear time operation
 - faster supercombinator evaluation using interpreted register machines
-- use `Strict` pragma and `UNPACK` pragmas in the Haskell source files
 
 
 ## Development workflows
@@ -215,11 +221,11 @@ remove unconsitent cache during development when needed.
 ### Main development workflow
 
     cabal repl
-    > :main csip
+    > :main test
     <<< start_loop >>>
     <<< edit source files >>>
     > :reload
-    > :main diff csip
+    > :main diff test
     <<< goto start_loop >>>
 
 
@@ -245,16 +251,37 @@ is compiled to
 
 ```haskell
 \a b -> (do
-    c = Add a b
-    b_1 = Mul c c
-    c_1 = Add
-      (Mul c (Mul b_1 b_1))
-      b
-    b_2 = Mul c_1 c_1
-    b_3 = Mul c_1 (Mul b_2 b_2)
-    Mul b_3 b_3
+    c = Add (do
+          c = Add a b
+          Mul c (do
+                b_1 = Mul c c
+                Mul b_1 b_1
+              )) b
+    b_1 = Mul c (do
+          b_1 = Mul c c
+          Mul b_1 b_1
+        )
+    Mul b_1 b_1
   )
 ```
 
-given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast.csip).
+given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast.csip).
+
+and compiled to
+
+```haskell
+do
+  sqr = \a -> Mul a a
+  \v b -> sqr (do
+        c = Add (do
+              c = Add v b
+              Mul c
+                (sqr (sqr c))
+            ) b
+        Mul c
+          (sqr (sqr c))
+      )
+```
+
+given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast2.csip).
 

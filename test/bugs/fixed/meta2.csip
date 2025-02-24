@@ -1,0 +1,6 @@
+# eval
+
+fmap : ({a : Type} -> a) -> (a : Type) -> a
+fmap f a = f {a}
+
+fmap

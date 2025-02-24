@@ -1,0 +1,10 @@
+# eval
+# stage
+
+import Builtins
+
+A : Ty
+B : A
+
+a := B
+B

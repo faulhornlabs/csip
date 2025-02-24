@@ -1,0 +1,101 @@
+# elab
+
+Pair : Type -> Type -> Type
+ = \A B-> (Pair : Type)(pair : A -> B -> Pair) -> Pair
+
+pair : {A B} -> A -> B -> Pair A B
+ = \a b Pair pair-> pair a b
+
+proj1 : {A B} -> Pair A B -> A
+ = \p-> p _ (\x y-> x)
+
+proj2 : {A B} -> Pair A B -> B
+ = \p-> p _ (\x y-> y)
+
+Top : Type
+ = (Top : Type)(tt : Top) -> Top
+
+tt : Top
+ = \Top tt-> tt
+
+Bot : Type
+ = (Bot : Type) -> Bot
+
+Ty : Type
+ = (ty  : Type)
+   (i   : ty)
+   (fun : ty -> ty -> ty)
+ -> ty
+
+i : Ty
+ = \_ i2 _-> i2
+
+fun : Ty -> Ty -> Ty
+ = \A B ty i fun-> fun (A ty i fun) (B ty i fun)
+
+Con : Type
+ = (Con : Type)
+   (nil  : Con)
+   (cons : Con -> Ty -> Con)
+ -> Con
+
+nil : Con
+ = \Con nil cons-> nil
+
+cons : Con -> Ty -> Con
+ = \G A Con nil cons-> cons (G Con nil cons) A
+
+Var : Con -> Ty -> Type
+ = \G A->
+   (Var : Con -> Ty -> Type)
+   (vz  : {G A} -> Var (cons G A) A)
+   (vs  : {G B A} -> Var G A -> Var (cons G B) A)
+ -> Var G A
+
+vz : {G A} -> Var (cons G A) A
+ = \Var vz vs-> vz
+
+vs : {G B A} -> Var G A -> Var (cons G B) A
+ = \x Var vz vs-> vs (x Var vz vs)
+
+Tm : Con -> Ty -> Type
+ = \G A->
+   (Tm  : Con -> Ty -> Type)
+   (var : {G A} -> Var G A -> Tm G A)
+   (lam : {G A B} -> Tm (cons G A) B -> Tm G (fun A B))
+   (app : {G A B} -> Tm G (fun A B) -> Tm G A -> Tm G B)
+ -> Tm G A
+
+var : {G A} -> Var G A -> Tm G A
+ = \x Tm var lam app-> var x
+
+lam : {G A B} -> Tm (cons G A) B -> Tm G (fun A B)
+ = \t Tm var lam app-> lam (t Tm var lam app)
+
+app : {G A B} -> Tm G (fun A B) -> Tm G A -> Tm G B
+ = \t u Tm var lam app-> app (t Tm var lam app) (u Tm var lam app)
+
+EvalTy : Ty -> Type
+ = \A-> A _ Bot (\A B-> A -> B)
+
+EvalCon : Con -> Type
+ = \G-> G _ Top (\D A-> Pair D (EvalTy A))
+
+EvalVar : {G A} -> Var G A -> EvalCon G -> EvalTy A
+ = \x-> x (\G A-> EvalCon G -> EvalTy A)
+          (\env-> proj2 env)
+          (\rec env-> rec (proj1 env))
+
+EvalTm : {G A} -> Tm G A -> EvalCon G -> EvalTy A
+ = \t->
+        t _
+          EvalVar
+          (\t env a-> t (pair env a))
+          (\t u env-> t env (u env))
+
+test : Tm nil (fun (fun i i) (fun i i))
+  = lam (lam (app (var (vs vz)) (app (var (vs vz))
+             (app (var (vs vz)) (app (var (vs vz))
+             (app (var (vs vz)) (app (var (vs vz)) (var vz))))))))
+
+test

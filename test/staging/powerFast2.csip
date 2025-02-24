@@ -1,0 +1,34 @@
+# stage
+
+import Builtins
+
+Parity : Type
+Even : Parity
+Odd  : Parity
+
+Half : Type
+MkHalf : Parity -> Nat -> Half
+
+half : Nat -> Half
+half 0 = MkHalf Even 0
+half 1 = MkHalf Odd  0
+half (Succ (Succ (half --> MkHalf p n))) = MkHalf p (Succ n)
+
+// object code types and functions (foreign function interface)
+Int : Ty
+One : Int
+Mul : Int -> Int -> Int
+Add : Int -> Int -> Int
+
+sqr : Int -> Int
+sqr := \a -> Mul a a
+
+(+) = Add
+
+(^) : Int -> Nat -> Int
+a ^ 1 = a
+a ^ 0 = One
+a ^ (half --> MkHalf Even k) =                 sqr (a ^ k)
+a ^ (half --> MkHalf Odd  k) = (c := a; Mul c (sqr (c ^ k)))
+
+\a b -> ((a + b)^5 + b)^10
