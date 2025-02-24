@@ -23,8 +23,8 @@ matchPi :: Bool -> Env -> Icit -> Val -> RefM (Tm -> Tm, Icit, Val, Val)
 matchPi cov env icit v_ = force v_ >>= \v -> do
  let
    def = do
-    m1 <- freshMeta env >>= evalEnv env
-    m2 <- freshMeta env >>= evalEnv env
+    (_, m1) <- freshMeta' env
+    (_, m2) <- freshMeta' env
     let pi = case icit of Impl -> CHPi; Expl -> CPi
     v2 <- vApps pi [m1, m2]
     f <- if cov then conv env v v2 else conv env v2 v
@@ -95,30 +95,59 @@ freshMeta env = do
   m <- mkName' "m" <&> TVal . vMeta
   pure $ TGen $ TApps m $ reverse $ TVar <$> boundVars env
 
+freshMeta' :: Env -> RefM (Tm, Val)
+freshMeta' env = do
+  m <- freshMeta env
+  (,) m <$> evalEnv env m
+
 typeName = mapName (`addSuffix` "_t")
 
 ---------
 
-conv :: Env
+evalId :: Maybe (a -> a) -> a -> a
+evalId = fromMaybe id
+
+conv
+  :: Env
   -> Val               -- actual type
   -> Val               -- expected type
   -> RefM (Tm -> Tm)   -- transformation from actual to expected
-conv env a b = do
-  (ha, _va) <- spine a
-  (hb, _vb) <- spine b
+conv env a b = evalId <$> conv_ env a b
+
+conv_ :: Env
+  -> Val               -- actual type
+  -> Val               -- expected type
+  -> RefM (Maybe (Tm -> Tm))   -- transformation from actual to expected (Nothing: identity)
+conv_ env a b = do
+  (ha, va) <- spine a
+  (hb, vb) <- spine b
   case () of
+
+    () | "Pi" <- name ha, "Pi" <- name hb, [m1, m2] <- va, [m3, m4] <- vb
+       -> do
+
+      q <- conv_ env m3 m1
+
+      v <- mkName "v"
+      vv <- vVar_ v
+      let env' = define True v vv m3 env
+
+      q_v <- evalEnv env' $ evalId q $ TVar v
+      c1 <- vApp m2 q_v
+      c2 <- vApp m4 vv
+      h_v <- conv_ env' c1{- m2 (q v) -} c2{- m4 v -}
+
+      pure $ case (h_v, q) of
+        (Nothing, Nothing) -> Nothing
+        _ -> Just \t -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
 
     () | MkName "Code" _ <- name ha, "Pi" <- name hb
        , Just ap <- get "App", Just code <- get "Code", Just arr <- get "Arr" -> do
 
-      m1  <- freshMeta env
-      m1' <- evalEnv env m1
-      m2  <- freshMeta env
-      m2' <- evalEnv env m2
-      m3  <- freshMeta env
-      m3' <- evalEnv env m3
-      m4  <- freshMeta env
-      m4' <- evalEnv env m4
+      (m1, m1')  <- freshMeta' env
+      (m2, m2')  <- freshMeta' env
+      (_ , m3')  <- freshMeta' env
+      (_ , m4')  <- freshMeta' env
 
       v <- mkName "v"
       vv <- vVar_ v
@@ -126,29 +155,25 @@ conv env a b = do
       ar <- vApp code =<< vApps arr [m1', m2']
       f <- conv env a ar{- Code (Arr m1 m2) -}
 
-      cm3 <- vConst m3'
-      p <- vApps CPi [m4', cm3]
-      g <- conv env p{- m4 -> m3 -} b
+      cm4 <- vConst m4'
+      p <- vApps CPi [m3', cm4]
+      g <- conv env p{- m3 -> m4 -} b
 
       c1 <- vApp code m1'
       c2 <- vApp code m2'
-      h <- conv (define True v vv c1 env) c2{- Code m2 -} m3'{- m3 -}  --  (Code m1 -> Code m2)  ==>  (Code m1 -> m3)
+      h_v <- conv (define True v vv c1 env) c2{- Code m2 -} m4'{- m4 -}  --  (Code m1 -> Code m2)  ==>  (Code m1 -> m4)
 
-      q <- conv env m4'{- m4 -} c1{- Code m1 -}
+      q <- conv env m3'{- m3 -} c1{- Code m1 -}
 
-      pure \t -> g $ tLam v $ h $ TApps (TVal ap) [m1, m2, f t, q $ TVar v]
+      pure $ Just \t -> g $ tLam v $ h_v $ TApps (TVal ap) [m1, m2, f t, q $ TVar v]
 
-    () | MkName "Code" _ <- name hb, "Pi" <- name ha
+    () | "Pi" <- name ha, MkName "Code" _ <- name hb
        , Just la <- get "Lam", Just code <- get "Code", Just arr <- get "Arr" -> do
 
-      m1  <- freshMeta env
-      m1' <- evalEnv env m1
-      m2  <- freshMeta env
-      m2' <- evalEnv env m2
-      m3  <- freshMeta env
-      m3' <- evalEnv env m3
-      m4  <- freshMeta env
-      m4' <- evalEnv env m4
+      (m1, m1')  <- freshMeta' env
+      (m2, m2')  <- freshMeta' env
+      (_ , m3')  <- freshMeta' env
+      (_ , m4')  <- freshMeta' env
 
       v <- mkName "v"
       vv <- vVar_ v
@@ -156,21 +181,21 @@ conv env a b = do
       ar <- vApp code =<< vApps arr [m1', m2']
       f <- conv env ar{- Code (Arr m1 m2) -} b
 
-      cm3 <- vConst m3'
-      p <- vApps CPi [m4', cm3]
-      g <- conv env a p{- m4 -> m3 -}
+      cm4 <- vConst m4'
+      p <- vApps CPi [m3', cm4]
+      g <- conv env a p{- m3 -> m4 -}
 
       c1 <- vApp code m1'
       c2 <- vApp code m2'
-      h <- conv (define True v vv c1 env) m3'{- m3 -} c2{- Code m2 -}  --  (Code m1 -> m3)  ==>  (Code m1 -> Code m2)
+      h_v <- conv (define True v vv c1 env) m4'{- m4 -} c2{- Code m2 -}  --  (Code m1 -> m4)  ==>  (Code m1 -> Code m2)
 
-      q <- conv env c1{- Code m1 -} m4'{- m4 -}
+      q <- conv env c1{- Code m1 -} m3'{- m3 -}
 
-      pure \t -> f $ TApps (TVal la) [m1, m2, tLam v $ h $ TApp (g t) (q $ TVar v)]
+      pure $ Just \t -> f $ TApps (TVal la) [m1, m2, tLam v $ h_v $ TApp (g t) (q $ TVar v)]
 
     _ -> do
       () <- unify a b
-      pure id
+      pure Nothing
  where
   get n = lookupGlobal' n env
 
@@ -181,8 +206,7 @@ insertH :: Env -> RefM (Tm, Val) -> RefM (Tm, Val)
 insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
   Nothing -> pure (e, t)
   Just (_, b) -> do
-    m <- freshMeta env
-    vm <- evalEnv env m
+    (m, vm) <- freshMeta' env
     t' <- vApp b vm
     insertH env $ pure (TApp e m, t')
 
@@ -282,7 +306,7 @@ infer_ env r = case r of
     (,) (tLam n ta) <$> vApps CHPi [vt, f]
   Hole -> do
     t <- freshMeta env
-    m <- freshMeta env >>= evalEnv env
+    (_, m) <- freshMeta' env
     pure (t, m)
   RVar n@NNat{}    -> pure (TVal $ Con n, "Nat")
   RVar n@NString{} -> pure (TVal $ Con n, "String")

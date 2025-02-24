@@ -146,12 +146,13 @@ Possible differences:
 
 Staged compilation is defined in [András Kovács's staged repository](https://github.com/AndrasKovacs/staged).
 
-Currently Csip implements a shallow form of staging;
-object code function type constructors, applications, lambdas and lets are
-inserted during elaboration. There are no splice and quote operations.
+In csip, the representations of terms and values are not affected by staged compilation.
+The representation of object code constructs are the same as the representation of user defined constructors.
+There are no splice and quote operations.
+Object code function applications and lambdas are inserted during converstion checking.
+Object code lets are inserted during elaboration.
 The staging algoritm is open normalization plus transformation of object code
 applications, lambdas and lets to raw applications, lambdas and lets.
-
 
 
 ## Limitations and bugs

@@ -6,7 +6,7 @@ module M4_Eval
 
   , Val (Con, Fun)
   , View (VSup, VLam, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
-  , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams, vConst
+  , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams, vConst, isConst
   , name, rigid, closed, view
   , force_, force', force
 
@@ -179,17 +179,7 @@ data H a = MkH Name a
 idH (MkH n _) = n
 instance Eq (H a) where (==) = (==) `on` idH
 instance Ord (H a) where compare = compare `on` idH
-{-
-ungenTm :: Tm -> Tm
-ungenTm = go  where
-  go = \case
-    TGen e -> eval [] e >>= quoteTm >>= go
-    TVal v -> pure $ TVal v
-    TVar n -> pure $ TVar n
-    TApp a b -> TApp <$> go a <*> go b
-    TLet n a b -> TLet n <$> go a <*> go b
-    TSup (Lams ns e) ts -> TSup
--}
+
 tmToRaw :: Tm -> RefM Raw
 tmToRaw t = do
   (r, ds) <- basic t
@@ -358,10 +348,10 @@ vLam n v = force v >>= \case
   fv | VApp a b <- view fv -> force b >>= \case
     b | VVar <- view b, b == n -> do
       ta <- quoteTm' a
-      let (Lams vs _, _) = mkCombinator (name n) ta
-      case last vs of
-        "_" -> pure a
-        _ -> def   -- TODO: optimize this
+      let (c, _) = mkCombinator (name n) ta
+      if isConstComb c
+        then pure a
+        else def   -- TODO: optimize this
     _ -> def
   _ -> def
  where
@@ -374,6 +364,13 @@ vConst v = do
   n <- mkName "_"
   vLam (vVar n) v
 
+isConstComb (Lams vs _) = last vs == "_"
+
+isConst :: Val -> Bool
+isConst v = case view v of
+  VTm _ v -> isConst v
+  VSup c _ -> isConstComb c
+  _ -> False
 
 vLams [] x = pure x
 vLams (v: vs) x = vLams vs x >>= vLam v
