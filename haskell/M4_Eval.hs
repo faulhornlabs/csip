@@ -82,7 +82,9 @@ mkCombinator n t = (Lams (map nameStr nsA) $ f (fromList $ zip nsA [0..]) t, ns_
 instance PPrint Combinator where
   pprint (Lams ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
-varName (Lams ns _) = mkName $ last ns
+varName (Lams ns _) = mkName $ case last ns of
+  "_" -> "v"
+  n -> n
 
 pattern VLam n <- VSup (varName -> n) _
 

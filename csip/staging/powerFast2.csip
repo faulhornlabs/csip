@@ -6,7 +6,6 @@ Code : Ty -> Type
 Arr  : Ty -> Ty -> Ty
 Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
 App  : {a b} -> Code (Arr a b) -> Code a -> Code b
-Let  : {a b} -> Code a -> Code a -> Code b -> Code b
 Succ : Nat -> Nat
 // end of builtins
 
@@ -28,8 +27,7 @@ One :: Int
 Mul :: Int -> Int -> Int
 Add :: Int -> Int -> Int
 
-sqr : Code Int -> Code Int
-    = \a -> (b := a; Mul b b)
+sqr := \a -> Mul a a
 
 (+) = Add
 

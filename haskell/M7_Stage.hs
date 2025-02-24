@@ -18,8 +18,11 @@ unquote = f mempty
     RVar (MkName "Pair" _) :@ _ :@ _ :@ a :@ b -> "Pair" .@ f e a .@ f e b
     RVar (MkName "Fst" _) :@ _ :@ _ :@ a -> "Fst" .@ f e a
     RVar (MkName "Snd" _) :@ _ :@ _ :@ a -> "Snd" .@ f e a
+    RVar (MkName "App" _) :@ _ :@ _ :@ a -> f e a
     RVar (MkName "App" _) :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
     RVar (MkName "Lam" _) :@ _ :@ _ :@ a -> f e a
+    RVar (MkName "TopLet" _) :@ _ :@ _ :@ RVar n :@ RVar a :@ b | isVarName a -> f (insert n a e) b
+    RVar (MkName "TopLet" _) :@ _ :@ _ :@ RVar n :@ a :@ b -> rLet n (f e a) (f e b)
     RVar (MkName "Let" _) :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
     RVar (MkName "Let" _) :@ _ :@ _ :@ a :@ E.Lam n b -> rLet n (f e a) (f e b)
     a :@ b -> f e a :@ f e b
