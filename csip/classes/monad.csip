@@ -1,0 +1,181 @@
+# eval
+
+// builtins
+instanceOf : (a : Type) -> a
+Succ : Nat -> Nat
+
+
+// class Functor m  where
+//   fmap : (a -> b) -> m a -> m b
+Functor : (Type -> Type) -> Type
+MkFunctor :
+     {m : Type -> Type}
+  -> ({a b} -> (a -> b) -> m a -> m b)
+  -> Functor m
+
+// TODO: fmap : {m a b} -> Functor m => (a -> b) -> m a -> m b
+fmap : {m} -> Functor m => {a b} -> (a -> b) -> m a -> m b
+fmap {_} {MkFunctor f} = f
+
+
+// class Functor m => Applicative m  where
+//   pure  : a -> m a
+//   (<*>) : m (a -> b) -> m a -> m b
+Applicative : (Type -> Type) -> Type
+MkApplicative :
+     {m : Type -> Type}
+  -> Functor m
+  -> ({a} -> a -> m a)
+  -> ({a b} -> m (a -> b) -> m a -> m b)
+  -> Applicative m
+
+getFunctor : {m} -> Applicative m => Functor m
+getFunctor {m} {MkApplicative d _ _} = d
+
+pure : {m} -> Applicative m => {a} -> a -> m a
+pure {_} {MkApplicative _ p _} = p
+
+app : {m} -> Applicative m => {a b} -> m (a -> b) -> m a -> m b
+// TODO: app {_} {MkApplicative _ _ f} = f
+app {m} {MkApplicative _ _ f} = f
+
+
+// class Applicative m => Monad m where
+//   join : m (m a) -> m a
+Monad : (Type -> Type) -> Type
+MkMonad :
+     {m : Type -> Type}
+  -> Applicative m
+  -> ({a} -> m (m a) -> m a)
+  -> Monad m
+
+getApplicative : {m} -> Monad m => Applicative m
+getApplicative {m} {MkMonad d _} = d
+
+join : {m} -> Monad m => {a} -> m (m a) -> m a
+join {m} {MkMonad _ f} = f
+
+
+// Maybe monad
+
+Maybe   : Type -> Type
+Nothing : {a : Type} -> Maybe a
+Just    : {a : Type} -> a -> Maybe a
+
+// instance Functor (Maybe a) where
+//   fmap f Nothing = Nothing
+//   fmap f (Just a) = Just (f a)
+
+fmapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
+fmapMaybe f Nothing = Nothing
+fmapMaybe f (Just x) = Just (f x)
+
+instanceOf (Functor Maybe) = MkFunctor fmapMaybe
+
+// instance Applicative (Maybe a) where
+//   pure = Just
+//   Just f <*> Just a = Just (f a)
+//   _ <*> _ = Nothing
+
+pureMaybe : {a : Type} -> a -> Maybe a
+pureMaybe = Just
+
+appMaybe : {a b : Type} -> Maybe (a -> b) -> Maybe a -> Maybe b
+appMaybe (Just f) (Just x) = Just (f x)
+appMaybe _ _ = Nothing
+
+instanceOf (Applicative Maybe) = MkApplicative (instanceOf (Functor Maybe)) pureMaybe appMaybe
+
+
+// instance Monad (Maybe a) where
+//   join (Just a) = a
+//   join Nothing = Nothing
+
+joinMaybe : {a} -> Maybe (Maybe a) -> Maybe a
+joinMaybe Nothing = Nothing
+joinMaybe (Just x) = x
+
+instanceOf (Monad Maybe) = MkMonad (instanceOf (Applicative Maybe)) joinMaybe
+
+
+
+// List monad
+
+List   : Type -> Type
+Nil    : {a : Type} -> List a
+LCons  : {a : Type} -> a -> List a -> List a
+
+fmapList : {a b : Type} -> (a -> b) -> List a -> List b
+fmapList f Nil = Nil
+fmapList f (LCons x xs) = LCons (f x) (fmapList f xs)
+
+instanceOf (Functor List) = MkFunctor fmapList
+
+pureList : {a : Type} -> a -> List a
+pureList x = LCons x Nil
+
+append : {a} -> List a -> List a -> List a
+append Nil xs = xs
+append (LCons x xs) ys = LCons x (append xs ys)
+
+joinList : {a} -> List (List a) -> List a
+joinList Nil = Nil
+joinList (LCons x xs) = append x (joinList xs)
+
+appList : {a b : Type} -> List (a -> b) -> List a -> List b
+// TODO: appList fs xs = joinList (fmapList (\f -> fmapList f xs) fs)
+appList {a} {b} fs xs = joinList (fmapList (\f -> fmapList {a} {b} f xs) fs)
+
+instanceOf (Applicative List) = MkApplicative (instanceOf (Functor List)) pureList appList
+
+instanceOf (Monad List) = MkMonad (instanceOf (Applicative List)) joinList
+
+enum : Nat -> Nat -> List Nat
+enum a 0 = Nil
+enum a (Succ b) = LCons a (enum (Succ a) b)
+
+Bool  : Type
+False : Bool
+True  : Bool
+
+Unit : Type
+TT   : Unit
+
+guard : Bool -> List Unit
+guard True = pure {List} TT  // TODO: pure TT
+guard False = Nil
+
+eq : Nat -> Nat -> Bool
+eq 0 0 = True
+eq (Succ a) (Succ b) = eq a b
+eq _ _ = False
+
+add : Nat -> Nat -> Nat
+add 0 n = n
+add (Succ n) m = Succ (add n m)
+
+mul : Nat -> Nat -> Nat
+mul 0 _ = 0
+mul (Succ n) m = add m (mul n m)
+
+bind : {m} -> Monad m => {a b} -> m a -> (a -> m b) -> m b
+bind {m} {d} ma f = join {m} {d} (fmap {m} {getFunctor {m} {getApplicative {m} {d}}} f ma)
+
+the : (a : Type) -> a -> a = \_ x -> x
+
+// TODO: join (Just (Just 1))
+// TODO: the (Maybe Nat) (join (Just Nothing))
+// TODO: the (Maybe Nat) (join Nothing)
+
+Tuple3 : Type -> Type -> Type -> Type
+MkTuple3 : {a b c} -> a -> b -> c -> Tuple3 a b c
+
+pita : Nat -> List (Tuple3 Nat Nat Nat)
+pita n =
+  bind {List} (enum 1 n) \m ->
+  bind {List} (enum 1 m) \k ->
+  bind {List} (enum 1 k) \l ->
+  bind {List} (guard (eq (mul m m) (add (mul k k) (mul l l)))) \_ ->
+  pure {List} (MkTuple3 m k l)
+
+pita 10

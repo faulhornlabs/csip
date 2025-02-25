@@ -13,8 +13,9 @@ pattern CType, CPi, CHPi :: Val
 pattern CType = "Type"
 pattern CPi   = "Pi"
 pattern CHPi  = "HPi"
+pattern CCPi  = "CPi"   --   t => s
 
-data Icit = Impl | Expl
+data Icit = Impl | ImplClass | Expl
   deriving Eq
 
 matchCode :: Env -> Val -> RefM (Tm -> Tm, Tm)
@@ -34,15 +35,16 @@ matchPi cov env icit v_ = force v_ >>= \v -> do
    def = do
     (_, m1) <- freshMeta' env
     (_, m2) <- freshMeta' env
-    let pi = case icit of Impl -> CHPi; Expl -> CPi
+    let pi = case icit of Impl -> CHPi; Expl -> CPi; _ -> impossible
     v2 <- vApps pi [m1, m2]
     f <- if cov then conv env v v2 else conv env v2 v
     pure (f, icit, m1, m2)
  case view v of
   VApp f pb -> force f >>= \f -> case view f of
     VApp p pa -> force p >>= \case
-      CPi  -> pure (id, Expl, pa, pb)
-      CHPi -> pure (id, Impl, pa, pb)
+      CPi  -> pure (id, Expl,      pa, pb)
+      CHPi -> pure (id, Impl,      pa, pb)
+      CCPi -> pure (id, ImplClass, pa, pb)
       _ -> def
     _   -> def
   _     -> def
@@ -50,7 +52,8 @@ matchPi cov env icit v_ = force v_ >>= \v -> do
 matchHPi v_ = force v_ >>= \v -> case view v of
   VApp f pb -> force f >>= \f -> case view f of
     VApp p pa -> force p <&> \case
-      CHPi -> Just (pa, pb)
+      CHPi -> Just (Impl,      pa, pb)
+      CCPi -> Just (ImplClass, pa, pb)
       _ ->    Nothing
     _ -> pure Nothing
   _   -> pure Nothing
@@ -63,10 +66,11 @@ data Env = MkEnv
   , localTypes  :: Map Name Val
   , globals     :: Map Name (Val, Val)
   , globalNames :: Map NameStr Name          -- TODO: remove
+  , isLHS       :: Bool    -- True if lhs is checked
   }
 
 memptyEnv :: Env
-memptyEnv = foldr def (MkEnv mempty mempty mempty mempty mempty)
+memptyEnv = foldr def (MkEnv mempty mempty mempty mempty mempty False)
   [("Nat", "Nat"), ("String", "String"), ("Type", CType)]
  where
   def (n, v) = defineGlob n v CType
@@ -217,10 +221,14 @@ conv_ env a b = do
 insertH :: Env -> RefM (Tm, Val) -> RefM (Tm, Val)
 insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
   Nothing -> pure (e, t)
-  Just (_, b) -> do
+  Just (ImplClass, _, b) | Just iof <- lookupGlobal' "instanceOf" env -> do
+    m <- freshMeta env
+    insertH env $ pure (TApp e (TApp (TVal iof) m), b)
+  Just (Impl, _, b) -> do
     (m, vm) <- freshMeta' env
     t' <- vApp b vm
     insertH env $ pure (TApp e m, t')
+  _ -> undefined
 
 vVar_ n = pure $ vVar n
 
@@ -261,7 +269,7 @@ check_ env r ty = case r of
         (v, t) <- unlam n pb
         ta <- check (define True n v pa env) a t
         pure $ f $ tLam n ta
-      Expl -> undefined
+      _ -> undefined
   RLam n Hole a -> do
     (f, icit, pa, pb) <- matchPi True env Expl ty
     case icit of
@@ -272,11 +280,12 @@ check_ env r ty = case r of
       Impl -> do
         n' <- lamName "z" pb
         f <$> check env (RHLam n' Hole r) ty
+      _ -> undefined
   _ -> matchHPi ty >>= \case
-    Just (_, pb) -> do
+    Just (Impl, _, pb) | not (isLHS env) -> do
       n' <- lamName "z" pb
       check env (RHLam n' Hole r) ty
-    Nothing -> case r of
+    _ -> case r of
       RLet n t a b -> do
         (ta, vta) <- case t of
           Hole -> infer env a
@@ -365,7 +374,7 @@ infer_ env r = case r of
     (tb, vtb) <- infer (define False n va vta env) b
     pure (if onTop env then tb else TLet n ta tb, vtb)
   RRule a b {- | onTop env -} -> do
-    (ta, vta) <- infer env a
+    (ta, vta) <- infer (env {isLHS = True}) a
     tb <- check env b vta
     addRule (boundVars env) ta tb
     pure (TVal CType, CType)  -- TODO?
@@ -375,6 +384,10 @@ infer_ env r = case r of
     v <- vVar_ n
     tb <- check (define True n v va env) b CType
     pure (pi `TApp` ta `TApp` tLam n tb, CType)
+  RCPi a b -> do
+    ta <- check env a CType
+    tb <- check env b CType
+    pure (TVal CCPi `TApp` ta `TApp` tb, CType)
   RView a b -> do
     (ta, ty) <- infer env a
     (f, Expl, pa, pb) <- matchPi True env Expl ty
@@ -390,15 +403,21 @@ infer_ env r = case r of
  where
   inferApp i env a b = infer env a >>= \(av, ty) -> do
     (f, icit, pa, pb) <- matchPi True env i ty
-    if icit == i then do
+    case () of
+     _ | icit == ImplClass, i == Impl -> do
+        tb <- check env b pa
+        pure (TApp (f av) tb, pb)
+       | icit == i -> do
         tb <- check env b pa
         n <- lamName "t" pb
         v <- evalEnv' env n tb
         b <- vApp pb v
         pure (TApp (f av) tb, b)
-      else if icit == Impl then do
+       | icit == Impl -> do
         infer env $ RApp (RHApp a Hole) b
-      else error "baj"
+       | icit == ImplClass, Just iof <- lookupGlobalName "instanceOf" env -> do
+        infer env $ RApp (RHApp a (RVar iof `RApp` Hole)) b
+       | otherwise -> error "baj"
 
 --------------------
 
