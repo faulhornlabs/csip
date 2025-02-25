@@ -1,0 +1,6 @@
+# elab
+
+f : (a : Type) -> a -> Nat
+f _ x = f _ x
+
+f

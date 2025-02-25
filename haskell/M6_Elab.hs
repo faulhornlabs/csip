@@ -367,7 +367,7 @@ infer_ env r = case r of
   RRule a b {- | onTop env -} -> do
     (ta, vta) <- infer env a
     tb <- check env b vta
-    addRule ta tb
+    addRule (boundVars env) ta tb
     pure (TVal CType, CType)  -- TODO?
   (getPi -> Just (pi, n, a, b)) -> do
     ta <- check env a CType

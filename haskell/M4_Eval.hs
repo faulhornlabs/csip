@@ -41,21 +41,34 @@ instance Ord DB where compare = compare `on` dbIndex
 -------------
 
 data Combinator         -- supercombinator (rigid, closed)
-  = Lams [NameStr] (Tm_ DB)     -- \x1 ... xN -> t
+  = Lams !Bool{-rigid-} ![NameStr] !(Tm_ DB)     -- \x1 ... xN -> t
+
+rigidCombinator (Lams r _ _) = r
 
 evalCombinator :: Combinator -> [Val] -> RefM Val
-evalCombinator (Lams ns t) vs = eval (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+evalCombinator (Lams _ ns t) vs = eval (fromList $ zip (zipWith MkDB [0..] ns) vs) t
 
 evalCombinatorTm :: Combinator -> [Tm] -> RefM Tm
-evalCombinatorTm (Lams ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+evalCombinatorTm (Lams _ ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
 
 mkCombinator :: Name -> Tm_ Name -> (Combinator, [Name])
-mkCombinator n t = (Lams (map nameStr nsA) $ f (fromList $ zip nsA [0..]) t, ns_)   where
+mkCombinator n t = (Lams (rig t) (map nameStr nsA) $ f (fromList $ zip nsA [0..]) t, ns_)   where
 
   ns' = fvs t
   isconst = not $ member n ns'
   ns_ = filter (/= n) $ toList ns'
   nsA = ns_ ++ [if isconst then rename "_" n else n]
+
+  rig = \case
+    TGen e -> rig e
+    TVar{} -> True
+    TVal v -> rigid v
+    TApp a b -> rig a && rig b
+    TLet _ a b -> rig a && rig b
+    TSup c ts -> rigidCombinator c && all rig ts
+    TMatch _ a b c -> rig a && rig b && rig c
+    TSel _ _ e -> rig e
+    TRet e -> rig e
 
   fvs = \case
     TGen e -> fvs e
@@ -80,9 +93,9 @@ mkCombinator n t = (Lams (map nameStr nsA) $ f (fromList $ zip nsA [0..]) t, ns_
     TRet e -> TRet $ f env e
 
 instance PPrint Combinator where
-  pprint (Lams ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
+  pprint (Lams _ ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
-varName (Lams ns _) = mkName $ case last ns of
+varName (Lams _ ns _) = mkName $ case last ns of
   "_" -> "v"
   n -> n
 
@@ -110,7 +123,7 @@ instance PPrint a => PPrint (Tm_ a) where
     TApp a b -> "@" :@ pprint a :@ pprint b
     TSup c ts -> foldl (:@) (pprint c) $ map pprint ts
     TLet n a b -> zVar ["=",";"] :@ pprint n :@ pprint a :@ pprint b
-    TVal v -> pprint $ name v
+    TVal v -> zVar ["{","}"] :@ pprint v
     _ -> undefined
 
 -------------
@@ -206,7 +219,7 @@ tmToRaw t = do
         TVal v | n@NString{} <- name v -> pure (RVar n)
         TVal v | n@NConst{}  <- name v -> pure (RVar n)
         TVal v | VCon  <- view v -> pure (RVar $ name v)
-        TVal v | n <- name v -> force_ v >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
+        TVal v | n <- name v -> force_ {- ? -} v >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
         TGen e -> eval' env e >>= quoteTm >>= f env
         TVar n  -> pure $ RVar n
         TApp a b -> (:@) <$> f env a <*> f env b
@@ -244,10 +257,10 @@ pattern VMetaApp a <- VApp_ _ _ _ (Just a)
 -----
 
 data Val = MkVal
-  { name   :: Name
-  , rigid  :: Bool     -- no meta inside   -- forceAll may change it from False to True
-  , closed :: Bool                         -- forceAll may change it from False to True if not rigid
-  , view   :: View Val
+  { name   :: !Name
+  , rigid  :: !Bool     -- no meta inside   -- forceAll may change it from False to True
+  , closed :: !Bool                         -- forceAll may change it from False to True if not rigid
+  , view   :: !(View Val)
   }
 -- invariant:  name v == name w  ==>  view v == view w
 
@@ -338,7 +351,7 @@ vApps v [] = pure v
 vApps v (a: as) = vApp v a >>= \x -> vApps x as
 
 vSup :: Combinator -> [Val] -> RefM Val
-vSup c vs = mkValue "lam" (all rigid vs) (all closed vs) $ VSup c vs
+vSup c vs = mkValue "lam" (rigidCombinator c && all rigid vs) (all closed vs) $ VSup c vs
 
 vLam_ :: Val -> Tm -> RefM Val
 vLam_ n t = do
@@ -366,7 +379,7 @@ vConst v = do
   n <- mkName "_"
   vLam (vVar n) v
 
-isConstComb (Lams vs _) = last vs == "_"
+isConstComb (Lams _ vs _) = last vs == "_"
 
 isConst :: Val -> Bool
 isConst v = case view v of
@@ -403,16 +416,17 @@ lookupRule n = readRef ruleEnv <&> fromJust . lookup n
 updateRule :: Name -> Val -> RefM ()
 updateRule n b = modifyRef ruleEnv $ insert n b
 
-addRule :: Tm -> Tm -> RefM ()
-addRule lhs rhs = do
+addRule :: [Name] -> Tm -> Tm -> RefM ()
+addRule (fromListSet -> boundvars) lhs_ rhs_ = do
+  (lhs, rhs) <- trRule boundvars (lhs_, rhs_)
   (n, ns) <- ruleName [] lhs
   old <- lookupRule n
-  new <- compileLHS (TVal old) ns lhs $ TRet rhs
+  new <- compileLHS (TVal old) ns lhs . TRet =<< {-metaToVarTm-} pure rhs
   updateRule n =<< evalClosed new
   pure ()
  where
   ruleName ns = \case
-    TVal v -> pure (name v, ns)
+    TVal (Fun n) -> pure (n, ns)
     TApp a b -> do
       n <- mkName $ case b of
         TVar m -> nameStr m
@@ -422,35 +436,32 @@ addRule lhs rhs = do
 
   compileLHS :: Tm -> [Name] -> Tm -> Tm -> RefM Tm
   compileLHS old (n: ns) (TApp a b) rhs = do
-    e <- compilePat (tLazy $ TApps old $ TVar <$> (reverse $ n: ns)) b (TVar n) $ pure rhs
+    e <- compilePat (boundvars <> fromListSet (n: ns)) (tLazy $ TApps old $ TVar <$> (reverse $ n: ns)) b (TVar n) $ pure rhs
     compileLHS old ns a (tLam n e)
-  compileLHS _ _ (TVal Fun{}) rhs = pure rhs
+  compileLHS _ [] (TVal Fun{}) rhs = pure rhs
   compileLHS _ _ _ _ = undefined
 
-  compilePat f p e m = case p of
+  compilePat bv f p e m = case p of
     TVar n -> TLet n e <$> m
-    TView g p -> compilePat f p (TApp g e) m
-    TApps (TVal c) ps | VCon <- view c -> do
+    TView g p -> compilePat bv f p (TApp g e) m
+    TApps (TVal (Con c)) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
-      x <- foldr (uncurry $ compilePat f) m $ zip ps $ map TVar ns
-      pure $ case (name c, ns) of
+      x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
+      pure $ case (c, ns) of
         (MkName "Cons" _, [a, b])
-          -> TMatch (name c) e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
+          -> TMatch (c) e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
         (MkName "Succ" _, [a])
-          -> TMatch (name c) e (TLet a (TApp "dec" e) $ tLazy x) f
-        _ -> TMatch (name c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
-    TGen _ -> m   -- TODO?
-    TVal v -> force v >>= \v -> case view v of
-      _     -> undefined
-    _ -> undefined
+          -> TMatch (c) e (TLet a (TApp "dec" e) $ tLazy x) f
+        _ -> TMatch (c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
+    _ -> impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
 
 vSel :: Int -> Int -> Val -> RefM Val
 vSel i j v = spine v >>= \case
   (h, vs) | VCon <- view h, length vs == i -> pure $ vs !! j
-  _ -> mkValue "sel" True True $ VSel i j v
+  _ -> mkValue "sel" (rigid v) (closed v) $ VSel i j v
 
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
 vMatch n v ok fail = spine v >>= \case
@@ -458,7 +469,7 @@ vMatch n v ok fail = spine v >>= \case
   (h, _vs) | MkName "Cons" _ <- n, NString (_:_) <- name h -> vEval ok
   (h, _vs) | VCon <- view h, name h == n          -> vEval ok
   (h, _vs) | VCon <- view h                       -> vEval fail
-  (h, _) -> mkValue "match" True True $ VMatch n v ok fail $ metaDep h
+  (h, _) -> mkValue "match" (rigid v && rigid ok && rigid fail) (closed v && closed ok && closed fail) $ VMatch n v ok fail $ metaDep h
 
 metaDep v = case view v of
   VMeta -> Just v
@@ -499,18 +510,18 @@ force_ v = case view v of
   look :: RefM (Maybe Val)
   look = lookupMeta v >>= \case
     Nothing -> pure Nothing
-    Just w -> do
-      w' <- force_ w
-      updateMeta v w'
-      pure $ Just w'
+    Just w_ -> do
+      w <- force_ w_
+      updateMeta v w
+      pure $ Just w
 
-force' v = force_ v >>= \u -> case view u of
-    VTm _ z -> f u z
-    _ -> pure (u, u)
+force' v_ = force_ v_ >>= \v -> case view v of
+    VTm _ z -> f v z
+    _ -> pure (v, v)
  where
-  f w v = force_ v >>= \u -> case view u of
+  f w v_ = force_ v_ >>= \v -> case view v of
     VTm _ z -> f w z
-    _ -> pure (w, u)
+    _ -> pure (w, v)
 
 force v = force' v <&> snd
 
@@ -606,6 +617,77 @@ quoteTm__ vtm opt v_ = do
       VApp a b -> [a, b]
       _ -> []
 
+type G = (Name, [Name])
+
+-- replace generated terms
+trRule :: Set Name -> (Tm, Tm) -> RefM (Tm, Tm)
+trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
+    lhs' <- getGens True rst st lhs
+    rhs' <- getGens False rst st rhs
+    pure (lhs', rhs')
+ where
+  getGens :: Bool -> Reader (Set Name) -> State (Map G Tm) -> Tm -> RefM Tm
+  getGens get rst st t = f t
+   where
+    eval' t = asks rst id >>= \bv -> eval (fromList [(n, vVar n) | n <- toList bv]) t
+
+    f t = case t of
+      TVal{} -> pure t
+      TVar{} -> pure t
+      TApp a b -> TApp <$> f a <*> f b
+      TGen t | get -> do
+        n <- mkName "w"
+        eval' t >>= g >>= \case
+          Nothing -> pure ()
+          Just ns -> modify st $ insert ns $ TVar n
+        pure $ TVar n
+      TGen t -> eval' t >>= g >>= \case
+        Just ns -> gets st \m -> fromMaybe (TGen t) $ lookup ns m
+        Nothing -> pure $ TGen t
+      TLet n a b -> TLet n <$> f a <*> local rst (insertSet n) (f b)
+      TSup c ts | rigidCombinator c  -> TSup c <$> mapM f ts
+      TSup c ts  -> do 
+          n <- varName c
+          t <- evalCombinatorTm c $ ts <> [TVar n]
+          tLam n <$> local rst (insertSet n) (f t)
+      t -> error' $ ("TODO(8): " <>) <$> print t
+
+  g v_ = force v_ >>= \case
+    v | VMeta <- view v -> pure $ Just (name v, [])
+      | VApp a b <- view v -> force b >>= \case
+        b | VVar <- view b -> fmap (second (name b:)) <$> g a
+        _ -> pure Nothing
+    _ -> pure Nothing
+
+{-
+metaToVar :: Val -> RefM Tm
+metaToVar v_ = force v_ >>= \v -> case v of
+  w | rigid w -> pure $ TVal w
+    | VMeta    <- view w -> pure $ TVar $ name v
+    | VApp a b <- view w -> TApp <$> metaToVar a <*> metaToVar b
+    | VSup c vs <- view w, rigidCombinator c -> TSup c <$> mapM metaToVar vs
+    | VSup c vs <- view w -> do
+          n <- varName c
+          t <- evalCombinator c $ vs <> [vVar n]
+          tLam n <$> metaToVar t
+  w -> error' $ ("TODO(1): " <>) <$> print w
+
+-- TODO: preserve sharing
+metaToVarTm :: Tm -> RefM Tm
+metaToVarTm = f where
+  f t = case t of
+    TVal v     -> metaToVar v
+    TGen x     -> TGen <$> f x
+    TVar{}     -> pure t
+    TApp t u   -> TApp <$> f t <*> f u
+    TSup c ts | rigidCombinator c  -> TSup c <$> mapM f ts
+    TSup c ts  -> do
+          n <- varName c
+          t <- evalCombinatorTm c $ ts <> [TVar n]
+          tLam n <$> f t
+    TLet x t u -> TLet x <$> f t <*> f u
+    w -> error' $ ("TODO(2): " <>) <$> print w
+-}
 
 -----------------------
 

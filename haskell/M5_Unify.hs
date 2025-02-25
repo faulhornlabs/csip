@@ -20,6 +20,7 @@ updatable v _e = lookupMeta v >>= \case
 
 update v e = do
   () <- updatable v e
+  traceShow $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
   updateMeta v e
 
 metaArgNum v_ = force v_ >>= \v -> case view v of
