@@ -4,7 +4,7 @@ module M4_Eval
   , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView)
   , Tm, tLam, tMeta
 
-  , Val (Con, Fun)
+  , Val (Con, Fun), vNat, vString
   , View (VSup, VLam, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
   , vVar, vApp, vApps, vSup, vMeta, vTm, vLam, vLams, vConst, isConst
   , name, rigid, closed, view
@@ -96,17 +96,17 @@ pattern VLam n <- VSup (varName -> n) _
 -------------
 
 data Tm_ a
-  = TVar a                  -- x
-  | TApp (Tm_ a) (Tm_ a)    -- t u
-  | TSup Combinator [Tm_ a] -- c t1 ... t(N-1)
-  | TLet a (Tm_ a) (Tm_ a)  -- x = t; u
+  = TVar !a                  -- x
+  | TApp !(Tm_ a) !(Tm_ a)    -- t u
+  | TSup !Combinator ![Tm_ a] -- c t1 ... t(N-1)
+  | TLet !a !(Tm_ a) !(Tm_ a)  -- x = t; u
 
-  | TMatch Name (Tm_ a) (Tm_ a) (Tm_ a)
-  | TSel Int Int (Tm_ a)
-  | TRet (Tm_ a)
+  | TMatch !Name !(Tm_ a) !(Tm_ a) !(Tm_ a)
+  | TSel !Int !Int !(Tm_ a)
+  | TRet !(Tm_ a)
 
-  | TGen (Tm_ a)            -- generated term
-  | TVal Val                -- closed value
+  | TGen !(Tm_ a)            -- generated term
+  | TVal !Val                -- closed value
 
 instance PPrint a => PPrint (Tm_ a) where
   pprint = \case
@@ -222,13 +222,13 @@ tmToRaw t = do
       add n env = insert n (vVar n) env
 
       isConst v
-           | NNat{}    <- name v = True
-           | NString{} <- name v = True
            | VCon      <- view v = True
            | otherwise = False
 
       f env = \case
         TVal v_ -> force_ v_ >>= \case
+           v | VNat n <- view v -> pure (RVar $ NNat n)
+           v | VString n <- view v -> pure (RVar $ NString n)
            v | isConst v -> pure (RVar $ name v)
            v -> tell wst (mempty, singleton (name v) v) >> pure (RVar $ name v)
         TGen e -> eval' env e >>= quoteTm >>= f env
@@ -253,12 +253,14 @@ data View a
   | VCon   -- constructor
   | VFun   -- function
   | VMeta  -- meta
-  | VApp_ a a (Maybe a){-accumulated result-} (Maybe a){-meta dependency-}
-  | VSup Combinator [a]     -- lambda
-  | VSel Int Int a       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
-  | VMatch Name a a a (Maybe a){-meta dependency-}
-  | VRet a
-  | VTm Tm a
+  | VApp_ !a !a !(Maybe a){-accumulated result-} !(Maybe a){-meta dependency-}
+  | VSup !Combinator ![a]     -- lambda
+  | VSel !Int !Int !a       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
+  | VMatch !Name !a !a !a !(Maybe a){-meta dependency-}
+  | VRet !a
+  | VNat !Integer
+  | VString !String
+  | VTm !Tm !a
 
 pattern VApp a b <- VApp_ a b _ _
 
@@ -283,6 +285,12 @@ instance Ord Val where
 
 pattern Con :: Name -> Val
 pattern Con i = MkVal i True True VCon
+
+vNat :: Integer -> RefM Val
+vNat i = mkName "i" <&> \n -> MkVal n True True $ VNat i
+
+vString :: String -> RefM Val
+vString i = mkName "i" <&> \n -> MkVal n True True $ VString i
 
 pattern Fun :: Name -> Val
 pattern Fun i = MkVal i True True VFun
@@ -311,33 +319,33 @@ vApp a_ u = do
   case view a of
     VCon
       | "Succ" <- name a -> force u >>= \fu -> case view fu of
-        VCon | NNat t <- name fu -> pure $ Con $ NNat $ t + 1
+        VNat t -> vNat $ t + 1
         _          -> def
       | "dec" <- name a -> spine u >>= \(h, vs) -> case name h of
-        NNat t -> pure $ Con $ NNat $ t - 1
+        _ | VNat t <- view h -> vNat $ t - 1
         "Succ" | [v] <- vs -> pure v
         _          -> def
       | "tail" <- name a -> spine u >>= \(h, vs) -> case name h of
-        NString (_: t) -> pure $ Con $ NString t
+        _ | VString (_: t) <- view h -> vString t
         "Cons" | [_, v] <- vs -> pure v
         _          -> def
       | "head" <- name a -> spine u >>= \(h, vs) -> case name h of
-        NString (h: _) -> pure $ Con $ NString [h]
+        _ | VString (h: _) <- view h -> vString [h]
         "Cons" | [v, _] <- vs -> pure v
         _          -> def
       | "AppendStr" <- name a -> forcedSpine u >>= \case
         (h, [va, vb])
-          | VCon <- view h, "PairStr" <- name h
-          , VCon <- view va, NString va <- name va
-          , VCon <- view vb, NString vb <- name vb
-                   -> pure $ Con $ NString $ va <> vb
+          | "PairStr" <- name h
+          , VString va <- view va
+          , VString vb <- view vb
+                   -> vString $ va <> vb
         _          -> def
       | "EqStr" <- name a -> forcedSpine u >>= \case
         (h, [va, vb])
-          | VCon <- view h, "PairStr" <- name h
-          , VCon <- view va, NString va <- name va
-          , VCon <- view vb, NString vb <- name vb
-                   -> pure $ Con $ NNat $ if va == vb then 1 else 0
+          | "PairStr" <- name h
+          , VString va <- view va
+          , VString vb <- view vb
+                   -> vNat $ if va == vb then 1 else 0
         _          -> def
     VSup c vs      -> evalCombinator c $ vs ++ [u]
     VFun           -> lookupRule (name a) >>= \f -> app_ aa f u
@@ -455,17 +463,22 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
   compilePat bv f p e m = case p of
     TVar n -> TLet n e <$> m
     TView g p -> compilePat bv f p (TApp g e) m
-    TApps (TVal (Con c)) ps -> do
+    TApps (TVal (getCon -> Just c)) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
       pure $ case (c, ns) of
         ("Cons", [a, b])
-          -> TMatch (c) e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
+          -> TMatch c e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
         ("Succ", [a])
-          -> TMatch (c) e (TLet a (TApp "dec" e) $ tLazy x) f
-        _ -> TMatch (c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
+          -> TMatch c e (TLet a (TApp "dec" e) $ tLazy x) f
+        _ -> TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
     _ -> impossible
+
+getCon (Con c) = Just c
+getCon (view -> VNat n) = Just $ NNat n
+getCon (view -> VString n) = Just $ NString n
+getCon _ = Nothing
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
 
@@ -476,10 +489,14 @@ vSel i j v = spine v >>= \case
 
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
 vMatch n v ok fail = spine v >>= \case
-  (h, _vs) | "Succ" <- n, NNat i <- name h, i > 0 -> vEval ok
-  (h, _vs) | "Cons" <- n, NString (_:_) <- name h -> vEval ok
+  (h, _vs) | "Succ" <- n, VNat i <- view h, i > 0 -> vEval ok
+  (h, _vs) | "Cons" <- n, VString (_:_) <- view h -> vEval ok
   (h, _vs) | VCon <- view h, name h == n          -> vEval ok
+  (h, _vs) | VNat i <- view h, NNat i == n        -> vEval ok
+  (h, _vs) | VString i <- view h, NString i == n  -> vEval ok
   (h, _vs) | VCon <- view h                       -> vEval fail
+  (h, _vs) | VNat{} <- view h                     -> vEval fail
+  (h, _vs) | VString{} <- view h                  -> vEval fail
   (h, _) -> mkValue "match" (rigid v && rigid ok && rigid fail) (closed v && closed ok && closed fail) $ VMatch n v ok fail $ metaDep h
 
 metaDep v = case view v of
@@ -553,6 +570,8 @@ quoteNF v_ = force v_ >>= \v ->
     VVar     -> pure $ RVar $ name v
     VCon     -> pure $ RVar $ name v
     VMeta    -> pure $ RVar $ name v
+    VNat n   -> pure $ RVar $ NNat n
+    VString n-> pure $ RVar $ NString n
     VFun     -> lookupRule (name v) >>= quoteNF
     VApp_ t u _ _ -> (:@) <$> quoteNF t <*> quoteNF u
     VLam c -> do
@@ -707,5 +726,8 @@ instance Print Val where
 
 -- TODO
 instance PPrint Val where
-  pprint a = pprint $ name a
+  pprint a
+    | VNat n    <- view a = pprint $ NNat n
+    | VString n <- view a = pprint $ NString n
+    | otherwise           = pprint $ name a
 

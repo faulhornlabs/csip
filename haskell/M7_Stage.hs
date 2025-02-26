@@ -53,9 +53,9 @@ convert = f  where
     E.Lam n e -> Lam (g n) $ f e
     RLet n Hole a b -> Let (g n) (f a) (f b)
     a :@ b -> App (f a) (f b)
+    RVar (NNat n)    -> Nat n
+    RVar (NString s) -> String s
     RVar n -> case n of
-      NNat n -> Nat n
-      NString s -> String s
       m | isConName m -> Con $ g n
       _ -> Var $ g n
 
