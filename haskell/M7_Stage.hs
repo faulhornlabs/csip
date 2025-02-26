@@ -14,17 +14,17 @@ unquote :: Raw -> Raw
 unquote = f mempty
  where
   f e = \case
-    RVar (MkName "Prod" _) :@ _ :@ _ :@ a :@ b -> "Prod" .@ f e a .@ f e b
-    RVar (MkName "Pair" _) :@ _ :@ _ :@ a :@ b -> "Pair" .@ f e a .@ f e b
-    RVar (MkName "Fst" _) :@ _ :@ _ :@ a -> "Fst" .@ f e a
-    RVar (MkName "Snd" _) :@ _ :@ _ :@ a -> "Snd" .@ f e a
-    RVar (MkName "App" _) :@ _ :@ _ :@ a -> f e a
-    RVar (MkName "App" _) :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
-    RVar (MkName "Lam" _) :@ _ :@ _ :@ a -> f e a
-    RVar (MkName "TopLet" _) :@ _ :@ _ :@ RVar n :@ RVar a :@ b | isVarName a -> f (insert n a e) b
-    RVar (MkName "TopLet" _) :@ _ :@ _ :@ RVar n :@ a :@ b -> rLet n (f e a) (f e b)
-    RVar (MkName "Let" _) :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
-    RVar (MkName "Let" _) :@ _ :@ _ :@ a :@ E.Lam n b -> rLet n (f e a) (f e b)
+    RVar "Prod" :@ _ :@ _ :@ a :@ b -> "Prod" .@ f e a .@ f e b
+    RVar "Pair" :@ _ :@ _ :@ a :@ b -> "Pair" .@ f e a .@ f e b
+    RVar "Fst"  :@ _ :@ _ :@ a -> "Fst" .@ f e a
+    RVar "Snd"  :@ _ :@ _ :@ a -> "Snd" .@ f e a
+    RVar "App" :@ _ :@ _ :@ a -> f e a
+    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
+    RVar "Lam" :@ _ :@ _ :@ a -> f e a
+    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ RVar a :@ b | isVarName a -> f (insert n a e) b
+    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a      :@ b -> rLet n (f e a) (f e b)
+    RVar "Let"    :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
+    RVar "Let"    :@ _ :@ _ :@      a :@ E.Lam n b -> rLet n (f e a) (f e b)
     a :@ b -> f e a :@ f e b
     RVar n -> RVar $ fromMaybe n $ lookup n e
 
@@ -53,7 +53,7 @@ convert = f  where
     E.Lam n e -> Lam (g n) $ f e
     RLet n Hole a b -> Let (g n) (f a) (f b)
     a :@ b -> App (f a) (f b)
-    RVar n -> case MkName n (-1) of
+    RVar n -> case NConst n of
       NNat n -> Nat n
       NString s -> String s
       m | isConName m -> Con $ g n

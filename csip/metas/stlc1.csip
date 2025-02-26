@@ -22,16 +22,16 @@ Bot : Type
  = (Bot : Type) -> Bot
 
 Ty : Type
- = (Ty  : Type)
-   (i   : Ty)
-   (fun : Ty -> Ty -> Ty)
- -> Ty
+ = (ty  : Type)
+   (i   : ty)
+   (fun : ty -> ty -> ty)
+ -> ty
 
 i : Ty
  = \_ i2 _-> i2
 
 fun : Ty -> Ty -> Ty
- = \A B Ty i fun-> fun (A Ty i fun) (B Ty i fun)
+ = \A B ty i fun-> fun (A ty i fun) (B ty i fun)
 
 Con : Type
  = (Con : Type)

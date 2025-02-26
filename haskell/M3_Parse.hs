@@ -2,7 +2,7 @@ module M3_Parse
   ( Phase (..)
   , ISource, Token, OpSeq
 
-  , Name (MkName, NNat, NString, NConst)
+  , Name (NNat, NString, NConst)
   , NameStr, nameStr
   , mkName, mkName', mapName, rename, isConName, isVarName
   , showMixfix, unscope
@@ -986,9 +986,12 @@ isConName _ = False
 isVarName (nameStr -> MkM [t]) = isLowerToken t
 isVarName _ = False
 
-pattern RConst n  = RVar (NConst n)
 pattern NConst' n = NConst (MkM [n])
-pattern NConst n = MkName n (-1)
+
+pattern NConst :: NameStr -> Name
+pattern NConst n <- MkName n (-1)
+  where NConst n =  MkName n (-1)
+
 pattern NNat n <- NConst' (MkNat _ n)
   where NNat n =  NConst' (MkNat (fromString $ show n) n)
 pattern NString n <- NConst' (MkString _ n)
@@ -1031,18 +1034,22 @@ instance Parse Raw where
 instance Print Raw where
   print = unscope >=> print
 
+consts :: Set NameStr
+consts = fromListSet ["Succ", "Cons", "PairStr", "EqStr", "AppendStr", "Ty", "Code", "Arr", "Prod", "Pair", "Fst", "Snd", "_", "instanceOf"]
+
+nameOf :: NameStr -> RefM Name
+nameOf n | n `member` consts = pure $ NConst n
+         | otherwise         = newId <&> MkName n
+
 scope   :: ExpTree' Desug -> RefM Raw
 scope t = runReader mempty ff  where
   ff r = f t  where
     f = \case
       RVar n -> asks r (lookup n) >>= \case
         Just m  -> pure $ RVar $ rename n m
-        Nothing -> pure $ RConst n
-      GLam es n a
-        | n == ZName NAny -> GLam <$> mapM f es <*> mkName n <*> f a
-        | otherwise -> do
-          i <- newId
-          let m = MkName n i
+        Nothing -> pure $ RVar $ NConst n
+      GLam es n a -> do
+          m <- nameOf n
           GLam <$> mapM f es <*> pure m <*> local r (insert n m) (f a)
       a :@ b -> (:@) <$> f a <*> f b
 
@@ -1051,15 +1058,15 @@ unscope t = runReader mempty ff where
   ff r = f t where
 
     f = \case
-      RVar (MkName "Pi"  _) :@ a :@ Lam n e -> f $ RPi  n a e
-      RVar (MkName "HPi" _) :@ a :@ Lam n e -> f $ RHPi n a e
-      RVar (MkName "CPi" _) :@ a :@       e -> f $ RCPi   a e
+      RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
+      RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
+      RVar "CPi" :@ a :@       e -> f $ RCPi   a e
       RVar v@(MkName n _) -> do
         k <- asks r (lookup v . fst)
         let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
         pure $ RVar m
       GLam es v a
-        | MkName n@(ZName NAny) _ <- v -> GLam <$> mapM f es <*> pure n <*> f a
+        | NConst n@"_" <- v -> GLam <$> mapM f es <*> pure n <*> f a
         | MkName n _ <- v -> do
           k <- asks r (lookup n . snd)
           let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
@@ -1105,19 +1112,17 @@ instance PPrint Source where
       | c == "\t" -> co (r "begin")   s
       | c == "\r" -> co (r "end")     s
       | c == "\v" -> co (r "nl")      s
-      | c == "\"" -> co (r "quote")   s
---      | c == "\"" -> co (res c)       s
+      | c == "\"" -> co (r "quote")   s    -- co (res c) s
     (spanCh (\c -> not $ c `elem` ['\n', '\t', '\r', '\"', '\v']) -> (as, bs))
       -> co (res as) bs
    where
-    r = srcRVar
-    res = srcRStr
+    r = pprintToken . mkToken
+    res s = pprintToken $ MkString ("\"" <> s <> "\"") (chars s)
     co a "" = a
     co a b = RVar "<>" :@ a :@ pprint b
 
-srcRVar = RVar . NConst' . mkToken
-srcRVar' s = RVar . NConst' $ MkToken s $ MkCached topPrec
-srcRStr s = RVar . NConst' $ MkString ("\"" <> s <> "\"") (chars s)
+pprintToken :: Token Desug -> ExpTree Name
+pprintToken = RVar . NConst'
 
 instance PPrint ISource where
   pprint = pprint . unISource
@@ -1131,18 +1136,13 @@ instance (Ord p, PPrint a) => PPrint (OpSeq p a) where
     f _ = impossible
 
 instance PPrint (Token a) where
---  pprint t = pprint $ MkM [t]
-
   pprint = \case
-    MkNat s _ -> srcRVar s
-    MkString s _ -> srcRVar s --RVar "Str" :@ pprint s
-    t | precedence t == strPrecedence "a" -> RVar $ NConst' $ coerce t
+    t | precedence t == strPrecedence "a" -> pprintToken $ coerce t
     t -> pprint $ showToken t
 
 instance PPrint (Mixfix a) where
   pprint (MkM [t]) | precedence t == topPrec = pprint t
-  pprint t = -- RVar $ NConst $ coerce t --
-             srcRVar' $ showMixfix t
+  pprint s = pprintToken $ MkToken (showMixfix s) $ MkCached topPrec
 
 instance PPrint Name where
   pprint = pprint . nameStr -- RVar ?

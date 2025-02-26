@@ -18,6 +18,7 @@ module M1_Base
   , chars
   , Print (print)
   , Parse (parse)
+  , hashSource
   , source
 
   , RefM, Ref, newRef, readRef, writeRef, modifyRef, stateRef
@@ -759,3 +760,17 @@ a <<>> b = (<>) <$> a <*> b
 instance IsString a => IsString (RefM a) where
   fromString s = pure $ fromString s
 
+
+djb2 :: String -> Int
+djb2 = foldl (\h c -> 33*h + ord c) 5381
+
+-- always negative
+hashString :: String -> Int
+hashString = neg . djb2
+ where
+  neg :: Int -> Int
+  neg i | i >= 0    = i + (-9223372036854775808)
+        | otherwise = i
+
+hashSource :: Source -> Int
+hashSource = hashString . chars

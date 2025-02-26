@@ -221,12 +221,16 @@ tmToRaw t = do
     ff wst = f mempty t  where
       add n env = insert n (vVar n) env
 
+      isConst v
+           | NNat{}    <- name v = True
+           | NString{} <- name v = True
+           | VCon      <- view v = True
+           | otherwise = False
+
       f env = \case
-        TVal v | n@NNat{}    <- name v -> pure (RVar n)
-        TVal v | n@NString{} <- name v -> pure (RVar n)
-        TVal v | n@NConst{}  <- name v -> pure (RVar n)
-        TVal v | VCon  <- view v -> pure (RVar $ name v)
-        TVal v | n <- name v -> force_ {- ? -} v >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
+        TVal v_ -> force_ v_ >>= \case
+           v | isConst v -> pure (RVar $ name v)
+           v -> tell wst (mempty, singleton (name v) v) >> pure (RVar $ name v)
         TGen e -> eval' env e >>= quoteTm >>= f env
         TVar n  -> pure $ RVar n
         TApp a b -> (:@) <$> f env a <*> f env b
@@ -306,31 +310,31 @@ vApp a_ u = do
   let def = mkApp aa u Nothing (metaDep a)
   case view a of
     VCon
-      | MkName "Succ" _ <- name a -> force u >>= \fu -> case view fu of
+      | "Succ" <- name a -> force u >>= \fu -> case view fu of
         VCon | NNat t <- name fu -> pure $ Con $ NNat $ t + 1
         _          -> def
       | "dec" <- name a -> spine u >>= \(h, vs) -> case name h of
         NNat t -> pure $ Con $ NNat $ t - 1
-        MkName "Succ" _ | [v] <- vs -> pure v
+        "Succ" | [v] <- vs -> pure v
         _          -> def
       | "tail" <- name a -> spine u >>= \(h, vs) -> case name h of
         NString (_: t) -> pure $ Con $ NString t
-        MkName "Cons" _ | [_, v] <- vs -> pure v
+        "Cons" | [_, v] <- vs -> pure v
         _          -> def
       | "head" <- name a -> spine u >>= \(h, vs) -> case name h of
         NString (h: _) -> pure $ Con $ NString [h]
-        MkName "Cons" _ | [v, _] <- vs -> pure v
+        "Cons" | [v, _] <- vs -> pure v
         _          -> def
-      | MkName "AppendStr" _ <- name a -> forcedSpine u >>= \case
+      | "AppendStr" <- name a -> forcedSpine u >>= \case
         (h, [va, vb])
-          | VCon <- view h, MkName "PairStr" _ <- name h
+          | VCon <- view h, "PairStr" <- name h
           , VCon <- view va, NString va <- name va
           , VCon <- view vb, NString vb <- name vb
                    -> pure $ Con $ NString $ va <> vb
         _          -> def
-      | MkName "EqStr" _ <- name a -> forcedSpine u >>= \case
+      | "EqStr" <- name a -> forcedSpine u >>= \case
         (h, [va, vb])
-          | VCon <- view h, MkName "PairStr" _ <- name h
+          | VCon <- view h, "PairStr" <- name h
           , VCon <- view va, NString va <- name va
           , VCon <- view vb, NString vb <- name vb
                    -> pure $ Con $ NNat $ if va == vb then 1 else 0
@@ -456,9 +460,9 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
       pure $ case (c, ns) of
-        (MkName "Cons" _, [a, b])
+        ("Cons", [a, b])
           -> TMatch (c) e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
-        (MkName "Succ" _, [a])
+        ("Succ", [a])
           -> TMatch (c) e (TLet a (TApp "dec" e) $ tLazy x) f
         _ -> TMatch (c) e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
     _ -> impossible
@@ -472,8 +476,8 @@ vSel i j v = spine v >>= \case
 
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
 vMatch n v ok fail = spine v >>= \case
-  (h, _vs) | MkName "Succ" _ <- n, NNat i <- name h, i > 0 -> vEval ok
-  (h, _vs) | MkName "Cons" _ <- n, NString (_:_) <- name h -> vEval ok
+  (h, _vs) | "Succ" <- n, NNat i <- name h, i > 0 -> vEval ok
+  (h, _vs) | "Cons" <- n, NString (_:_) <- name h -> vEval ok
   (h, _vs) | VCon <- view h, name h == n          -> vEval ok
   (h, _vs) | VCon <- view h                       -> vEval fail
   (h, _) -> mkValue "match" (rigid v && rigid ok && rigid fail) (closed v && closed ok && closed fail) $ VMatch n v ok fail $ metaDep h

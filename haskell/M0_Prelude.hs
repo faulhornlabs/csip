@@ -1,6 +1,7 @@
 module M0_Prelude
   ( module P
 
+  , foldl
   , lookupList
   , singletonSet, insertSet, fromListSet
   , filterMap, assocs
@@ -16,11 +17,13 @@ import Data.Function as P
   ( on, ($), (.), const, flip, id )
 import Prelude as P
   ( ($!), seq
-  , Char, String
+  , String
   , Int, Integer, fromIntegral
   , Bool (True, False), (&&), (||), not, otherwise
   , fst, snd, curry, uncurry
-  , Ordering (LT, EQ, GT)
+  )
+import Data.Char as P
+  ( Char, ord, chr
   )
 import Data.List as P
   ( group, groupBy, partition, nub, nubBy, init, inits, last, tails, (!!), (++), (\\), drop, dropWhile, take, takeWhile, filter
@@ -40,6 +43,7 @@ import Data.Map as P
 
 import Prelude as P
   ( Eq ((==)), (/=)
+  , Ordering (LT, EQ, GT)
   , Ord (compare, (<=), (>=), (<), (>), max, min)
   , Num ((+), (-), (*))
   , Integral (div, mod)
@@ -61,7 +65,7 @@ import Control.Monad as P
   , Monad ((>>=), (>>)), join, (>=>), (<=<), (=<<), forM, forM_, filterM, foldM
   )
 import Data.Foldable as P
-  ( Foldable (foldMap), toList, foldr, foldl, foldl1, foldr1, null, length, elem, maximum, minimum, sum, all, and, any, or
+  ( Foldable (foldMap), toList, foldr, foldl1, foldr1, null, length, elem, maximum, minimum, sum, all, and, any, or
   , concat, concatMap, find, foldlM, foldrM, for_, mapM_, maximumBy, minimumBy, sequence_, sequenceA_, traverse_
   )
 import Data.Traversable as P
@@ -93,3 +97,6 @@ firstJust :: Maybe a -> Maybe a -> Maybe a
 firstJust = (Q.<|>)
 
 filterMap = Map.filter
+
+foldl :: Foldable t => (b -> a -> b) -> b -> t a -> b
+foldl = Prelude.foldl'

@@ -1,26 +1,26 @@
 # elab
 
 Ty : Type
- = (Ty           : Type)
-   (nat top bot  : Ty)
-   (arr prod sum : Ty -> Ty -> Ty)
- -> Ty
+ = (ty           : Type)
+   (nat top bot  : ty)
+   (arr prod sum : ty -> ty -> ty)
+ -> ty
 
 nat : Ty = \_ nat _ _ _ _ _-> nat
 top : Ty = \_ _ top _ _ _ _-> top
 bot : Ty = \_ _ _ bot _ _ _-> bot
 
 arr : Ty -> Ty -> Ty
- = \A B Ty nat top bot arr prod sum->
-     arr (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+ = \A B ty nat top bot arr prod sum->
+     arr (A ty nat top bot arr prod sum) (B ty nat top bot arr prod sum)
 
 prod : Ty -> Ty -> Ty
- = \A B Ty nat top bot arr prod sum->
-     prod (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+ = \A B ty nat top bot arr prod sum->
+     prod (A ty nat top bot arr prod sum) (B ty nat top bot arr prod sum)
 
 sum : Ty -> Ty -> Ty
- = \A B Ty nat top bot arr prod sum->
-     sum (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+ = \A B ty nat top bot arr prod sum->
+     sum (A ty nat top bot arr prod sum) (B ty nat top bot arr prod sum)
 
 Con : Type
  = (Con : Type)

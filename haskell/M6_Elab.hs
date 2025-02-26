@@ -9,22 +9,24 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi :: Val
+pattern CType, CPi, CHPi, CCode, CTy, CArr :: Val
 pattern CType = "Type"
 pattern CPi   = "Pi"
 pattern CHPi  = "HPi"
 pattern CCPi  = "CPi"   --   t => s
+pattern CCode = "Code"
+pattern CTy   = "Ty"
+pattern CArr  = "Arr"
 
 data Icit = Impl | ImplClass | Expl
   deriving Eq
 
 matchCode :: Env -> Val -> RefM (Tm -> Tm, Tm)
-matchCode env v | Just code <- lookupGlobal' "Code" env = do
+matchCode env v = do
   (tm, m) <- freshMeta' env
-  cm <- vApp code m
+  cm <- vApp CCode m
   f <- conv env v cm
   pure (f, tm)
-matchCode _ _ = undefined
 
 
 -- True:   x: t      f x: Pi
@@ -65,12 +67,11 @@ data Env = MkEnv
   , localVals   :: Map Name Val
   , localTypes  :: Map Name Val
   , globals     :: Map Name (Val, Val)
-  , globalNames :: Map NameStr Name          -- TODO: remove
   , isLHS       :: Bool    -- True if lhs is checked
   }
 
 memptyEnv :: Env
-memptyEnv = foldr def (MkEnv mempty mempty mempty mempty mempty False)
+memptyEnv = foldr def (MkEnv mempty mempty mempty mempty False)
   [("Nat", "Nat"), ("String", "String"), ("Type", CType)]
  where
   def (n, v) = defineGlob n v CType
@@ -87,7 +88,6 @@ define bound n v t env
         }
   | otherwise
   = env { globals = insert n (v, t) $ globals env
-        , globalNames = insert (nameStr n) n $ globalNames env
         }
 
 defineGlob = define False
@@ -95,11 +95,6 @@ defineBound n = define True n (vVar n)
 
 lookupLocal      v env = lookup v (localTypes  env)
 lookupGlobal     v env = lookup v (globals     env)
-lookupGlobalName v env = lookup v (globalNames env)
-
-lookupGlobal' v env = do
-  n <- lookupGlobalName v env
-  fst <$> lookupGlobal n env
 
 evalEnv :: Env -> Tm -> RefM Val
 evalEnv env = eval $ localVals env
@@ -139,7 +134,7 @@ conv_ env a b = do
   (hb, vb) <- spine b
   case () of
 
-    () | "Pi" <- name ha, "Pi" <- name hb, [m1, m2] <- va, [m3, m4] <- vb
+    () | ha == CPi, hb == CPi, [m1, m2] <- va, [m3, m4] <- vb
        -> do
 
       q <- conv_ env m3 m1
@@ -157,8 +152,7 @@ conv_ env a b = do
         (Nothing, Nothing) -> Nothing
         _ -> Just \t -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
 
-    () | MkName "Code" _ <- name ha, "Pi" <- name hb, [m3, m4] <- vb
-       , Just ap <- get "App", Just code <- get "Code", Just arr <- get "Arr" -> do
+    () | ha == CCode, hb == CPi, [m3, m4] <- vb -> do
 
       (m1, m1')  <- freshMeta' env
       (m2, m2')  <- freshMeta' env
@@ -166,11 +160,11 @@ conv_ env a b = do
       v <- lamName "v" m4
       let vv = vVar v
 
-      ar <- vApp code =<< vApps arr [m1', m2']
+      ar <- vApp CCode =<< vApps CArr [m1', m2']
       f <- conv env a ar{- Code (Arr m1 m2) -}
 
-      c1 <- vApp code m1'
-      c2 <- vApp code m2'
+      c1 <- vApp CCode m1'
+      c2 <- vApp CCode m2'
       m4_v <- vApp m4 vv
       h_v <- conv_ (defineBound v c1 env) c2{- Code m2 -} m4_v  --  (Code m1 -> Code m2)  ==>  (Code m1 -> m4)
 
@@ -180,10 +174,9 @@ conv_ env a b = do
             (Nothing, Nothing) -> t
             _ -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
 
-      pure $ Just \t -> lam $ TApps (TVal ap) [m1, m2, f t]
+      pure $ Just \t -> lam $ TApps (TVal $ Con "App") [m1, m2, f t]
 
-    () | "Pi" <- name ha, MkName "Code" _ <- name hb, [m3, m4] <- va
-       , Just la <- get "Lam", Just code <- get "Code", Just arr <- get "Arr" -> do
+    () | ha == CPi, hb == CCode, [m3, m4] <- va -> do
 
       (m1, m1')  <- freshMeta' env
       (m2, m2')  <- freshMeta' env
@@ -191,11 +184,11 @@ conv_ env a b = do
       v <- lamName "v" m4
       let vv = vVar v
 
-      ar <- vApp code =<< vApps arr [m1', m2']
+      ar <- vApp CCode =<< vApps CArr [m1', m2']
       f <- conv env ar{- Code (Arr m1 m2) -} b
 
-      c1 <- vApp code m1'
-      c2 <- vApp code m2'
+      c1 <- vApp CCode m1'
+      c2 <- vApp CCode m2'
       m4_v <- vApp m4 vv
       h_v <- conv_ (defineBound v c1 env) m4_v{- m4 v -} c2{- Code m2 -}  --  (Code m1 -> m4 v)  ==>  (Code m1 -> Code m2)
 
@@ -205,13 +198,11 @@ conv_ env a b = do
             (Nothing, Nothing) -> t
             _ -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
 
-      pure $ Just \t -> f $ TApps (TVal la) [m1, m2, lam t]
+      pure $ Just \t -> f $ TApps (TVal $ Con "Lam") [m1, m2, lam t]
 
     _ -> do
       () <- unify a b
       pure Nothing
- where
-  get n = lookupGlobal' n env
 
 
 ---------
@@ -219,9 +210,9 @@ conv_ env a b = do
 insertH :: Env -> RefM (Tm, Val) -> RefM (Tm, Val)
 insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
   Nothing -> pure (e, t)
-  Just (ImplClass, _, b) | Just iof <- lookupGlobal' "instanceOf" env -> do
+  Just (ImplClass, _, b) -> do
     m <- freshMeta env
-    insertH env $ pure (TApp e (TApp (TVal iof) m), b)
+    insertH env $ pure (TApp e (TApp (TVal $ Fun "instanceOf") m), b)
   Just (Impl, _, b) -> do
     (m, vm) <- freshMeta' env
     t' <- vApp b vm
@@ -253,10 +244,10 @@ check env r ty = do
 
 check_ env r ty = case r of
   Hole -> freshMeta env
-  RPi  (MkName "_" _) a b | Just ty' <- lookupGlobal' "Ty" env, ty == ty', Just arr <- lookupGlobal' "Arr" env -> do
-    ta <- check env a ty'
-    tb <- check env b ty'
-    pure $ TVal arr `TApp` ta `TApp` tb
+  RPi "_" a b | ty == CTy -> do
+    ta <- check env a CTy
+    tb <- check env b CTy
+    pure $ TVal CArr `TApp` ta `TApp` tb
   RHLam n Hole a -> do
     (f, icit, pa, pb) <- matchPi True env Impl ty
     case icit of
@@ -338,23 +329,21 @@ infer_ env r = case r of
   RVar n | Just (v, ty) <- lookupGlobal n env -> pure (TVal v, ty)
   RVar n | Just ty      <- lookupLocal  n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"
-  RLetOTy n "Type" b | onTop env, Just vta <- lookupGlobal' "Ty" env -> do
-    let c = Con n
-    infer (defineGlob n c vta env) b
-  RLetOTy n t b | onTop env, Just ty <- lookupGlobal' "Ty" env, Just code <- lookupGlobal' "Code" env -> do
-    vta_ <- check env t ty >>= evalEnv' env (typeName n)
-    vta <- vApp code vta_
-    let c = Con n
-    infer (defineGlob n c vta env) b
+  RLetOTy n "Type" b | onTop env -> do
+    infer (defineGlob n (Con n) CTy env) b
+  RLetOTy n t b | onTop env -> do
+    vta_ <- check env t CTy >>= evalEnv' env (typeName n)
+    vta <- vApp CCode vta_
+    infer (defineGlob n (Con n) vta env) b
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
     c <- if isConName n then pure $ Con n else do
       updateRule n $ Con "Fail"
       pure $ Fun n
     infer (defineGlob n c vta env) b
-  ROLet{} | Just code <- lookupGlobal' "Code" env -> do
+  ROLet{} -> do
     (_, m) <- freshMeta' env
-    ty <- vApp code m
+    ty <- vApp CCode m
     t <- check env r ty
     pure (t, ty)
   RLet n t a b -> do
@@ -408,8 +397,8 @@ infer_ env r = case r of
         pure (TApp (f av) tb, b)
        | icit == Impl -> do
         infer env $ RApp (RHApp a Hole) b
-       | icit == ImplClass, Just iof <- lookupGlobalName "instanceOf" env -> do
-        infer env $ RApp (RHApp a (RVar iof `RApp` Hole)) b
+       | icit == ImplClass -> do
+        infer env $ RApp (RHApp a (RVar "instanceOf" `RApp` Hole)) b
        | otherwise -> error "baj"
 
 --------------------
