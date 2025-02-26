@@ -18,7 +18,6 @@ module M1_Base
   , chars
   , Print (print)
   , Parse (parse)
-  , hashSource
   , source
 
   , RefM, Ref, newRef, readRef, writeRef, modifyRef, stateRef
@@ -50,6 +49,8 @@ module M1_Base
   , precedenceTableString
 
   , traceShow, (<<>>)
+
+  , IntHash (intHash)
   )
  where
 
@@ -761,16 +762,13 @@ instance IsString a => IsString (RefM a) where
   fromString s = pure $ fromString s
 
 
-djb2 :: String -> Int
-djb2 = foldl (\h c -> 33*h + ord c) 5381
+class IntHash a where
+  intHash :: a -> Int  -- always negative
 
--- always negative
-hashString :: String -> Int
-hashString = neg . djb2
- where
-  neg :: Int -> Int
-  neg i | i >= 0    = i + (-9223372036854775808)
-        | otherwise = i
+instance IntHash String where
+  intHash
+    = foldl (\h c -> 33*h + ord c) 5381   -- djb2
 
-hashSource :: Source -> Int
-hashSource = hashString . chars
+instance IntHash Source where
+  intHash = intHash . chars
+

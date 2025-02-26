@@ -535,6 +535,9 @@ instance IsString (Mixfix a) where
 instance Semigroup (Mixfix a) where
   MkM a <> MkM b = MkM (a <> b)
 
+instance IntHash (Mixfix a) where
+  intHash (MkM ts) = intHash $ mconcat $ map showToken ts
+
 -- strip os = filter (/= "___") os
 
 enrich os = f True os
@@ -968,8 +971,8 @@ instance Print (ExpTree' Desug) where
 type NameStr = Mixfix Desug
 
 data Name = MkName
-  { nameStr :: NameStr
-  , nameId  :: Int
+  { nameStr :: !NameStr
+  , nameId  :: !Int
   }
 
 instance IsMixfix Name where
@@ -986,9 +989,18 @@ isConName _ = False
 isVarName (nameStr -> MkM [t]) = isLowerToken t
 isVarName _ = False
 
+-- always negative
+hashNameStr :: NameStr -> Int
+hashNameStr = neg . intHash
+ where
+  neg :: Int -> Int
+  neg i | i >= 0    = i + (-9223372036854775808)
+        | otherwise = i
+
+
 pattern NConst :: NameStr -> Name
-pattern NConst n <- MkName n (-1)
-  where NConst n =  MkName n (-1)
+pattern NConst n <- MkName n ((==) (hashNameStr n) -> True)
+  where NConst n =  MkName n (hashNameStr n)
 
 pattern NConst' n = MkName (MkM [n]) (-1)
 
@@ -997,7 +1009,7 @@ pattern NNat n <- NConst' (MkNat _ n)
 pattern NString n <- NConst' (MkString _ n)
   where NString n  = NConst' (MkString (fromString $ show n) n)
 
-nameId' (NConst a)   = Left a
+nameId' (MkName a (-1))   = Left a
 nameId' n = Right $ nameId n
 
 mapName f (MkName a b) = MkName (f a) b
@@ -1008,12 +1020,12 @@ instance Ord Name where compare = compare `on` nameId'
 
 instance Print Name where
   print = print . nameStr
-{-
-nameStr' v@(nameStr -> MkM ["m"]) = MkM ["m", fromString $ show $ nameId v]
-nameStr' v = nameStr v
--}
+
 instance IsString Name where
-  fromString t = NConst $ fromString t
+  fromString t = case fromString t of
+    MkNat{}    -> impossible
+    MkString{} -> impossible
+    n -> NConst $ MkM [n]
 
 mkName :: NameStr -> RefM Name
 mkName s = newId <&> MkName s
@@ -1045,6 +1057,8 @@ scope   :: ExpTree' Desug -> RefM Raw
 scope t = runReader mempty ff  where
   ff r = f t  where
     f = \case
+      RVar (MkM [n@MkNat{}])    -> pure $ RVar $ NConst' n
+      RVar (MkM [n@MkString{}]) -> pure $ RVar $ NConst' n
       RVar n -> asks r (lookup n) >>= \case
         Just m  -> pure $ RVar $ rename n m
         Nothing -> pure $ RVar $ NConst n
