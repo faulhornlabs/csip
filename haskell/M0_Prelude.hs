@@ -77,6 +77,7 @@ import Data.Coerce as P (coerce)
 ----------------------------------------------- private imports
 
 import qualified Prelude
+import qualified Data.List as List
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import qualified Control.Applicative as Q
@@ -99,4 +100,4 @@ firstJust = (Q.<|>)
 filterMap = Map.filter
 
 foldl :: Foldable t => (b -> a -> b) -> b -> t a -> b
-foldl = Prelude.foldl'
+foldl = List.foldl'
