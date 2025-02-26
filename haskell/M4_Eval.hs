@@ -52,23 +52,14 @@ evalCombinatorTm :: Combinator -> [Tm] -> RefM Tm
 evalCombinatorTm (Lams _ ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
 
 mkCombinator :: Name -> Tm_ Name -> (Combinator, [Name])
-mkCombinator n t = (Lams (rig t) (map nameStr nsA) $ f (fromList $ zip nsA [0..]) t, ns_)   where
+mkCombinator n t = (Lams (rigidTm t') (map nameStr nsA) t', ns_) where
+
+  t' = f (fromList $ zip nsA [0..]) t
 
   ns' = fvs t
   isconst = not $ member n ns'
   ns_ = filter (/= n) $ toList ns'
   nsA = ns_ ++ [if isconst then rename "_" n else n]
-
-  rig = \case
-    TGen e -> rig e
-    TVar{} -> True
-    TVal v -> rigid v
-    TApp a b -> rig a && rig b
-    TLet _ a b -> rig a && rig b
-    TSup c ts -> rigidCombinator c && all rig ts
-    TMatch _ a b c -> rig a && rig b && rig c
-    TSel _ _ e -> rig e
-    TRet e -> rig e
 
   fvs = \case
     TGen e -> fvs e
@@ -146,6 +137,19 @@ tLam n t = TSup c $ TVar <$> ns'
 
 instance IsString Tm where
   fromString = TVal . fromString
+
+rigidTm :: Tm_ a -> Bool
+rigidTm = f where
+  f = \case
+    TGen e -> f e
+    TVar{} -> True
+    TVal v -> rigid v
+    TApp a b -> f a && f b
+    TLet _ a b -> f a && f b
+    TSup c ts -> rigidCombinator c && all f ts
+    TMatch _ a b c -> f a && f b && f c
+    TSel _ _ e -> f e
+    TRet e -> f e
 
 ---------
 
