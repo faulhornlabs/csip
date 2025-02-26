@@ -35,18 +35,22 @@ updateClosed a b = do
 
 type SVal = (Val, Set Name)
 
-type PruneSet = Maybe (Map Val (Set Int))
+type Indices = Set Int
+type PruneSet = Maybe (Map Val Indices)
 
 (<.>) = unionWith (<>)
 
-pruneMeta :: Val -> Set Int -> RefM ()
+pruneMeta :: Val -> Indices -> RefM ()
 pruneMeta m (toList -> is) = do
-  m' <- mkName' "m" <&> TVal . vMeta
+  m' <- tMeta
   let
     mk _ [] vs = pure $ TApps m' $ reverse vs
+    mk n (i: is) vs | n == i = do
+      v <- mkName "_"
+      tLam v <$> mk (n+1) is vs
     mk n (i: is) vs = do
-      v <- mkName "v"
-      tLam v <$> if n == i then mk (n+1) is vs else mk (n+1) (i: is) (TVar v: vs)
+      v <- mkName "v"{-TODO: better name-}
+      tLam v <$> mk (n+1) (i: is) (TVar v: vs)
   t <- mk 0 is []
   v <- eval mempty t
   update m v

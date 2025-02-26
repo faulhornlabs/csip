@@ -2,7 +2,7 @@ module M4_Eval
   ( Combinator, varName
 
   , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView)
-  , Tm, tLam
+  , Tm, tLam, tMeta
 
   , Val (Con, Fun)
   , View (VSup, VLam, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
@@ -87,7 +87,7 @@ instance PPrint Combinator where
   pprint (Lams _ ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
 varName (Lams _ ns _) = mkName $ case last ns of
-  "_" -> "v"
+  "_" -> "v"{-TODO?-}
   n -> n
 
 pattern VLam n <- VSup (varName -> n) _
@@ -134,6 +134,9 @@ pattern TApps e es <- (getTApps -> (e, reverse -> es))
 tLam :: Name -> Tm -> Tm
 tLam n t = TSup c $ TVar <$> ns'
   where (c, ns') = mkCombinator n t
+
+tMeta :: RefM Tm
+tMeta = mkName' "m" <&> TVal . vMeta
 
 instance IsString Tm where
   fromString = TVal . fromString
