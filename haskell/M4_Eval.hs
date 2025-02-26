@@ -347,6 +347,13 @@ vApp a_ u = do
           , VString vb <- view vb
                    -> vNat $ if va == vb then 1 else 0
         _          -> def
+      | "EqNat" <- name a -> forcedSpine u >>= \case
+        (h, [va, vb])
+          | "PairNat" <- name h
+          , VNat va <- view va
+          , VNat vb <- view vb
+                   -> vNat $ if va == vb then 1 else 0
+        _          -> def
     VSup c vs      -> evalCombinator c $ vs ++ [u]
     VFun           -> lookupRule (name a) >>= \f -> app_ aa f u
     VApp_ _ _ (Just f) _                         -> app_ aa f u

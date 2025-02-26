@@ -1033,7 +1033,10 @@ mkName s = newId <&> MkName s
 mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
 
 consts :: Set NameStr
-consts = fromListSet ["Succ", "Cons", "PairStr", "EqStr", "AppendStr", "Ty", "Code", "Arr", "Prod", "Pair", "Fst", "Snd", "_", "instanceOf"]
+consts = fromListSet
+  [ "Succ", "Cons", "PairStr", "EqStr", "PairNat", "EqNat", "AppendStr"
+  , "Ty", "Code", "Arr", "Prod", "Pair", "Fst", "Snd", "_", "instanceOf"
+  ]
 
 nameOf :: NameStr -> RefM Name
 nameOf n | n `member` consts = pure $ NConst n
