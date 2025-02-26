@@ -69,7 +69,7 @@ doCmds cmd s = do
     "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF')
     "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage)
     "haskell_stage"
-                -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage >>= unscope <&> (fromString :: String -> Source) . show . convert)
+                -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage >>= unscope >>= scope <&> (fromString :: String -> Source) . show . convert)
     _ -> error $ "Unknown command: " <> cmd
    where
     sh = if quote then sh' else print

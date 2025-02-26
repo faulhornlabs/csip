@@ -2,10 +2,10 @@ module M3_Parse
   ( Phase (..)
   , ISource, Token, OpSeq
 
-  , Name (NNat, NString, NConst)
+  , Name (NNat, NString)
   , NameStr, nameStr
   , mkName, mkName', mapName, rename, isConName, isVarName
-  , showMixfix, unscope
+  , showMixfix, scope, unscope
 
   , ExpTree
     (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)
@@ -986,11 +986,11 @@ isConName _ = False
 isVarName (nameStr -> MkM [t]) = isLowerToken t
 isVarName _ = False
 
-pattern NConst' n = NConst (MkM [n])
-
 pattern NConst :: NameStr -> Name
 pattern NConst n <- MkName n (-1)
   where NConst n =  MkName n (-1)
+
+pattern NConst' n = MkName (MkM [n]) (-1)
 
 pattern NNat n <- NConst' (MkNat _ n)
   where NNat n =  NConst' (MkNat (fromString $ show n) n)
@@ -1013,12 +1013,19 @@ nameStr' v@(nameStr -> MkM ["m"]) = MkM ["m", fromString $ show $ nameId v]
 nameStr' v = nameStr v
 -}
 instance IsString Name where
-  fromString t = NConst (ZName $ MkM [fromString t])
+  fromString t = NConst $ fromString t
 
 mkName :: NameStr -> RefM Name
-mkName s = newId <&> \i -> MkName s i
+mkName s = newId <&> MkName s
 
 mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
+
+consts :: Set NameStr
+consts = fromListSet ["Succ", "Cons", "PairStr", "EqStr", "AppendStr", "Ty", "Code", "Arr", "Prod", "Pair", "Fst", "Snd", "_", "instanceOf"]
+
+nameOf :: NameStr -> RefM Name
+nameOf n | n `member` consts = pure $ NConst n
+         | otherwise         = mkName n
 
 type Raw = ExpTree Name
 
@@ -1033,13 +1040,6 @@ instance Parse Raw where
 
 instance Print Raw where
   print = unscope >=> print
-
-consts :: Set NameStr
-consts = fromListSet ["Succ", "Cons", "PairStr", "EqStr", "AppendStr", "Ty", "Code", "Arr", "Prod", "Pair", "Fst", "Snd", "_", "instanceOf"]
-
-nameOf :: NameStr -> RefM Name
-nameOf n | n `member` consts = pure $ NConst n
-         | otherwise         = newId <&> MkName n
 
 scope   :: ExpTree' Desug -> RefM Raw
 scope t = runReader mempty ff  where
@@ -1061,13 +1061,13 @@ unscope t = runReader mempty ff where
       RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
       RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
       RVar "CPi" :@ a :@       e -> f $ RCPi   a e
-      RVar v@(MkName n _) -> do
+      RVar v@(nameStr -> n) -> do
         k <- asks r (lookup v . fst)
         let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
         pure $ RVar m
       GLam es v a
         | NConst n@"_" <- v -> GLam <$> mapM f es <*> pure n <*> f a
-        | MkName n _ <- v -> do
+        | n <- nameStr v -> do
           k <- asks r (lookup n . snd)
           let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
           GLam <$> mapM f es <*> pure m <*> local r (maybe id (insert v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)

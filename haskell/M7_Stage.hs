@@ -47,16 +47,17 @@ data Exp
   | Nat Integer
   deriving Show
 
-convert :: ExpTree' Desug -> Exp
+convert :: Raw -> Exp
 convert = f  where
   f = \case
     E.Lam n e -> Lam (g n) $ f e
     RLet n Hole a b -> Let (g n) (f a) (f b)
     a :@ b -> App (f a) (f b)
-    RVar n -> case NConst n of
+    RVar n -> case n of
       NNat n -> Nat n
       NString s -> String s
       m | isConName m -> Con $ g n
       _ -> Var $ g n
 
-  g = chars . showMixfix
+  g :: Name -> String
+  g = chars . showMixfix . nameStr

@@ -22,7 +22,7 @@ data Icit = Impl | ImplClass | Expl
   deriving Eq
 
 matchCode :: Env -> Val -> RefM (Tm -> Tm, Tm)
-matchCode env v = do
+matchCode env v = do      -- TODO: optimize this
   (tm, m) <- freshMeta' env
   cm <- vApp CCode m
   f <- conv env v cm
