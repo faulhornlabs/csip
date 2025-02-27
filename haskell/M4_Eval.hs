@@ -40,19 +40,28 @@ instance Ord DB where compare = compare `on` dbIndex
 
 -------------
 
-data Combinator         -- supercombinator (rigid, closed)
-  = Lams !Bool{-rigid-} ![NameStr] !(Tm_ DB)     -- \x1 ... xN -> t
+-- supercombinator (closed)       -- \x1 ... xN -> t
+data Combinator = MkCombinator
+  { combName   :: Name
+  , rigidCombinator :: !Bool
+  , _combNames :: ![NameStr]                  -- x1 ... xN
+  , _combBody  :: !(Tm_ DB)                   -- t
+  }
 
-rigidCombinator (Lams r _ _) = r
+instance Eq  Combinator where (==)    = (==)    `on` combName
+instance Ord Combinator where compare = compare `on` combName
 
 evalCombinator :: Combinator -> [Val] -> RefM Val
-evalCombinator (Lams _ ns t) vs = eval (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+evalCombinator (MkCombinator _ _ ns t) vs = eval (fromList $ zip (zipWith MkDB [0..] ns) vs) t
 
 evalCombinatorTm :: Combinator -> [Tm] -> RefM Tm
-evalCombinatorTm (Lams _ ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+evalCombinatorTm (MkCombinator _ _ ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
 
-mkCombinator :: Name -> Tm_ Name -> (Combinator, [Name])
-mkCombinator n t = (Lams (rigidTm t') (map nameStr nsA) t', ns_) where
+mkCombinator :: Name -> Tm_ Name -> RefM (Combinator, [Name])
+mkCombinator n t = do
+  n <- mkName "c"
+  pure (MkCombinator n (rigidTm t') (map nameStr nsA) t', ns_)
+ where
 
   t' = f (fromList $ zip nsA [0..]) t
 
@@ -84,9 +93,9 @@ mkCombinator n t = (Lams (rigidTm t') (map nameStr nsA) t', ns_) where
     TRet e -> TRet $ f env e
 
 instance PPrint Combinator where
-  pprint (Lams _ ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
+  pprint (MkCombinator _ _ ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
-varName (Lams _ ns _) = mkName $ case last ns of
+varName (MkCombinator _ _ ns _) = mkName $ case last ns of
   "_" -> "v"{-TODO?-}
   n -> n
 
@@ -107,6 +116,7 @@ data Tm_ a
 
   | TGen !(Tm_ a)            -- generated term
   | TVal !Val                -- closed value
+ deriving (Eq, Ord)
 
 instance PPrint a => PPrint (Tm_ a) where
   pprint = \case
@@ -131,9 +141,10 @@ pattern TApps :: Tm_ a -> [Tm_ a] -> Tm_ a
 pattern TApps e es <- (getTApps -> (e, reverse -> es))
   where TApps e es = foldl TApp e es
 
-tLam :: Name -> Tm -> Tm
-tLam n t = TSup c $ TVar <$> ns'
-  where (c, ns') = mkCombinator n t
+tLam :: Name -> Tm -> RefM Tm
+tLam n t = do
+  (c, ns') <- mkCombinator n t
+  pure $ TSup c $ TVar <$> ns'
 
 tMeta :: RefM Tm
 tMeta = mkName' "m" <&> TVal . vMeta
@@ -365,7 +376,7 @@ vApp a_ u = do
     Just (view -> VRet x) -> pure x
     c -> mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u c i
 
-tLazy :: Tm -> Tm
+tLazy :: Tm -> RefM Tm
 tLazy = tLam "_"
 
 vEval :: Val -> RefM Val
@@ -381,7 +392,7 @@ vSup c vs = mkValue "lam" (rigidCombinator c && all rigid vs) (all closed vs) $ 
 
 vLam_ :: Val -> Tm -> RefM Val
 vLam_ n t = do
-  let (c, ns) = mkCombinator (name n) t
+  (c, ns) <- mkCombinator (name n) t
   vSup c $ vVar <$> ns
 
 vLam :: Val -> Val -> RefM Val
@@ -389,7 +400,7 @@ vLam n v = force v >>= \case
   fv | VApp a b <- view fv -> force b >>= \case
     b | VVar <- view b, b == n -> do
       ta <- quoteTm' a
-      let (c, _) = mkCombinator (name n) ta
+      (c, _) <- mkCombinator (name n) ta
       if isConstComb c
         then pure a
         else def   -- TODO: optimize this
@@ -405,7 +416,7 @@ vConst v = do
   n <- mkName "_"
   vLam (vVar n) v
 
-isConstComb (Lams _ vs _) = last vs == "_"
+isConstComb (MkCombinator _ _ vs _) = last vs == "_"
 
 isConst :: Val -> Bool
 isConst v = case view v of
@@ -462,8 +473,9 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
 
   compileLHS :: Tm -> [Name] -> Tm -> Tm -> RefM Tm
   compileLHS old (n: ns) (TApp a b) rhs = do
-    e <- compilePat (boundvars <> fromListSet (n: ns)) (tLazy $ TApps old $ TVar <$> (reverse $ n: ns)) b (TVar n) $ pure rhs
-    compileLHS old ns a (tLam n e)
+    tx <- tLazy $ TApps old $ TVar <$> (reverse $ n: ns)
+    e <- compilePat (boundvars <> fromListSet (n: ns)) tx b (TVar n) $ pure rhs
+    compileLHS old ns a =<< tLam n e
   compileLHS _ [] (TVal Fun{}) rhs = pure rhs
   compileLHS _ _ _ _ = undefined
 
@@ -474,12 +486,13 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
+      tx <- tLazy x
       pure $ case (c, ns) of
         ("Cons", [a, b])
-          -> TMatch c e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) $ tLazy x) f
+          -> TMatch c e (TLet a (TApp "head" e) $ TLet b (TApp "tail" e) tx) f
         ("Succ", [a])
-          -> TMatch c e (TLet a (TApp "dec" e) $ tLazy x) f
-        _ -> TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) (tLazy x) $ zip [0..] ns) f
+          -> TMatch c e (TLet a (TApp "dec" e) tx) f
+        _ -> TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) tx $ zip [0..] ns) f
     _ -> impossible
 
 getCon (Con c) = Just c
@@ -654,8 +667,6 @@ quoteTm__ vtm opt v_ = do
       VApp a b -> [a, b]
       _ -> []
 
-type G = (Name, [Name])
-
 -- replace generated terms
 trRule :: Set Name -> (Tm, Tm) -> RefM (Tm, Tm)
 trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
@@ -663,7 +674,7 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
     rhs' <- getGens False rst st rhs
     pure (lhs', rhs')
  where
-  getGens :: Bool -> Reader (Set Name) -> State (Map G Tm) -> Tm -> RefM Tm
+  getGens :: Bool -> Reader (Set Name) -> State (Map Tm Tm) -> Tm -> RefM Tm
   getGens get rst st t = f t
    where
     eval' t = asks rst id >>= \bv -> eval (fromList [(n, vVar n) | n <- toList bv]) t
@@ -672,31 +683,18 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
       TVal{} -> pure t
       TVar{} -> pure t
       TApp a b -> TApp <$> f a <*> f b
-      TGen t | get -> do
-        n <- mkName "w"
-        eval' t >>= g >>= \case
-          Nothing -> pure ()
-          Just ns -> modify st $ insert ns $ TVar n
-        pure $ TVar n
-      TGen t -> eval' t >>= g >>= \case
-        Just ns -> gets st \m -> fromMaybe (TGen t) $ lookup ns m
-        Nothing -> pure $ TGen t
+      TGen t -> eval' t >>= metaToVar >>= \ns ->
+        if get
+          then mkName "w" >>= \n -> modify st (insert ns $ TVar n) >> pure (TVar n)
+          else gets st \m -> fromMaybe (TGen t) $ lookup ns m
       TLet n a b -> TLet n <$> f a <*> local rst (insertSet n) (f b)
       TSup c ts | rigidCombinator c  -> TSup c <$> mapM f ts
       TSup c ts  -> do 
           n <- varName c
           t <- evalCombinatorTm c $ ts <> [TVar n]
-          tLam n <$> local rst (insertSet n) (f t)
+          tLam n =<< local rst (insertSet n) (f t)
       t -> error' $ ("TODO(8): " <>) <$> print t
 
-  g v_ = force v_ >>= \case
-    v | VMeta <- view v -> pure $ Just (name v, [])
-      | VApp a b <- view v -> force b >>= \case
-        b | VVar <- view b -> fmap (second (name b:)) <$> g a
-        _ -> pure Nothing
-    _ -> pure Nothing
-
-{-
 metaToVar :: Val -> RefM Tm
 metaToVar v_ = force v_ >>= \v -> case v of
   w | rigid w -> pure $ TVal w
@@ -706,10 +704,10 @@ metaToVar v_ = force v_ >>= \v -> case v of
     | VSup c vs <- view w -> do
           n <- varName c
           t <- evalCombinator c $ vs <> [vVar n]
-          tLam n <$> metaToVar t
+          tLam n =<< metaToVar t
   w -> error' $ ("TODO(1): " <>) <$> print w
-
--- TODO: preserve sharing
+{-
+-- TODO: preserve sharing?
 metaToVarTm :: Tm -> RefM Tm
 metaToVarTm = f where
   f t = case t of
@@ -721,7 +719,7 @@ metaToVarTm = f where
     TSup c ts  -> do
           n <- varName c
           t <- evalCombinatorTm c $ ts <> [TVar n]
-          tLam n <$> f t
+          tLam n =<< f t
     TLet x t u -> TLet x <$> f t <*> f u
     w -> error' $ ("TODO(2): " <>) <$> print w
 -}

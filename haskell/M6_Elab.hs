@@ -21,7 +21,7 @@ pattern CArr  = "Arr"
 data Icit = Impl | ImplClass | Expl
   deriving Eq
 
-matchCode :: Env -> Val -> RefM (Tm -> Tm, Tm)
+matchCode :: Env -> Val -> RefM (Tm -> RefM Tm, Tm)
 matchCode env v = do      -- TODO: optimize this
   (tm, m) <- freshMeta' env
   cm <- vApp CCode m
@@ -31,7 +31,7 @@ matchCode env v = do      -- TODO: optimize this
 
 -- True:   x: t      f x: Pi
 -- False:  x: Pi     f x: t
-matchPi :: Bool -> Env -> Icit -> Val -> RefM (Tm -> Tm, Icit, Val, Val)
+matchPi :: Bool -> Env -> Icit -> Val -> RefM (Tm -> RefM Tm, Icit, Val, Val)
 matchPi cov env icit v_ = force v_ >>= \v -> do
  let
    def = do
@@ -44,9 +44,9 @@ matchPi cov env icit v_ = force v_ >>= \v -> do
  case view v of
   VApp f pb -> force f >>= \f -> case view f of
     VApp p pa -> force p >>= \case
-      CPi  -> pure (id, Expl,      pa, pb)
-      CHPi -> pure (id, Impl,      pa, pb)
-      CCPi -> pure (id, ImplClass, pa, pb)
+      CPi  -> pure (pure, Expl,      pa, pb)
+      CHPi -> pure (pure, Impl,      pa, pb)
+      CCPi -> pure (pure, ImplClass, pa, pb)
       _ -> def
     _   -> def
   _     -> def
@@ -115,20 +115,20 @@ typeName = mapName (`addSuffix` "_t")
 
 ---------
 
-evalId :: Maybe (a -> a) -> a -> a
-evalId = fromMaybe id
+evalId :: Maybe (a -> RefM a) -> a -> RefM a
+evalId = fromMaybe pure
 
 conv
   :: Env
-  -> Val               -- actual type
-  -> Val               -- expected type
-  -> RefM (Tm -> Tm)   -- transformation from actual to expected
+  -> Val                  -- actual type
+  -> Val                  -- expected type
+  -> RefM (Tm -> RefM Tm) -- transformation from actual to expected
 conv env a b = evalId <$> conv_ env a b
 
 conv_ :: Env
-  -> Val               -- actual type
-  -> Val               -- expected type
-  -> RefM (Maybe (Tm -> Tm))   -- transformation from actual to expected (Nothing: identity)
+  -> Val
+  -> Val
+  -> RefM (Maybe (Tm -> RefM Tm))
 conv_ env a b = do
   (ha, va) <- spine a
   (hb, vb) <- spine b
@@ -143,14 +143,14 @@ conv_ env a b = do
       let vv = vVar v
       let env' = defineBound v m3 env
 
-      q_v <- evalEnv env' $ evalId q $ TVar v
+      q_v <- evalEnv env' =<< evalId q (TVar v)
       c1 <- vApp m2 q_v
       c2 <- vApp m4 vv
       h_v <- conv_ env' c1{- m2 (q v) -} c2{- m4 v -}
 
       pure $ case (h_v, q) of
         (Nothing, Nothing) -> Nothing
-        _ -> Just \t -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
+        _ -> Just \t -> tLam v =<< evalId h_v =<< TApp t <$> evalId q (TVar v)
 
     () | ha == CCode, hb == CPi, [m3, m4] <- vb -> do
 
@@ -171,10 +171,10 @@ conv_ env a b = do
       q <- conv_ env m3{- m3 -} c1{- Code m1 -}
 
       let lam t = case (h_v, q) of
-            (Nothing, Nothing) -> t
-            _ -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
+            (Nothing, Nothing) -> pure t
+            _ -> tLam v =<< evalId h_v =<< TApp t <$> evalId q (TVar v)
 
-      pure $ Just \t -> lam $ TApps (TVal $ Con "App") [m1, m2, f t]
+      pure $ Just \t -> f t >>= \t -> lam $ TApps (TVal $ Con "App") [m1, m2, t]
 
     () | ha == CPi, hb == CCode, [m3, m4] <- va -> do
 
@@ -195,10 +195,10 @@ conv_ env a b = do
       q <- conv_ env c1{- Code m1 -} m3
 
       let lam t = case (h_v, q) of
-            (Nothing, Nothing) -> t
-            _ -> tLam v $ evalId h_v $ TApp t (evalId q $ TVar v)
+            (Nothing, Nothing) -> pure t
+            _ -> tLam v =<< evalId h_v =<< TApp t <$> evalId q (TVar v)
 
-      pure $ Just \t -> f $ TApps (TVal $ Con "Lam") [m1, m2, lam t]
+      pure $ Just \t -> lam t >>= \t -> f $ TApps (TVal $ Con "Lam") [m1, m2, t]
 
     _ -> do
       () <- unify a b
@@ -254,7 +254,7 @@ check_ env r ty = case r of
       Impl -> do
         (_, t) <- unlam n pb
         ta <- check (defineBound n pa env) a t
-        pure $ f $ tLam n ta
+        f =<< tLam n ta
       _ -> undefined
   RLam n Hole a -> do
     (f, icit, pa, pb) <- matchPi True env Expl ty
@@ -262,10 +262,10 @@ check_ env r ty = case r of
       Expl -> do
         (_, t) <- unlam n pb
         ta <- check (defineBound n pa env) a t
-        pure $ f $ tLam n ta
+        f =<< tLam n ta
       Impl -> do
         n' <- lamName "z" pb
-        f <$> check env (RHLam n' Hole r) ty
+        f =<< check env (RHLam n' Hole r) ty
       _ -> undefined
   _ -> matchHPi ty >>= \case
     Just (Impl, _, pb) | not (isLHS env) -> do
@@ -287,17 +287,21 @@ check_ env r ty = case r of
         tb <- check (defineGlob n (Con n) vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
-        pure $ TApps "TopLet" [pa, pb, TVal (Con n), fa ta, fb tb]
+        fta <- fa ta
+        ftb <- fb tb
+        pure $ TApps "TopLet" [pa, pb, TVal (Con n), fta, ftb]
       ROLet n a b -> do
         (ta, vta) <- infer env a
         tb <- check (defineBound n vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
-        pure $ TApps "Let" [pa, pb, fa ta, tLam n $ fb tb]
+        fta <- fa ta
+        l <- tLam n =<< fb tb
+        pure $ TApps "Let" [pa, pb, fta, l]
       r -> do
         (a, t) <- insertH env $ infer env r
         f <- conv env t ty
-        pure $ f a
+        f a
 
 infer :: Env -> Raw -> RefM (Tm, Val)
 infer env r = do
@@ -313,13 +317,13 @@ infer_ env r = case r of
     let v = vVar n
     (ta, va) <- insertH env $ infer (defineBound n vt env) a
     f <- vLam v va
-    (,) (tLam n ta) <$> vApps CPi [vt, f]
+    (,) <$> tLam n ta <*> vApps CPi [vt, f]
   RHLam n t a -> do
     vt <- check env t CType >>= evalEnv' env (typeName n)
     let v = vVar n
     (ta, va) <- infer (defineBound n vt env) a
     f <- vLam v va
-    (,) (tLam n ta) <$> vApps CHPi [vt, f]
+    (,) <$> tLam n ta <*> vApps CHPi [vt, f]
   Hole -> do
     t <- freshMeta env
     (_, m) <- freshMeta' env
@@ -365,7 +369,8 @@ infer_ env r = case r of
     ta <- check env a CType
     va <- evalEnv' env (typeName n) ta
     tb <- check (defineBound n va env) b CType
-    pure (pi `TApp` ta `TApp` tLam n tb, CType)
+    l <- tLam n tb
+    pure (pi `TApp` ta `TApp` l, CType)
   RCPi a b -> do
     ta <- check env a CType
     tb <- check env b CType
@@ -376,7 +381,8 @@ infer_ env r = case r of
     n <- lamName "t" pb
     (_, vb) <- unlam n pb
     tb <- check (defineBound n pa env) b vb
-    pure (TView (f ta) tb, pa)
+    fta <- f ta
+    pure (TView fta tb, pa)
   RHApp a b -> do
     inferApp Impl env a b
   RApp a b -> do
@@ -385,16 +391,17 @@ infer_ env r = case r of
  where
   inferApp i env a b = infer env a >>= \(av, ty) -> do
     (f, icit, pa, pb) <- matchPi True env i ty
+    fav <- f av
     case () of
      _ | icit == ImplClass, i == Impl -> do
         tb <- check env b pa
-        pure (TApp (f av) tb, pb)
+        pure (TApp fav tb, pb)
        | icit == i -> do
         tb <- check env b pa
         n <- lamName "t" pb
         v <- evalEnv' env n tb
         b <- vApp pb v
-        pure (TApp (f av) tb, b)
+        pure (TApp fav tb, b)
        | icit == Impl -> do
         infer env $ RApp (RHApp a Hole) b
        | icit == ImplClass -> do
