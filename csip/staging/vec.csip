@@ -1,18 +1,7 @@
 # stage
 # haskell_stage
 
-// builtins
-Ty   : Type
-Code : Ty -> Type
-Arr  : Ty -> Ty -> Ty
-Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
-App  : {a b} -> Code (Arr a b) -> Code a -> Code b
-Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
-
-Prod : Ty -> Ty -> Ty
-Pair : {a b} -> Code a -> Code b -> Code (Prod a b)
-Fst  : {a b} -> Code (Prod a b) -> Code a
-Snd  : {a b} -> Code (Prod a b) -> Code b
+import Builtins
 
 Unit :: Type
 TT   :: Unit
@@ -27,17 +16,13 @@ Zero64 :: W64
 PlusC  :: Carry -> W64 -> W64 -> Prod Carry W64
 
 
-N : Type
-Z : N
-S : N -> N
+vec : Nat -> Ty -> Ty
+vec  0       t = Unit
+vec (Succ n) t = Prod (vec n t) t
 
-vec : N -> Ty -> Ty
-vec    Z  t = Unit
-vec (S n) t = Prod (vec n t) t
-
-addHelper : (n: N) -> Code Carry -> Code (vec n W64) -> Code (vec n W64) -> Code (Prod Carry (vec n W64))
-addHelper Z     c a b = Pair c TT
-addHelper (S n) c a b =
+addHelper : (n: Nat) -> Code Carry -> Code (vec n W64) -> Code (vec n W64) -> Code (Prod Carry (vec n W64))
+addHelper  0       c a b = Pair c TT
+addHelper (Succ n) c a b =
   (d := PlusC c (Snd a) (Snd b);
    e := addHelper n (Fst d) (Fst a) (Fst b);
    Pair (Fst e) (Pair (Snd e) (Snd d))
@@ -48,8 +33,8 @@ addHelper (S n) c (as, a) (bs, b) = do
   (c'', ds) := addHelper n c' as bs
   (c'', (ds, d))
 */
-add : (n: N) -> Code (vec n W64) -> Code (vec n W64) -> Code (vec n W64)
+add : (n: Nat) -> Code (vec n W64) -> Code (vec n W64) -> Code (vec n W64)
   = \n a b -> Snd (addHelper n ClearCarry a b)
 
 // main
-add (S (S (S Z)))
+add 3

@@ -1,18 +1,6 @@
 # stage
 
-// builtins
-Ty   : Type
-Code : Ty -> Type
-Arr  : Ty -> Ty -> Ty
-Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
-App  : {a b} -> Code (Arr a b) -> Code a -> Code b
-Let  : {a b} -> Code a -> (Code a -> Code b) -> Code b
-Succ : Nat -> Nat
-
-Prod : Ty -> Ty -> Ty
-Pair : {a b} -> Code a -> Code b -> Code (Prod a b)
-Fst  : {a b} -> Code (Prod a b) -> Code a
-Snd  : {a b} -> Code (Prod a b) -> Code b
+import Builtins
 
 Unit :: Type
 TT   :: Unit

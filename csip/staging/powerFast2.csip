@@ -1,13 +1,6 @@
 # stage
 
-// builtins
-Ty   : Type
-Code : Ty -> Type
-Arr  : Ty -> Ty -> Ty
-Lam  : {a b} -> (Code a -> Code b) -> Code (Arr a b)
-App  : {a b} -> Code (Arr a b) -> Code a -> Code b
-Succ : Nat -> Nat
-// end of builtins
+import Builtins
 
 Parity : Type
 Even : Parity
