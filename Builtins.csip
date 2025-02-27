@@ -13,16 +13,17 @@ AppendStr : ProdStr -> String
 EqStr     : ProdStr -> Nat
 
 Ty        : Type
-Arr       : Ty -> Ty -> Ty
-Prod      : Ty -> Ty -> Ty
+Arr       :: Type -> Type -> Type
+Prod      :: Type -> Type -> Type
 
 Code      : Ty -> Type
-Lam       : {a b} -> (Code a -> Code b) -> Code (Arr a b)
-App       : {a b} -> Code (Arr a b) -> Code a -> Code b
-Let       : {a b} -> Code a -> Code a -> Code b -> Code b
-Pair      : {a b} -> Code a -> Code b -> Code (Prod a b)
-Fst       : {a b} -> Code (Prod a b) -> Code a
-Snd       : {a b} -> Code (Prod a b) -> Code b
+Lam       :: {a b : Ty} -> (a -> b) -> Arr a b
+App       :: {a b} -> Arr a b -> a -> b
+Let       :: {a b : Ty} -> a -> (a -> b) -> b
+TopLet    :: {a b : Ty} -> a -> a -> b -> b
+Pair      :: {a b : Ty} -> a -> b -> Prod a b
+Fst       :: {a b} -> Prod a b -> a
+Snd       :: {a b} -> Prod a b -> b
 
 instanceOf : (a : Type) -> a
 
