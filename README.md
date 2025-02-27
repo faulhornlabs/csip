@@ -246,16 +246,37 @@ is compiled to
 
 ```haskell
 \a b -> (do
-    c = Add a b
-    b_1 = Mul c c
-    c_1 = Add
-      (Mul c (Mul b_1 b_1))
-      b
-    b_2 = Mul c_1 c_1
-    b_3 = Mul c_1 (Mul b_2 b_2)
-    Mul b_3 b_3
+    c = Add (do
+          c = Add a b
+          Mul c (do
+                b_1 = Mul c c
+                Mul b_1 b_1
+              )) b
+    b_1 = Mul c (do
+          b_1 = Mul c c
+          Mul b_1 b_1
+        )
+    Mul b_1 b_1
   )
 ```
 
 given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast.csip).
+
+and compiled to
+
+```haskell
+do
+  sqr = \a -> Mul a a
+  \v b -> sqr (do
+        c = Add (do
+              c = Add v b
+              Mul c
+                (sqr (sqr c))
+            ) b
+        Mul c
+          (sqr (sqr c))
+      )
+```
+
+given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast2.csip).
 
