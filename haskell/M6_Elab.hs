@@ -14,6 +14,7 @@ pattern CType   = "Type"
 pattern CPi     = "Pi"
 pattern CHPi    = "HPi"
 pattern CCPi    = "CPi"   --   t => s
+pattern CIPi    = "IPi"   --   t :-> s      -- injective function
 pattern CCode   = "Code"
 pattern CTy     = "Ty"
 pattern CArr    = "Arr"
@@ -365,6 +366,10 @@ infer_ env r = case r of
     ta <- check env a CType
     tb <- check env b CType
     pure (TVal CCPi `TApp` ta `TApp` tb, CType)
+  RIPi a b -> do
+    ta <- check env a CType
+    tb <- check env b CType
+    pure (TVal CIPi `TApp` ta `TApp` tb, CType)
   RView a b -> do
     (ta, ty) <- infer env a
     (f, Expl, pa, pb) <- matchPi True env Expl ty

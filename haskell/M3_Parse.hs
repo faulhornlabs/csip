@@ -8,7 +8,7 @@ module M3_Parse
   , showMixfix, scope, unscope
 
   , ExpTree
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView)
+    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView)
   , PPrint (pprint)
   , showM
   , zVar
@@ -588,6 +588,7 @@ pattern NAny   = MkM ["_"]
 pattern NHole :: Mixfix a
 pattern NHole  = MkM ["_"]
 pattern NArr   = MkM ["->"]
+pattern NIArr  = MkM [":->"]
 pattern NView  = MkM ["-->"]
 pattern NPi    = MkM ["(",":",")","->"]
 pattern NHPi   = MkM ["{",":","}","->"]
@@ -816,6 +817,7 @@ pattern RHLam  n t   e = ZApps NTHLam [RVar n, t,    e]
 pattern RPi    n t   e = ZApps NPi    [RVar n, t,    e]
 pattern RHPi   n t   e = ZApps NHPi   [RVar n, t,    e]
 pattern RCPi     t   e = ZApps NCPi   [        t,    e]
+pattern RIPi     t   e = ZApps NIArr  [        t,    e]
 pattern RLet   n t d e = ZApps NTLet  [RVar n, t, d, e]
 pattern ROLet  n   d e = ZApps NOLet  [RVar n,    d, e]
 pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
@@ -901,7 +903,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOLet, NPi, NHPi, NCPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
@@ -1105,6 +1107,7 @@ unscope t = runReader mempty ff where
       RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
       RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
       RVar "CPi" :@ a :@       e -> f $ RCPi   a e
+      RVar "IPi" :@ a :@       e -> f $ RIPi   a e
       RVar v@(nameStr -> n) -> do
         k <- asks r (lookup v . fst)
         let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
