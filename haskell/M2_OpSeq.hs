@@ -58,10 +58,10 @@ type Enclosed a b = [Mid a b]
 ----------------------------------------
 
 leftPrecSeq Empty = MkPrec []
-leftPrecSeq (Node_ a _ _ _ _ _ _ _) = getCached a
+leftPrecSeq (Node_ a _ _ _ _ _ _ ~_) = getCached a
 
 rightPrecSeq Empty = MkPrec []
-rightPrecSeq (Node_ _ _ _ _ _ _ _ a) = getCached a
+rightPrecSeq (Node_ ~_ _ _ _ _ _ _ a) = getCached a
 
 -- not a proper Ord instance!
 instance (Ord a, Eq b) => Ord (OpSeq a b) where
@@ -75,7 +75,7 @@ instance (Ord a, Eq b) => Ord (OpSeq a b) where
   min = undefined
 
 pattern Node :: OpSeq a b -> a -> b -> Enclosed a b -> a -> OpSeq a b -> OpSeq a b
-pattern Node a b c d e f <- Node_ _ a b c d e f _
+pattern Node a b c d e f <- Node_ ~_ a b c d e f ~_
 
 {-# COMPLETE Node, Empty #-}
 

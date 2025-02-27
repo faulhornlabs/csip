@@ -22,43 +22,43 @@ data Icit = Impl | ImplClass | Expl
   deriving Eq
 
 matchCode :: Env -> Val -> RefM (Tm -> RefM Tm, Tm)
-matchCode env v = do      -- TODO: optimize this
-  (tm, m) <- freshMeta' env
-  cm <- vApp CCode m
-  f <- conv env v cm
-  pure (f, tm)
+matchCode env v = spine v >>= \case
+  (CCode, [a]) -> quoteTm' a <&> \a -> (pure, a)
+  _ -> do
+    (tm, m) <- freshMeta' env
+    cm <- vApp CCode m
+    f <- conv env v cm
+    pure (f, tm)
 
+matchArr :: Env -> Val -> RefM (Tm -> RefM Tm, Tm, Val, Tm, Val)
+matchArr env v = spine v >>= \case
+  (CArr, [a, b]) -> (,,,,) pure <$> quoteTm' a <*> pure a <*> quoteTm' b <*> pure b
+  _ -> do
+    (m1, m1')  <- freshMeta' env
+    (m2, m2')  <- freshMeta' env
+    ar <- vApp CCode =<< vApps CArr [m1', m2']
+    f <- conv env ar v
+    pure (f, m1, m1', m2, m2')
 
 -- True:   x: t      f x: Pi
 -- False:  x: Pi     f x: t
 matchPi :: Bool -> Env -> Icit -> Val -> RefM (Tm -> RefM Tm, Icit, Val, Val)
-matchPi cov env icit v_ = force v_ >>= \v -> do
- let
-   def = do
+matchPi cov env icit v = spine v >>= \case
+  (CPi,  [pa, pb]) -> pure (pure, Expl,      pa, pb)
+  (CHPi, [pa, pb]) -> pure (pure, Impl,      pa, pb)
+  (CCPi, [pa, pb]) -> pure (pure, ImplClass, pa, pb)
+  _ -> do
     (_, m1) <- freshMeta' env
     (_, m2) <- freshMeta' env
     let pi = case icit of Impl -> CHPi; Expl -> CPi; _ -> impossible
     v2 <- vApps pi [m1, m2]
     f <- if cov then conv env v v2 else conv env v2 v
     pure (f, icit, m1, m2)
- case view v of
-  VApp f pb -> force f >>= \f -> case view f of
-    VApp p pa -> force p >>= \case
-      CPi  -> pure (pure, Expl,      pa, pb)
-      CHPi -> pure (pure, Impl,      pa, pb)
-      CCPi -> pure (pure, ImplClass, pa, pb)
-      _ -> def
-    _   -> def
-  _     -> def
 
-matchHPi v_ = force v_ >>= \v -> case view v of
-  VApp f pb -> force f >>= \f -> case view f of
-    VApp p pa -> force p <&> \case
-      CHPi -> Just (Impl,      pa, pb)
-      CCPi -> Just (ImplClass, pa, pb)
-      _ ->    Nothing
-    _ -> pure Nothing
-  _   -> pure Nothing
+matchHPi v = spine v <&> \case
+  (CHPi, [pa, pb]) -> Just (Impl,      pa, pb)
+  (CCPi, [pa, pb]) -> Just (ImplClass, pa, pb)
+  _ -> Nothing
 
 --------------------
 
@@ -154,21 +154,17 @@ conv_ env a b = do
 
     () | ha == CCode, hb == CPi, [m3, m4] <- vb -> do
 
-      (m1, m1')  <- freshMeta' env
-      (m2, m2')  <- freshMeta' env
+      (f, m1, m1', m2, m2') <- matchArr env a
+
+      c1 <- vApp CCode m1'
+      q <- conv_ env m3{- m3 -} c1{- Code m1 -}
 
       v <- lamName "v" m4
       let vv = vVar v
 
-      ar <- vApp CCode =<< vApps CArr [m1', m2']
-      f <- conv env a ar{- Code (Arr m1 m2) -}
-
-      c1 <- vApp CCode m1'
       c2 <- vApp CCode m2'
       m4_v <- vApp m4 vv
       h_v <- conv_ (defineBound v c1 env) c2{- Code m2 -} m4_v  --  (Code m1 -> Code m2)  ==>  (Code m1 -> m4)
-
-      q <- conv_ env m3{- m3 -} c1{- Code m1 -}
 
       let lam t = case (h_v, q) of
             (Nothing, Nothing) -> pure t
@@ -178,21 +174,17 @@ conv_ env a b = do
 
     () | ha == CPi, hb == CCode, [m3, m4] <- va -> do
 
-      (m1, m1')  <- freshMeta' env
-      (m2, m2')  <- freshMeta' env
+      (f, m1, m1', m2, m2') <- matchArr env b
+
+      c1 <- vApp CCode m1'
+      q <- conv_ env c1{- Code m1 -} m3
 
       v <- lamName "v" m4
       let vv = vVar v
 
-      ar <- vApp CCode =<< vApps CArr [m1', m2']
-      f <- conv env ar{- Code (Arr m1 m2) -} b
-
-      c1 <- vApp CCode m1'
       c2 <- vApp CCode m2'
       m4_v <- vApp m4 vv
       h_v <- conv_ (defineBound v c1 env) m4_v{- m4 v -} c2{- Code m2 -}  --  (Code m1 -> m4 v)  ==>  (Code m1 -> Code m2)
-
-      q <- conv_ env c1{- Code m1 -} m3
 
       let lam t = case (h_v, q) of
             (Nothing, Nothing) -> pure t
