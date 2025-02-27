@@ -40,14 +40,14 @@ minPrec a (MkPrec (b: bs)) = case compare a (fst b) of
 
 data OpSeq a b
   = Empty
-  | Node_ (Cached (SeqPrec a))
-          !(OpSeq a b)
-          !a
-          !b
-          !(Enclosed a b)
-          !a
-          !(OpSeq a b)
-          (Cached (SeqPrec a))
+  | Node_ ~(Cached (SeqPrec a))
+          (OpSeq a b)
+          a
+          b
+          (Enclosed a b)
+          a
+          (OpSeq a b)
+          ~(Cached (SeqPrec a))
   deriving (Eq)
 
 data Mid a b = MkMid !a !(OpSeq a b) !a !b
@@ -81,7 +81,7 @@ pattern Node a b c d e f <- Node_ _ a b c d e f _
 
 mkNode :: Ord a => OpSeq a b -> a -> b -> Enclosed a b -> a -> OpSeq a b -> OpSeq a b
 mkNode a b c d e f
-  = Node_ (MkCached $ b `minPrec` leftPrecSeq a) a b c d e f (MkCached $ e `minPrec` rightPrecSeq f)
+  = Node_ (MkCached (b `minPrec` leftPrecSeq a)) a b c d e f (MkCached (e `minPrec` rightPrecSeq f))
 
 singOpSeq :: Ord a => (a, b, a) -> OpSeq a b
 singOpSeq (a, b, c) = mkNode Empty a b [] c Empty

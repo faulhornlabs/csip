@@ -29,8 +29,8 @@ import M3_Parse
 
 -- De Bruijn index
 data DB = MkDB
-  { dbIndex :: !Int
-  , dbName  :: !NameStr
+  { dbIndex :: Int
+  , dbName  :: NameStr
   }
 
 instance Print  DB where print  = print  . dbName
@@ -43,9 +43,9 @@ instance Ord DB where compare = compare `on` dbIndex
 -- supercombinator (closed)       -- \x1 ... xN -> t
 data Combinator = MkCombinator
   { combName   :: Name
-  , rigidCombinator :: !Bool
-  , _combNames :: ![NameStr]                  -- x1 ... xN
-  , _combBody  :: !(Tm_ DB)                   -- t
+  , rigidCombinator :: Bool
+  , _combNames :: [NameStr]                  -- x1 ... xN
+  , _combBody  :: (Tm_ DB)                   -- t
   }
 
 instance Eq  Combinator where (==)    = (==)    `on` combName
@@ -105,17 +105,17 @@ pattern VLam n <- VSup (varName -> n) _
 -------------
 
 data Tm_ a
-  = TVar !a                  -- x
-  | TApp !(Tm_ a) !(Tm_ a)    -- t u
-  | TSup !Combinator ![Tm_ a] -- c t1 ... t(N-1)
-  | TLet !a !(Tm_ a) !(Tm_ a)  -- x = t; u
+  = TVar a                  -- x
+  | TApp (Tm_ a) (Tm_ a)    -- t u
+  | TSup Combinator [Tm_ a] -- c t1 ... t(N-1)
+  | TLet a (Tm_ a) (Tm_ a)  -- x = t; u
 
-  | TMatch !Name !(Tm_ a) !(Tm_ a) !(Tm_ a)
-  | TSel !Int !Int !(Tm_ a)
-  | TRet !(Tm_ a)
+  | TMatch Name (Tm_ a) (Tm_ a) (Tm_ a)
+  | TSel Int Int (Tm_ a)
+  | TRet (Tm_ a)
 
-  | TGen !(Tm_ a)            -- generated term
-  | TVal !Val                -- closed value
+  | TGen (Tm_ a)            -- generated term
+  | TVal Val                -- closed value
  deriving (Eq, Ord)
 
 instance PPrint a => PPrint (Tm_ a) where
@@ -264,14 +264,14 @@ data View a
   | VCon   -- constructor
   | VFun   -- function
   | VMeta  -- meta
-  | VApp_ !a !a !(Maybe a){-accumulated result-} !(Maybe a){-meta dependency-}
-  | VSup !Combinator ![a]     -- lambda
-  | VSel !Int !Int !a       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
-  | VMatch !Name !a !a !a !(Maybe a){-meta dependency-}
-  | VRet !a
-  | VNat !Integer
-  | VString !String
-  | VTm !Tm !a
+  | VApp_ a a (Maybe a){-accumulated result-} (Maybe a){-meta dependency-}
+  | VSup Combinator [a]     -- lambda
+  | VSel Int Int a       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
+  | VMatch Name a a a (Maybe a){-meta dependency-}
+  | VRet a
+  | VNat Integer
+  | VString String
+  | VTm Tm a
 
 pattern VApp a b <- VApp_ a b _ _
 
@@ -281,10 +281,10 @@ pattern VMetaApp a <- VApp_ _ _ _ (Just a)
 -----
 
 data Val = MkVal
-  { name   :: !Name
-  , rigid  :: !Bool     -- no meta inside   -- forceAll may change it from False to True
-  , closed :: !Bool                         -- forceAll may change it from False to True if not rigid
-  , view   :: !(View Val)
+  { name   :: Name
+  , rigid  :: Bool     -- no meta inside   -- forceAll may change it from False to True
+  , closed :: Bool                         -- forceAll may change it from False to True if not rigid
+  , view   :: (View Val)
   }
 -- invariant:  name v == name w  ==>  view v == view w
 
@@ -380,7 +380,7 @@ tLazy :: Tm -> RefM Tm
 tLazy = tLam "_"
 
 vEval :: Val -> RefM Val
-vEval x = vApp x "()"
+vEval x = vApp x "X"
 
 
 vApps :: Val -> [Val] -> RefM Val

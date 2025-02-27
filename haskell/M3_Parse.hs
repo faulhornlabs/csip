@@ -609,7 +609,7 @@ instance Arity [Token i] where
 ------------------------------------------------
 
 
-data ExpTree a = RApps_ !Int a [ExpTree a]
+data ExpTree a = RApps_ Int a [ExpTree a]
   deriving (Eq, Ord)
 
 pattern RApps :: Arity a => a -> [ExpTree a] -> ExpTree a
@@ -646,6 +646,7 @@ instance Print (ExpTree' Layout) where
   print = print . op
 
 unop :: OpSeq' Layout -> ExpTree' Layout
+unop Empty = RVar NEmpty
 unop (topOp -> (os, l, ts, r)) = case os of
   [] -> RVar NEmpty
   os | not $ operator os -> error $ "Mismatched operator: " <> showMixfix (MkM os)
@@ -971,8 +972,8 @@ instance Print (ExpTree' Desug) where
 type NameStr = Mixfix Desug
 
 data Name = MkName
-  { nameStr :: !NameStr
-  , nameId  :: !Int
+  { nameStr :: NameStr
+  , nameId  :: Int
   }
 
 instance IsMixfix Name where

@@ -172,7 +172,7 @@ indexVec :: Vec -> Int -> Char
 indexVec = Arr.unsafeAt
 
 
-data CharCtx = MkCtx (Maybe Handler) !Vec
+data CharCtx = MkCtx (Maybe Handler) Vec
 
 newtype Source = MkSource [(Int, Int, CharCtx)]
   deriving (Semigroup, Monoid)
@@ -189,7 +189,7 @@ instance Eq  Source  where
     go ((ia, ja, MkCtx _ va): as) ((ib, jb, MkCtx _ vb): bs) = go' ia ja va as ib jb vb bs
     go _ _ = False
 
-    go' !ia ja va as !ib jb vb bs
+    go' ia ja va as ib jb vb bs
       | ja == ia, (ia, ja, MkCtx _ va): as <- as  = go' ia ja va as ib jb vb bs
       | ja == ia, [] <- as, jb == ib, [] <- bs  = True
       | ja == ia, [] <- as  = False

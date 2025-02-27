@@ -63,7 +63,7 @@ executable csip
       NoImplicitPrelude
     , BlockArguments
     , LambdaCase
-    , BangPatterns
+    , Strict
     , ViewPatterns
     , PatternSynonyms
     , NoMonomorphismRestriction

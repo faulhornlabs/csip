@@ -200,7 +200,6 @@ Planned performance improvements:
 - redirect graph nodes after conversion checking
 - parsing and pretty printing should be near linear time operation
 - faster supercombinator evaluation using interpreted register machines
-- use `Strict` pragma and `UNPACK` pragmas in the Haskell source files
 
 
 ## Development workflows
