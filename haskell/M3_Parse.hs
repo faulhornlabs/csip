@@ -8,7 +8,7 @@ module M3_Parse
   , showMixfix, scope, unscope
 
   , ExpTree
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RLet, ROLet, RLetTy, RLetOTy, Hole, RRule, RDot, RApp, RHApp, RView)
+    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView)
   , PPrint (pprint)
   , showM
   , zVar
@@ -564,8 +564,6 @@ pattern NLetTy = MkM [":",";"]
 pattern NTLet  = MkM [":","=",";"]
 pattern NExpl  = MkM ["(",":",")"]
 pattern NImpl  = MkM ["{",":","}"]
-pattern NOTy   = MkM ["::"]
-pattern NLetOTy= MkM ["::",";"]
 
 pattern NImport   = MkM ["import"]
 pattern NLetImport= MkM ["import",";"]
@@ -742,7 +740,6 @@ norm r = case r of
   _ | Just z <- gg NSemi     NTy        -> z
   _ | Just z <- gg NHArr     NTy        -> z
   _ | Just z <- gg NHLam     NTy        -> z
-  _ | Just z <- gg NSemi     NOTy       -> z
   _ | Just z <- gg NSemi     NTEq       -> z
   _ | Just z <- gg NSemi     NEq        -> z
   _ | Just z <- gg NSemi     NOEq       -> z
@@ -822,7 +819,6 @@ pattern RCPi     t   e = ZApps NCPi   [        t,    e]
 pattern RLet   n t d e = ZApps NTLet  [RVar n, t, d, e]
 pattern ROLet  n   d e = ZApps NOLet  [RVar n,    d, e]
 pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
-pattern RLetOTy n t  e = ZApps NLetOTy[RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
@@ -830,7 +826,7 @@ pattern RImport n e   <- ZApps NLetImport [RVar NEmpty, RVar n, e]
 
 unGLam = \case
   _ :@@ _ -> Nothing
-  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NLetOTy, NTLet, NOLet] -> Just (ZVar a: es, n, e)
+  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NTLet, NOLet] -> Just (ZVar a: es, n, e)
   _ -> Nothing
 
 pattern GLam :: (Arity a, IsMixfix a) => [ExpTree a] -> a -> ExpTree a -> ExpTree a
@@ -905,7 +901,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NCPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOLet, NPi, NHPi, NCPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
@@ -1072,7 +1068,6 @@ importModule m = do
       RLet  n t a b -> RLet  n t a $ f b
       ROLet   n a b -> ROLet   n a $ f b
       RLetTy  n a b -> RLetTy  n a $ f b
-      RLetOTy n a b -> RLetOTy n a $ f b
       _ -> s
 
 

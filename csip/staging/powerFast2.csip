@@ -15,16 +15,16 @@ half 1 = MkHalf Odd  0
 half (Succ (Succ (half --> MkHalf p n))) = MkHalf p (Succ n)
 
 // object code types and functions (foreign function interface)
-Int :: Type
-One :: Int
-Mul :: Int -> Int -> Int
-Add :: Int -> Int -> Int
+Int : Ty
+One : Int
+Mul : Int -> Int -> Int
+Add : Int -> Int -> Int
 
 sqr := \a -> Mul a a
 
 (+) = Add
 
-(^) : Code Int -> Nat -> Code Int
+(^) : Int -> Nat -> Int
 a ^ 1 = a
 a ^ 0 = One
 a ^ (half --> MkHalf Even k) =                 sqr (a ^ k)

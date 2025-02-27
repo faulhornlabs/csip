@@ -3,24 +3,24 @@
 
 import Builtins
 
-Unit :: Type
-TT   :: Unit
+Unit : Ty
+TT   : Unit
 
 // FFI
-Carry      :: Type
-ClearCarry :: Carry
-SetCarry   :: Carry
+Carry      : Ty
+ClearCarry : Carry
+SetCarry   : Carry
 
-W64    :: Type
-Zero64 :: W64
-PlusC  :: Carry -> W64 -> W64 -> Prod Carry W64
+W64    : Ty
+Zero64 : W64
+PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
 
 
 vec : Nat -> Ty -> Ty
 vec  0       t = Unit
 vec (Succ n) t = Prod (vec n t) t
 
-addHelper : (n: Nat) -> Code Carry -> Code (vec n W64) -> Code (vec n W64) -> Code (Prod Carry (vec n W64))
+addHelper : (n: Nat) -> Carry -> vec n W64 -> vec n W64 -> Prod Carry (vec n W64)
 addHelper  0       c a b = Pair c TT
 addHelper (Succ n) c a b =
   (d := PlusC c (Snd a) (Snd b);
@@ -33,7 +33,7 @@ addHelper (S n) c (as, a) (bs, b) = do
   (c'', ds) := addHelper n c' as bs
   (c'', (ds, d))
 */
-add : (n: Nat) -> Code (vec n W64) -> Code (vec n W64) -> Code (vec n W64)
+add : (n: Nat) -> vec n W64 -> vec n W64 -> vec n W64
   = \n a b -> Snd (addHelper n ClearCarry a b)
 
 // main

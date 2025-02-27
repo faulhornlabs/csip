@@ -70,11 +70,10 @@ data Env = MkEnv
   , localTypes  :: Map Name Val
   , globals     :: Map Name (Val, Val)
   , isLHS       :: Bool    -- True if lhs is checked
-  , isObject    :: Bool    -- True if object type is checked
   }
 
 memptyEnv :: Env
-memptyEnv = foldr def (MkEnv mempty mempty mempty mempty False False)
+memptyEnv = foldr def (MkEnv mempty mempty mempty mempty False)
   [("Nat", CNat), ("String", CString), ("Type", CType)]
  where
   def (n, v) = defineGlob n v CType
@@ -327,13 +326,9 @@ infer_ env r = case r of
     pure (t, m)
   RVar (NNat n)    -> vNat n    <&> \v -> (TVal v, CNat)
   RVar (NString n) -> vString n <&> \v -> (TVal v, CString)
-  RVar "Type" | isObject env -> pure (TVal CTy, CType)
   RVar n | Just (v, ty) <- lookupGlobal n env -> pure (TVal v, ty)
   RVar n | Just ty      <- lookupLocal  n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"
-  RLetOTy n t b | onTop env -> do
-    vta <- check (env {isObject = True}) t CType >>= evalEnv' env (typeName n)
-    infer (defineGlob n (Con n) vta env) b
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
     c <- if isConName n then pure $ Con n else do
@@ -423,7 +418,6 @@ reverseRules = g where
     RLet  n t a b -> RLet  n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
     ROLet   n a b -> ROLet   n a (g b)
-    RLetOTy n t b -> RLetOTy n t (g b)
     r -> r  -- TODO
 
   f h acc = \case

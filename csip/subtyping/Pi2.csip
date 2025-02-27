@@ -2,7 +2,7 @@
 
 import Builtins
 
-Int :: Type
+Int : Ty
 
 F : ((Code Int -> Code Int) -> Code Int) -> Code Int
 
