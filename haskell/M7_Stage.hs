@@ -29,10 +29,10 @@ unquote = f mempty
     a :@ b -> f e a .@ f e b
     RVar n -> RVar $ fromMaybe n $ lookup n e
 
-  rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
+--  rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
   rLet n a b = RLet n Hole a b
 
-  RLet m Hole b c .@ a = rLet m b (c .@ a)
+--  RLet m Hole b c .@ a = rLet m b (c .@ a)
 --  a .@ RLet m Hole b c = rLet m b (a .@ c)
   a .@ b = a :@ b
 
