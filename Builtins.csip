@@ -1,0 +1,44 @@
+
+Nat       : Type
+ProdNat   : Type
+PairNat   : Nat -> Nat -> ProdNat
+Succ      : Nat -> Nat
+EqNat     : ProdNat -> Nat
+
+String    : Type
+ProdStr   : Type
+PairStr   : String -> String -> ProdStr
+Cons      : String -> String -> String
+AppendStr : ProdStr -> String
+EqStr     : ProdStr -> Nat
+
+Ty        : Type
+Arr       : Ty -> Ty -> Ty
+Prod      : Ty -> Ty -> Ty
+
+Code      : Ty -> Type
+Lam       : {a b} -> (Code a -> Code b) -> Code (Arr a b)
+App       : {a b} -> Code (Arr a b) -> Code a -> Code b
+Let       : {a b} -> Code a -> Code a -> Code b -> Code b
+Pair      : {a b} -> Code a -> Code b -> Code (Prod a b)
+Fst       : {a b} -> Code (Prod a b) -> Code a
+Snd       : {a b} -> Code (Prod a b) -> Code b
+
+instanceOf : (a : Type) -> a
+
+Bool : Type
+True  : Bool
+False : Bool
+
+natToBool : Nat -> Bool
+natToBool 1 = True
+natToBool _ = False
+
+appendStr : String -> String -> String
+  = \a b -> AppendStr (PairStr a b)
+
+eqStr : String -> String -> Bool
+  = \a b -> natToBool (EqStr (PairStr a b))
+
+
+"end of module"

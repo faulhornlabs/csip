@@ -51,6 +51,7 @@ module M1_Base
   , traceShow, (<<>>)
 
   , IntHash (intHash)
+  , importFile
   )
  where
 
@@ -746,6 +747,12 @@ bottomUp
 bottomUp init children up x
   = walk (\v -> (,) init <$> children v) (\_ -> pure) (\a _ b -> up a b) [x]
 
+
+importFile :: Parse a => Source -> RefM a
+importFile f = do
+  d <- getDataDir
+  s <- IO.readFile $ d <> "/" <> chars f <> ".csip"
+  source (chars f) s
 
 precedenceTableString :: String
 precedenceTableString = unsafePerformIO do

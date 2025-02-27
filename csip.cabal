@@ -23,6 +23,7 @@ extra-source-files:
 data-dir: .
 data-files:
   precedences
+  Builtins.csip
   csip/**/*.csip
   perftests/**/*.csip
 

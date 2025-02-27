@@ -567,6 +567,9 @@ pattern NImpl  = MkM ["{",":","}"]
 pattern NOTy   = MkM ["::"]
 pattern NLetOTy= MkM ["::",";"]
 
+pattern NImport   = MkM ["import"]
+pattern NLetImport= MkM ["import",";"]
+
 pattern NEq    = MkM ["="]
 pattern NLet   = MkM ["=",";"]
 pattern NOEq   = MkM [":="]
@@ -743,6 +746,7 @@ norm r = case r of
   _ | Just z <- gg NSemi     NTEq       -> z
   _ | Just z <- gg NSemi     NEq        -> z
   _ | Just z <- gg NSemi     NOEq       -> z
+  _ | Just z <- gg NSemi     NImport    -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
   _ | Just z <- gg NLambda   NPi        -> z
@@ -822,6 +826,7 @@ pattern RLetOTy n t  e = ZApps NLetOTy[RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
+pattern RImport n e   <- ZApps NLetImport [RVar NEmpty, RVar n, e]
 
 unGLam = \case
   _ :@@ _ -> Nothing
@@ -900,7 +905,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NCPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NLetOTy, NTLet, NOLet, NPi, NHPi, NCPi, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
@@ -1035,8 +1040,12 @@ mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
 
 consts :: Set NameStr
 consts = fromListSet
-  [ "Succ", "Cons", "PairStr", "EqStr", "PairNat", "EqNat", "AppendStr"
-  , "Ty", "Code", "Arr", "Prod", "Pair", "Fst", "Snd", "_", "instanceOf"
+  [ "Nat", "ProdNat", "PairNat", "Succ", "EqNat"
+  , "String", "ProdStr", "PairStr", "Cons", "AppendStr", "EqStr"
+  , "Ty", "Arr", "Prod"
+  , "Code", "Lam", "App", "Let", "Pair", "Fst", "Snd"
+  , "instanceOf"
+  , "_"
   ]
 
 nameOf :: NameStr -> RefM Name
@@ -1044,6 +1053,27 @@ nameOf n | n `member` consts = pure $ NConst n
          | otherwise         = mkName n
 
 type Raw = ExpTree Name
+
+
+---------------------------------------------
+--------------- import module ---------------
+---------------------------------------------
+
+
+importModule :: Source -> RefM (ExpTree' Desug -> ExpTree' Desug)
+importModule m = do
+  t <- importFile m
+  pure $ g t
+ where
+  g t s = f t
+   where
+    f :: ExpTree' Desug -> ExpTree' Desug
+    f = \case
+      RLet  n t a b -> RLet  n t a $ f b
+      ROLet   n a b -> ROLet   n a $ f b
+      RLetTy  n a b -> RLetTy  n a $ f b
+      RLetOTy n a b -> RLetOTy n a $ f b
+      _ -> s
 
 
 -------------------------------------------------
@@ -1061,6 +1091,7 @@ scope   :: ExpTree' Desug -> RefM Raw
 scope t = runReader mempty ff  where
   ff r = f t  where
     f = \case
+      RImport (MkM [m]) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
       RVar (MkM [n@MkNat{}])    -> pure $ RVar $ NConst' n
       RVar (MkM [n@MkString{}]) -> pure $ RVar $ NConst' n
       RVar n -> asks r (lookup n) >>= \case
