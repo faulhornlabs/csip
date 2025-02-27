@@ -160,20 +160,23 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 The following limitations and bugs are planned to be lifted:
 
 - type classes are not supported
-- missing documentation
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - foralls for functions and constructors should be explicitly given
-- `import` acts as an "include"
-- only the Builtin module can be imported
-- no support for multiple object codes
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
+- missing check that no unsolved metas left in global definitions
+- missing check that constructors are saturated in patterns
+- missing documentation
+- dot patterns (in dependent pattern matching) are not supported
 - local definitions are not supported
 - local do notation is not supported
 - recursive definitions are not properly printed
 - closed data types and closed functions are not supported
 - sharing between values are sometimes lost during printing
+- `import` acts as an "include"
+- only the Builtin module can be imported
+- no support for multiple object codes
 - types are not shown in printed output
 - implicit/explicit distinction of lambdas and applications are missing
 - multiline comments interferes with layout rules
