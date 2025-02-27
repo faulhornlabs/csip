@@ -162,6 +162,7 @@ The following limitations and bugs are planned to be lifted:
 - type classes are not supported
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
+- object code constructor definitions are not included in object code
 - foralls for functions and constructors should be explicitly given
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
