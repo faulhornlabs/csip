@@ -164,7 +164,7 @@ The following limitations and bugs are planned to be lifted:
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - foralls for functions and constructors should be explicitly given
-- `import` act as an "include"
+- `import` acts as an "include"
 - only the Builtin module can be imported
 - no support for multiple object codes
 - missing check that pattern matching is not allowed on object language constructors

@@ -9,14 +9,16 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi, CCode, CTy, CArr :: Val
-pattern CType = "Type"
-pattern CPi   = "Pi"
-pattern CHPi  = "HPi"
-pattern CCPi  = "CPi"   --   t => s
-pattern CCode = "Code"
-pattern CTy   = "Ty"
-pattern CArr  = "Arr"
+pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString :: Val
+pattern CType   = "Type"
+pattern CPi     = "Pi"
+pattern CHPi    = "HPi"
+pattern CCPi    = "CPi"   --   t => s
+pattern CCode   = "Code"
+pattern CTy     = "Ty"
+pattern CArr    = "Arr"
+pattern CNat    = "Nat"
+pattern CString = "String"
 
 data Icit = Impl | ImplClass | Expl
   deriving Eq
@@ -68,11 +70,12 @@ data Env = MkEnv
   , localTypes  :: Map Name Val
   , globals     :: Map Name (Val, Val)
   , isLHS       :: Bool    -- True if lhs is checked
+  , isObject    :: Bool    -- True if object type is checked
   }
 
 memptyEnv :: Env
-memptyEnv = foldr def (MkEnv mempty mempty mempty mempty False)
-  [("Nat", "Nat"), ("String", "String"), ("Type", CType)]
+memptyEnv = foldr def (MkEnv mempty mempty mempty mempty False False)
+  [("Nat", CNat), ("String", CString), ("Type", CType)]
  where
   def (n, v) = defineGlob n v CType
 
@@ -134,8 +137,10 @@ conv_ env a b = do
   (hb, vb) <- spine b
   case () of
 
-    () | ha == CPi, hb == CPi, [m1, m2] <- va, [m3, m4] <- vb
-       -> do
+    () | ha == CTy, hb == CType, [] <- va, [] <- vb -> do
+      pure $ Just \t -> pure $ TVal CCode `TApp` t
+
+    () | ha == CPi, hb == CPi, [m1, m2] <- va, [m3, m4] <- vb -> do
 
       q <- conv_ env m3 m1
 
@@ -320,16 +325,14 @@ infer_ env r = case r of
     t <- freshMeta env
     (_, m) <- freshMeta' env
     pure (t, m)
-  RVar (NNat n)    -> vNat n    <&> \v -> (TVal v, "Nat")
-  RVar (NString n) -> vString n <&> \v -> (TVal v, "String")
+  RVar (NNat n)    -> vNat n    <&> \v -> (TVal v, CNat)
+  RVar (NString n) -> vString n <&> \v -> (TVal v, CString)
+  RVar "Type" | isObject env -> pure (TVal CTy, CType)
   RVar n | Just (v, ty) <- lookupGlobal n env -> pure (TVal v, ty)
   RVar n | Just ty      <- lookupLocal  n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"
-  RLetOTy n "Type" b | onTop env -> do
-    infer (defineGlob n (Con n) CTy env) b
   RLetOTy n t b | onTop env -> do
-    vta_ <- check env t CTy >>= evalEnv' env (typeName n)
-    vta <- vApp CCode vta_
+    vta <- check (env {isObject = True}) t CType >>= evalEnv' env (typeName n)
     infer (defineGlob n (Con n) vta env) b
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)

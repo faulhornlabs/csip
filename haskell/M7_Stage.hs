@@ -19,20 +19,21 @@ unquote = f mempty
     RVar "Fst"  :@ _ :@ _ :@ a -> "Fst" .@ f e a
     RVar "Snd"  :@ _ :@ _ :@ a -> "Snd" .@ f e a
     RVar "App" :@ _ :@ _ :@ a -> f e a
-    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
+--    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
     RVar "Lam" :@ _ :@ _ :@ a -> f e a
     RVar "TopLet" :@ _ :@ _ :@ RVar n :@ RVar a :@ b | isVarName a -> f (insert n a e) b
     RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a      :@ b -> rLet n (f e a) (f e b)
     RVar "Let"    :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
     RVar "Let"    :@ _ :@ _ :@      a :@ E.Lam n b -> rLet n (f e a) (f e b)
-    a :@ b -> f e a :@ f e b
+    E.Lam n a -> E.Lam n $ f e a
+    a :@ b -> f e a .@ f e b
     RVar n -> RVar $ fromMaybe n $ lookup n e
 
   rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
   rLet n a b = RLet n Hole a b
 
   RLet m Hole b c .@ a = rLet m b (c .@ a)
-  a .@ RLet m Hole b c = rLet m b (a .@ c)
+--  a .@ RLet m Hole b c = rLet m b (a .@ c)
   a .@ b = a :@ b
 
 --------------------------------- priting for backends in Haskell
