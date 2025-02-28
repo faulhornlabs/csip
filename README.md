@@ -74,11 +74,11 @@ Available commands in interactive mode:
 
 You can read the documentation of Csip (currently only about the syntactic frontend) with
 
-    csip show csip/doc
+    csip show test/doc
 
 If needed, the documentation is readable without the interactive mode:
 
-    csip export csip/doc | less -R
+    csip export test/doc | less -R
 
 ## Features
 
@@ -160,14 +160,15 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 The following limitations and bugs are planned to be lifted:
 
 - type classes are not supported
+- missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - object code constructor definitions are not included in object code
 - foralls for functions and constructors should be explicitly given
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
-- missing check that no unsolved metas left in global definitions
 - missing check that constructors are saturated in patterns
+- missing check to rule out recursive meta solutions
 - missing documentation
 - dot patterns (in dependent pattern matching) are not supported
 - local definitions are not supported
@@ -220,11 +221,11 @@ remove unconsitent cache during development when needed.
 ### Main development workflow
 
     cabal repl
-    > :main csip
+    > :main test
     <<< start_loop >>>
     <<< edit source files >>>
     > :reload
-    > :main diff csip
+    > :main diff test
     <<< goto start_loop >>>
 
 
@@ -264,7 +265,7 @@ is compiled to
   )
 ```
 
-given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast.csip).
+given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast.csip).
 
 and compiled to
 
@@ -282,5 +283,5 @@ do
       )
 ```
 
-given the definitions in [`csip/staging/powerFast.csip`](csip/staging/powerFast2.csip).
+given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast2.csip).
 
