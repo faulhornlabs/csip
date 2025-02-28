@@ -119,7 +119,13 @@ instanceMeta :: Env -> RefM (Tm, Val)
 instanceMeta env = do
   m <- freshMeta_ env
   m' <- evalEnv env m
-  pure (TGen $ TApp (TVal $ Fun "instanceOf") m, m')
+  pure (TGen $ TApp (TVal instanceFun) m, m')
+
+instanceFun = Fun_ "instanceOf" instanceOfRef
+
+{-# noinline instanceOfRef #-}
+instanceOfRef :: RuleRef
+instanceOfRef = topRef $ Con "Fail"
 
 freshMeta' :: Env -> RefM (Tm, Val)
 freshMeta' env = do
@@ -246,10 +252,6 @@ insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
     insertH env $ pure (TApp e m, t')
   _ -> undefined
 
-lamName n x = force x >>= \v -> case view v of
-  VLam n -> n
-  _ -> pure n
-
 unlam n' f = do
   let v = vVar n'
   t <- vApp f v
@@ -365,9 +367,12 @@ infer_ env r = case r of
   RVar{} -> errorM "Not in scope"
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
-    c <- if isConName n then pure $ Con n else do
-      updateRule n $ Con "Fail"
-      pure $ Fun n
+    c <- if isConName n then pure $ mkCon n
+      else case n of
+        "instanceOf" -> pure instanceFun
+        _ -> do
+          r <- newRef $ Con "Fail"
+          pure $ Fun_ n r
     infer (defineGlob n c vta env) b
   ROLet{} -> do
     (_, m) <- freshMeta' env
