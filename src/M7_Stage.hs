@@ -38,7 +38,10 @@ unquote = f mempty
 
 --------------------------------- priting for backends in Haskell
 
-type HName = (String, Int)
+data HName
+  = Builtin String        -- the String is globally unique
+  | UserName String Int
+  deriving Show
 
 data Exp
   = Lam HName Exp
@@ -63,4 +66,8 @@ convert = f  where
       _ -> Var $ g n
 
   g :: Name -> HName
-  g n = (chars $ showMixfix $ nameStr n, nameId n)
+  g n = case nameId n of
+    i | i < 0     -> Builtin s
+      | otherwise -> UserName s i
+   where
+    s = chars $ showMixfix $ nameStr n
