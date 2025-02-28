@@ -3,7 +3,7 @@ module M3_Parse
   , ISource, Token, OpSeq
 
   , Name (NNat, NString)
-  , NameStr, nameStr
+  , NameStr, nameStr, nameId
   , mkName, mkName', mapName, rename, isConName, isVarName
   , showMixfix, scope, unscope
 

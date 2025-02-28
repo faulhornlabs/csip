@@ -29,7 +29,7 @@ unquote = f mempty
     a :@ b -> f e a .@ f e b
     RVar n -> RVar $ fromMaybe n $ lookup n e
 
---  rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
+  rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
   rLet n a b = RLet n Hole a b
 
 --  RLet m Hole b c .@ a = rLet m b (c .@ a)
@@ -38,12 +38,14 @@ unquote = f mempty
 
 --------------------------------- priting for backends in Haskell
 
+type HName = (String, Int)
+
 data Exp
-  = Lam String Exp
-  | Let String Exp Exp
+  = Lam HName Exp
+  | Let HName Exp Exp
   | App Exp Exp
-  | Var String
-  | Con String
+  | Var HName
+  | Con HName
   | String String
   | Nat Integer
   deriving Show
@@ -60,5 +62,5 @@ convert = f  where
       m | isConName m -> Con $ g n
       _ -> Var $ g n
 
-  g :: Name -> String
-  g = chars . showMixfix . nameStr
+  g :: Name -> HName
+  g n = (chars $ showMixfix $ nameStr n, nameId n)
