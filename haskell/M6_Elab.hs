@@ -104,10 +104,19 @@ evalEnv env = eval $ localVals env
 
 evalEnv' env n t = evalEnv env t >>= \v -> if closed v then vTm n t v else pure v
 
-freshMeta :: Env -> RefM Tm
-freshMeta env = do
+freshMeta_ :: Env -> RefM Tm
+freshMeta_ env = do
   m <- tMeta
-  pure $ TGen $ TApps m $ reverse $ TVar <$> boundVars env
+  pure $ TApps m $ reverse $ TVar <$> boundVars env
+
+freshMeta :: Env -> RefM Tm
+freshMeta env = TGen <$> freshMeta_ env
+
+instanceMeta :: Env -> RefM (Tm, Val)
+instanceMeta env = do
+  m <- freshMeta_ env
+  m' <- evalEnv env m
+  pure (TGen $ TApp (TVal $ Fun "instanceOf") m, m')
 
 freshMeta' :: Env -> RefM (Tm, Val)
 freshMeta' env = do
@@ -208,8 +217,8 @@ insertH :: Env -> RefM (Tm, Val) -> RefM (Tm, Val)
 insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
   Nothing -> pure (e, t)
   Just (ImplClass, _, b) -> do
-    m <- freshMeta env
-    insertH env $ pure (TApp e (TApp (TVal $ Fun "instanceOf") m), b)
+    (m, _) <- instanceMeta env
+    insertH env $ pure (TApp e m, b)
   Just (Impl, _, b) -> do
     (m, vm) <- freshMeta' env
     t' <- vApp b vm
@@ -239,6 +248,7 @@ check env r ty = do
     traceShow $ "check end " <<>> showM r <<>> "\n ==> " <> showM t
     pure t
 
+check_ :: Env -> Raw -> Val -> RefM Tm
 check_ env r ty = case r of
   Hole -> freshMeta env
   RPi "_" a b | ty == CTy -> do
@@ -382,6 +392,7 @@ infer_ env r = case r of
     inferApp Impl env a b
   RApp a b -> do
     inferApp Expl env a b
+  REmbed x -> pure x
   _ -> errorM "can't infer"
  where
   inferApp i env a b = infer env a >>= \(av, ty) -> do
@@ -400,7 +411,8 @@ infer_ env r = case r of
        | icit == Impl -> do
         infer env $ RApp (RHApp a Hole) b
        | icit == ImplClass -> do
-        infer env $ RApp (RHApp a (RVar "instanceOf" `RApp` Hole)) b
+        (m, m') <- instanceMeta env
+        infer env $ RApp (RHApp a $ REmbed (m, m')) b
        | otherwise -> error "baj"
 
 --------------------

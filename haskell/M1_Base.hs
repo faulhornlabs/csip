@@ -52,6 +52,8 @@ module M1_Base
 
   , IntHash (intHash)
   , importFile
+
+  , Void
   )
  where
 
@@ -405,6 +407,9 @@ instance Print String where
 
 instance Print Int where
   print = print . show
+
+instance Print Void where
+  print = impossible
 
 --------------------------------------------------
 
@@ -779,3 +784,7 @@ instance IntHash String where
 instance IntHash Source where
   intHash = intHash . chars
 
+data Void
+
+instance Eq  Void where (==) = impossible
+instance Ord Void where compare = impossible

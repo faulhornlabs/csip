@@ -3,6 +3,7 @@ module M4_Eval
 
   , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView)
   , Tm, tLam, tMeta
+  , Raw
 
   , Val (Con, Fun), vNat, vString
   , View (VSup, VLam, VApp, VApp_, VMeta, VMetaApp, VVar, VCon, VFun, VTm)
@@ -130,6 +131,8 @@ instance PPrint a => PPrint (Tm_ a) where
 -------------
 
 type Tm = Tm_ Name
+
+type Raw = Raw_ (Tm, Val)
 
 pattern TView :: Tm -> Tm -> Tm
 pattern TView a b = TApp (TApp (TVal (Con "View")) a) b

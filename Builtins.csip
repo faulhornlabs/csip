@@ -1,4 +1,6 @@
 
+Ap : {a b} -> (a ~> b) -> a -> b
+
 Nat       : Type
 ProdNat   : Type
 PairNat   : Nat -> Nat -> ProdNat

@@ -1,16 +1,12 @@
 # eval
 
-// builtins
-instanceOf : (a : Type) -> a
-Succ : Nat -> Nat
-
-Ap : {a b} -> (a :-> b) -> a -> b
+import Builtins
 
 // class Functor m  where
 //   fmap : (a -> b) -> m a -> m b
-Functor : (Type :-> Type) -> Type
+Functor : (Type ~> Type) -> Type
 MkFunctor :
-     {m : Type :-> Type}
+     {m : Type ~> Type}
   -> ({a b} -> (a -> b) -> Ap m a -> Ap m b)
   -> Functor m
 
@@ -21,9 +17,9 @@ fmap {_} {_} {_} {MkFunctor f} = f
 // class Functor m => Applicative m  where
 //   pure  : a -> m a
 //   (<*>) : m (a -> b) -> m a -> m b
-Applicative : (Type :-> Type) -> Type
+Applicative : (Type ~> Type) -> Type
 MkApplicative :
-     {m : Type :-> Type}
+     {m : Type ~> Type}
   -> Functor m
   -> ({a} -> a -> Ap m a)
   -> ({a b} -> Ap m (a -> b) -> Ap m a -> Ap m b)
@@ -41,9 +37,9 @@ app {_} {_} {_} {MkApplicative _ _ f} = f
 
 // class Applicative m => Monad m where
 //   join : m (m a) -> m a
-Monad : (Type :-> Type) -> Type
+Monad : (Type ~> Type) -> Type
 MkMonad :
-     {m : Type :-> Type}
+     {m : Type ~> Type}
   -> Applicative m
   -> ({a} -> Ap m (Ap m a) -> Ap m a)
   -> Monad m
@@ -57,7 +53,7 @@ join {_} {MkMonad _ f} = f
 
 // Maybe monad
 
-Maybe   : Type :-> Type
+Maybe   : Type ~> Type
 Nothing : {a : Type} -> Ap Maybe a
 Just    : {a : Type} -> a -> Ap Maybe a
 
@@ -100,7 +96,7 @@ instanceOf (Monad Maybe) = MkMonad (instanceOf (Applicative Maybe)) joinMaybe
 
 // List monad
 
-List   : Type :-> Type
+List   : Type ~> Type
 Nil    : {a : Type} -> Ap List a
 LCons  : {a : Type} -> a -> Ap List a -> Ap List a
 
