@@ -310,16 +310,18 @@ check_ env r ty = case r of
         va <- evalEnv' env n ta
         tb <- check (define False n va vta env) b ty
         pure $ if onTop env then tb else TLet n ta tb
-      ROLet n a b | onTop env -> do
-        (ta, vta) <- infer env a
+      ROLet n t a b | onTop env -> do
+        vta <- check env t CType >>= evalEnv' env (typeName n)
+        ta <- check env a vta
         tb <- check (defineGlob n (Con n) vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
         fta <- fa ta
         ftb <- fb tb
         pure $ TApps "TopLet" [pa, pb, TVal (Con n), fta, ftb]
-      ROLet n a b -> do
-        (ta, vta) <- infer env a
+      ROLet n t a b -> do
+        vta <- check env t CType >>= evalEnv' env (typeName n)
+        ta <- check env a vta
         tb <- check (defineBound n vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
@@ -454,8 +456,8 @@ reverseRules = g where
   g = \case
     RLet n t a b | Just h <- ruleHead a -> f h [(n, t, a)] b
     RLet  n t a b -> RLet  n t a (g b)
+    ROLet n t a b -> ROLet n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
-    ROLet   n a b -> ROLet   n a (g b)
     r -> r  -- TODO
 
   f h acc = \case

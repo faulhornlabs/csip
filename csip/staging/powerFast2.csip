@@ -20,6 +20,7 @@ One : Int
 Mul : Int -> Int -> Int
 Add : Int -> Int -> Int
 
+sqr : Int -> Int
 sqr := \a -> Mul a a
 
 (+) = Add

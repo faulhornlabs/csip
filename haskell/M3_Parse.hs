@@ -575,6 +575,8 @@ pattern NEq    = MkM ["="]
 pattern NLet   = MkM ["=",";"]
 pattern NOEq   = MkM [":="]
 pattern NOLet  = MkM [":=",";"]
+pattern NOTEq  = MkM [":",":="]
+pattern NOTLet = MkM [":",":=",";"]
 
 pattern NLambda= MkM ["\\"]
 pattern NLam   = MkM ["\\","->"]
@@ -749,12 +751,14 @@ norm r = case r of
   _ | Just z <- gg NBraces   NTy        -> z
   _ | Just z <- gg NEq       NTy        -> z
   _ | Just z <- gg NLet      NTy        -> z
+  _ | Just z <- gg NOLet     NTy        -> z
   _ | Just z <- gg NSemi     NTy        -> z
   _ | Just z <- gg NHArr     NTy        -> z
   _ | Just z <- gg NHLam     NTy        -> z
   _ | Just z <- gg NSemi     NTEq       -> z
   _ | Just z <- gg NSemi     NEq        -> z
   _ | Just z <- gg NSemi     NOEq       -> z
+  _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
@@ -830,16 +834,16 @@ pattern RHPi   n t   e = ZApps NHPi   [RVar n, t,    e]
 pattern RCPi     t   e = ZApps NCPi   [        t,    e]
 pattern RIPi     t   e = ZApps NIArr  [        t,    e]
 pattern RLet   n t d e = ZApps NTLet  [RVar n, t, d, e]
-pattern ROLet  n   d e = ZApps NOLet  [RVar n,    d, e]
+pattern ROLet  n t d e = ZApps NOTLet [RVar n, t, d, e]
 pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
-pattern RImport n e   <- ZApps NLetImport [RVar NEmpty, RVar n, e]
+pattern RImport n e    = ZApps NLetImport [RVar NEmpty, RVar n, e]
 
 unGLam = \case
   _ :@@ _ -> Nothing
-  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NTLet, NOLet] -> Just (ZVar a: es, n, e)
+  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NTLet, NOTLet] -> Just (ZVar a: es, n, e)
   _ -> Nothing
 
 pattern GLam :: (Arity a, IsMixfix a) => [ExpTree_ b a] -> a -> ExpTree_ b a -> ExpTree_ b a
@@ -902,6 +906,12 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
     RVar l@NHLam :@ a :@ b -> xApps l [xApps NTy   [etr2 a, RVar NHole], etr2 b]
     RVar l@NHArr :@ a :@ b -> xApps l [xApps NTy   [etr2 a, RVar NHole], etr2 b]
     RVar l@NArr  :@ a :@ b -> xApps l [xApps NExpl [RVar NAny, etr2 a], etr2 b]
+    RVar l@NLetTy:@ n :@ t :@ (RVar z@NLet :@ n' :@ b :@ m) | n == n'
+      -> etr2 $ xApps z [xApps (del 1 1 l) [n', t], b, m]
+    RVar l@NLetTy:@ n :@ t :@ (RVar z@NOLet :@ n' :@ b :@ m) | n == n'
+      -> etr2 $ xApps z [xApps (del 1 1 l) [n', t], b, m]
+    RVar z@NOLet :@ n :@ b :@ m
+      | RVar{} <- n -> xApps z [xApps NTy [etr2 n, RVar NHole], etr2 b, etr2 m]
     RVar z@NLet  :@ n :@ b :@ m
       | RVar{} <- n -> xApps z [xApps NTy [etr2 n, RVar NHole], etr2 b, etr2 m]
       | a <- etr2 n -> xApps z
@@ -914,7 +924,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
@@ -936,6 +946,8 @@ sugar = coerce . sug . sug0
     Apps l@NTLet [ZVar NAny, Hole, b, c] | Just r <- getRule b
       -> Apps (del 0 2 l) [sug0 r, sug0 c]
     Apps l@NTLet [RVar n, Hole, b, c]
+      -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
+    Apps l@NOTLet [RVar n, Hole, b, c]
       -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
     a :@ b -> sug0 a :@ sug0 b
     RVar a -> RVar (coerce a)
@@ -1081,8 +1093,9 @@ importModule m = do
     f :: ExpTree' Desug -> ExpTree' Desug
     f = \case
       RLet  n t a b -> RLet  n t a $ f b
-      ROLet   n a b -> ROLet   n a $ f b
+      ROLet n t a b -> ROLet n t a $ f b
       RLetTy  n a b -> RLetTy  n a $ f b
+      RImport   a b -> RImport   a $ f b
       _ -> s
 
 
