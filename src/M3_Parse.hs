@@ -840,7 +840,7 @@ pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
-pattern RImport n e    = ZApps NLetImport [RVar NEmpty, RVar n, e]
+pattern RImport n e    = ZApps NLetImport [RVar n, e]
 
 unGLam = \case
   _ :@@ _ -> Nothing
