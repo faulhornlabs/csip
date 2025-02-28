@@ -9,7 +9,7 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString :: Val
+pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp :: Val
 pattern CType   = "Type"
 pattern CPi     = "Pi"
 pattern CHPi    = "HPi"
@@ -20,6 +20,9 @@ pattern CTy     = "Ty"
 pattern CArr    = "Arr"
 pattern CNat    = "Nat"
 pattern CString = "String"
+pattern CAp     = "Ap"
+pattern CApp    = "App"
+pattern CLam    = "Lam"
 
 data Icit = Impl | ImplClass | Expl
   deriving Eq
@@ -149,6 +152,24 @@ conv_ env a b = do
     () | ha == CTy, hb == CType, [] <- va, [] <- vb -> do
       pure $ Just \t -> pure $ TVal CCode `TApp` t
 
+    () | ha == CIPi, hb == CPi, [m1, m2] <- va, [m3, m4] <- vb -> do
+
+      q <- conv_ env m3 m1
+
+      v <- lamName "v" m4
+      let vv = vVar v
+      let env' = defineBound v m3 env
+
+      c2 <- vApp m4 vv
+      h_v <- conv_ env' m2 c2{- m4 v -}
+
+      m1' <- quoteTm' m1
+      m2' <- quoteTm' m2
+
+      pure $ case (h_v, q) of
+        (Nothing, Nothing) -> Just \t -> pure $ TApps (TVal CAp) [m1', m2', t]
+        _ -> Just \t -> tLam v =<< evalId h_v =<< TApp (TApps (TVal CAp) [m1', m2', t]) <$> evalId q (TVar v)
+
     () | ha == CPi, hb == CPi, [m1, m2] <- va, [m3, m4] <- vb -> do
 
       q <- conv_ env m3 m1
@@ -184,7 +205,7 @@ conv_ env a b = do
             (Nothing, Nothing) -> pure t
             _ -> tLam v =<< evalId h_v =<< TApp t <$> evalId q (TVar v)
 
-      pure $ Just \t -> f t >>= \t -> lam $ TApps (TVal $ Con "App") [m1, m2, t]
+      pure $ Just \t -> f t >>= \t -> lam $ TApps (TVal CApp) [m1, m2, t]
 
     () | ha == CPi, hb == CCode, [m3, m4] <- va -> do
 
@@ -204,7 +225,7 @@ conv_ env a b = do
             (Nothing, Nothing) -> pure t
             _ -> tLam v =<< evalId h_v =<< TApp t <$> evalId q (TVar v)
 
-      pure $ Just \t -> lam t >>= \t -> f $ TApps (TVal $ Con "Lam") [m1, m2, t]
+      pure $ Just \t -> lam t >>= \t -> f $ TApps (TVal CLam) [m1, m2, t]
 
     _ -> do
       () <- unify a b
