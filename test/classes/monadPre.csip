@@ -4,15 +4,15 @@
 import Builtins
 
 // class Functor m  where
-//   fmap : (a -> b) -> m a -> m b
+//   (<$>) : (a -> b) -> m a -> m b
 Functor : (Type ~> Type) -> Type
 MkFunctor :
      {m : Type ~> Type}
   -> ({a b} -> (a -> b) -> m a -> m b)
   -> Functor m
 
-fmap : {m a b} -> Functor m => (a -> b) -> m a -> m b
-fmap {_} {_} {_} {MkFunctor f} = f
+(<$>) : {m a b} -> Functor m => (a -> b) -> m a -> m b
+(<$>) {_} {_} {_} {MkFunctor f} = f
 
 
 // class Functor m => Applicative m  where
@@ -32,8 +32,8 @@ getFunctor {_} {MkApplicative d _ _} = d
 pure : {m a} -> Applicative m => a -> m a
 pure {_} {_} {MkApplicative _ p _} = p
 
-app : {m a b} -> Applicative m => m (a -> b) -> m a -> m b
-app {_} {_} {_} {MkApplicative _ _ f} = f
+(<*>) : {m a b} -> Applicative m => m (a -> b) -> m a -> m b
+(<*>) {_} {_} {_} {MkApplicative _ _ f} = f
 
 
 // class Applicative m => Monad m where
@@ -59,14 +59,14 @@ Nothing : {a : Type} -> Maybe a
 Just    : {a : Type} -> a -> Maybe a
 
 // instance Functor (Maybe a) where
-//   fmap f Nothing = Nothing
-//   fmap f (Just a) = Just (f a)
+//   (<$>) f Nothing = Nothing
+//   (<$>) f (Just a) = Just (f a)
 
-fmapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
-fmapMaybe f Nothing = Nothing
-fmapMaybe f (Just x) = Just (f x)
+mapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
+mapMaybe f Nothing = Nothing
+mapMaybe f (Just x) = Just (f x)
 
-instanceOf (Functor Maybe) = MkFunctor fmapMaybe
+instanceOf (Functor Maybe) = MkFunctor mapMaybe
 
 // instance Applicative (Maybe a) where
 //   pure = Just
@@ -101,11 +101,11 @@ List   : Type ~> Type
 Nil    : {a : Type} -> List a
 LCons  : {a : Type} -> a -> List a -> List a
 
-fmapList : {a b : Type} -> (a -> b) -> List a -> List b
-fmapList f Nil = Nil
-fmapList f (LCons x xs) = LCons (f x) (fmapList f xs)
+mapList : {a b : Type} -> (a -> b) -> List a -> List b
+mapList f Nil = Nil
+mapList f (LCons x xs) = LCons (f x) (mapList f xs)
 
-instanceOf (Functor List) = MkFunctor fmapList
+instanceOf (Functor List) = MkFunctor mapList
 
 pureList : {a : Type} -> a -> List a
 pureList x = LCons x Nil
@@ -119,8 +119,8 @@ joinList Nil = Nil
 joinList (LCons x xs) = append x (joinList xs)
 
 appList : {a b : Type} -> List (a -> b) -> List a -> List b
-// TODO: appList fs xs = joinList (fmapList (\f -> fmapList f xs) fs)
-appList {a} {b} fs xs = joinList (fmapList (\f -> fmapList f xs) fs)
+// TODO: appList fs xs = joinList (mapList (\f -> mapList f xs) fs)
+appList {a} {b} fs xs = joinList (mapList (\f -> mapList f xs) fs)
 
 instanceOf (Applicative List) = MkApplicative (instanceOf (Functor List)) pureList appList
 
@@ -130,10 +130,6 @@ enum : Nat -> Nat -> List Nat
 enum a 0 = Nil
 enum a (Succ b) = LCons a (enum (Succ a) b)
 
-Bool  : Type
-False : Bool
-True  : Bool
-
 Unit : Type
 TT   : Unit
 
@@ -141,21 +137,21 @@ guard : Bool -> List Unit
 guard True = pure TT
 guard False = Nil
 
-eq : Nat -> Nat -> Bool
-eq 0 0 = True
-eq (Succ a) (Succ b) = eq a b
-eq _ _ = False
+(==) : Nat -> Nat -> Bool
+0      == 0      = True
+Succ a == Succ b = a == b
+_      == _      = False
 
-add : Nat -> Nat -> Nat
-add 0 n = n
-add (Succ n) m = Succ (add n m)
+(+) : Nat -> Nat -> Nat
+0      + m = m
+Succ n + m = Succ (n + m)
 
-mul : Nat -> Nat -> Nat
-mul 0 _ = 0
-mul (Succ n) m = add m (mul n m)
+(*) : Nat -> Nat -> Nat
+0      * _ = 0
+Succ n * m = m + n * m
 
-bind : {m a b} -> Monad m => m a -> (a -> m b) -> m b
-bind {m} {a} {b} {d} ma f = join {_} {d} (fmap {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}} f ma)
+(>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
+(>>=) {m} {a} {b} {d} ma f = join {_} {d} ((<$>) {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}} f ma)
 
 the : (a : Type) -> a -> a = \_ x -> x
 
@@ -164,10 +160,10 @@ MkTuple3 : {a b c} -> a -> b -> c -> Tuple3 a b c
 
 pita : Nat -> List (Tuple3 Nat Nat Nat)
 pita n =
-  bind (enum 1 n) \m ->
-  bind (enum 1 m) \k ->
-  bind (enum 1 k) \l ->
-  bind (guard (eq (mul m m) (add (mul k k) (mul l l)))) \_ ->
+  enum 1 n >>= \m ->
+  enum 1 m >>= \k ->
+  enum 1 k >>= \l ->
+  guard (m*m == k*k + l*l) >>= \_ ->
   pure (MkTuple3 m k l)
 
 // join (Just (Just 1))
