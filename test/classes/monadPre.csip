@@ -1,7 +1,7 @@
 # elab
 # eval
 
-import Builtins
+import Prelude
 
 // class Functor m  where
 //   (<$>) : (a -> b) -> m a -> m b
@@ -50,6 +50,10 @@ getApplicative {_} {MkMonad d _} = d
 
 join : {m} -> Monad m => {a} -> m (m a) -> m a
 join {_} {MkMonad _ f} = f
+
+(>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
+(>>=) {m} {a} {b} {d} ma f = join {_} {d} ((<$>) {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}} f ma)
+
 
 
 // Maybe monad
@@ -126,37 +130,13 @@ instanceOf (Applicative List) = MkApplicative (instanceOf (Functor List)) pureLi
 
 instanceOf (Monad List) = MkMonad (instanceOf (Applicative List)) joinList
 
-enum : Nat -> Nat -> List Nat
-enum a 0 = Nil
-enum a (Succ b) = LCons a (enum (Succ a) b)
-
-Unit : Type
-TT   : Unit
-
 guard : Bool -> List Unit
 guard True = pure TT
 guard False = Nil
 
-(==) : Nat -> Nat -> Bool
-0      == 0      = True
-Succ a == Succ b = a == b
-_      == _      = False
-
-(+) : Nat -> Nat -> Nat
-0      + m = m
-Succ n + m = Succ (n + m)
-
-(*) : Nat -> Nat -> Nat
-0      * _ = 0
-Succ n * m = m + n * m
-
-(>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
-(>>=) {m} {a} {b} {d} ma f = join {_} {d} ((<$>) {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}} f ma)
-
-the : (a : Type) -> a -> a = \_ x -> x
-
-Tuple3 : Type -> Type -> Type -> Type
-MkTuple3 : {a b c} -> a -> b -> c -> Tuple3 a b c
+enum : Nat -> Nat -> List Nat
+enum a 0 = Nil
+enum a (Succ b) = LCons a (enum (Succ a) b)
 
 pita : Nat -> List (Tuple3 Nat Nat Nat)
 pita n =

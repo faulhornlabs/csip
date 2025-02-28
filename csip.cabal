@@ -26,6 +26,7 @@ data-dir: src
 data-files:
   precedences
   Builtins.csip
+  Prelude.csip
 
 source-repository head
   type:     git
