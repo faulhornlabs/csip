@@ -562,9 +562,7 @@ instance IsString (Mixfix a) where
 -}
 
 pattern NTy    = MkM [":"]
-pattern NTEq   = MkM [":","="]
 pattern NLetTy = MkM [":",";"]
-pattern NTLet  = MkM [":","=",";"]
 pattern NExpl  = MkM ["(",":",")"]
 pattern NImpl  = MkM ["{",":","}"]
 
@@ -573,6 +571,8 @@ pattern NLetImport= MkM ["import",";"]
 
 pattern NEq    = MkM ["="]
 pattern NLet   = MkM ["=",";"]
+pattern NTEq   = MkM [":","="]
+pattern NTLet  = MkM [":","=",";"]
 pattern NOEq   = MkM [":="]
 pattern NOLet  = MkM [":=",";"]
 pattern NOTEq  = MkM [":",":="]
@@ -750,13 +750,14 @@ norm r = case r of
   _ | Just z <- gg NParens   NTy        -> z
   _ | Just z <- gg NBraces   NTy        -> z
   _ | Just z <- gg NEq       NTy        -> z
+  _ | Just z <- gg NOEq      NTy        -> z
   _ | Just z <- gg NLet      NTy        -> z
   _ | Just z <- gg NOLet     NTy        -> z
   _ | Just z <- gg NSemi     NTy        -> z
   _ | Just z <- gg NHArr     NTy        -> z
   _ | Just z <- gg NHLam     NTy        -> z
-  _ | Just z <- gg NSemi     NTEq       -> z
   _ | Just z <- gg NSemi     NEq        -> z
+  _ | Just z <- gg NSemi     NTEq       -> z
   _ | Just z <- gg NSemi     NOEq       -> z
   _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
