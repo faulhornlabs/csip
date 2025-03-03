@@ -22,6 +22,7 @@ module M4_Eval
   , addRule
 
   , spine, forcedSpine
+  , Embedded (MkEmbedded)
   ) where
 
 import M1_Base
@@ -128,13 +129,12 @@ instance PPrint a => PPrint (Tm_ a) where
     TSup c ts -> foldl (:@) (pprint c) $ map pprint ts
     TLet n a b -> zVar ["=",";"] :@ pprint n :@ pprint a :@ pprint b
     TVal v -> zVar ["{","}"] :@ pprint v
+    TGen n -> "Gen" :@ pprint n
     _ -> undefined
 
 -------------
 
 type Tm = Tm_ Name
-
-type Raw = Raw_ (Tm, Val)
 
 pattern TView :: Tm -> Tm -> Tm
 pattern TView a b = TApp (TApp (TVal (Con "View")) a) b
@@ -243,6 +243,7 @@ tmToRaw t = do
            WString n -> pure (RVar $ NString n)
            v@WCon -> pure (RVar $ name v)
            Delta n -> pure (RVar n)
+           Fun_ n r -> lookupRule n r >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
            v -> tell wst (mempty, singleton (name v) v) >> pure (RVar $ name v)
         TGen e -> eval' env e >>= quoteTm >>= f env
         TVar n  -> pure $ RVar n
@@ -258,6 +259,15 @@ tmToRaw t = do
 
 instance Print Tm where
   print t = print =<< tmToRaw t
+
+-------------------------------
+
+data Embedded = MkEmbedded Tm Val
+
+instance PPrint Embedded where
+  pprint (MkEmbedded r _) = zVar ["[","]"] :@ pprint r
+
+type Raw = Raw_ Embedded
 
 -------------------------------
 
@@ -620,7 +630,7 @@ quoteNF v_ = force v_ >>= \case
   v@WCon     -> pure $ RVar $ name v
   v@WVar     -> pure $ RVar $ name v
   v@WMeta    -> pure $ RVar $ name v
-  Fun_ n r   -> lookupRule n r >>= quoteNF
+  Fun_ n r   -> pure $ RVar n --lookupRule n r >>= quoteNF
   WSel i j e -> rSel i j <$> quoteNF e
   WMatch n a b c _ -> rMatch n <$> quoteNF a <*> quoteNF b <*> quoteNF c
   WRet a -> rRet <$> quoteNF a
@@ -666,8 +676,9 @@ quoteTm__ vtm opt v_ = do
       _ | opt -> impossible
       Delta n  -> pure $ TVar n
       WCon  -> pure $ TVar $ name v
-      WMeta -> pure $ TVal v -- $ TVar $ name v
-      Fun_ n r  -> lookupRule n r >>= gg
+      WMeta -> pure $ TVar $ name v
+--      Fun_ n r  -> lookupRule n r >>= gg
+      WFun  -> pure $ TVar $ name v
       WSel i j e -> TSel i j <$> ff' e
       WMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
       WRet a -> TRet <$> ff' a
@@ -687,11 +698,17 @@ quoteTm__ vtm opt v_ = do
        WVar  -> pure False
        Delta{}  -> pure False
        WCon  -> pure False
+       WFun  -> pure False
        _ -> pure True
+
+    sh v = case v of
+      _ | opt, closed v -> False
+--      WFun -> True
+      _ -> False
 
     up v sh _ = tell wst [v] >> pure sh
 
-    ch v = fmap ((,) False) $ mapM force__ $ case v of
+    ch v = fmap ((,) (sh v)) $ mapM force__ $ case v of
       _ | opt, closed v -> []
       WSup _ vs -> vs
       WApp a b -> [a, b]
@@ -727,8 +744,9 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
 
 metaToVar :: Val -> RefM Tm
 metaToVar v_ = force v_ >>= \w -> case w of
-  _ | rigid w -> pure $ TVal w
-  WMeta    -> pure $ TVar $ name w
+  _ | closed w && rigid w -> pure $ TVal w
+  WVar    -> pure $ TVal w
+  WMeta    -> pure $ TVal w
   WApp a b -> TApp <$> metaToVar a <*> metaToVar b
   WSup c vs | rigidCombinator c -> TSup c <$> mapM metaToVar vs
   WSup c vs -> do

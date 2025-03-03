@@ -146,8 +146,7 @@ Possible differences:
 
 Staged compilation is defined in [András Kovács's staged repository](https://github.com/AndrasKovacs/staged).
 
-In csip, the representations of terms and values are not affected by staged compilation.
-The representation of object code constructs are the same as the representation of user defined constructors.
+In csip, the representation of object code constructs is the same as the representation of user defined constructors.
 There are no splice and quote operations.
 Object code function applications and lambdas are inserted during converstion checking.
 Object code lets are inserted during elaboration.
@@ -159,12 +158,14 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- type classes are not supported
+- type class is not a subtype of its parent class (Eq not found when Ord is given, for example)
+- type class and instance definitions should be desugared by hand
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - object code constructor definitions are not included in object code
 - foralls for functions and constructors should be explicitly given
+- guards are not supported
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns
@@ -173,11 +174,13 @@ The following limitations and bugs are planned to be lifted:
 - dot patterns (in dependent pattern matching) are not supported
 - local definitions are not supported
 - local do notation is not supported
+- pattern synonyms are not supported
 - recursive definitions are not properly printed
 - closed data types and closed functions are not supported
 - sharing between values are sometimes lost during printing
+- there is no stage polymorphism
 - `import` acts as an "include"
-- only the Builtin module can be imported
+- only builtin modules can be imported
 - no support for multiple object codes
 - types are not shown in printed output
 - implicit/explicit distinction of lambdas and applications are missing
@@ -193,6 +196,7 @@ Implemented performance improvements:
 
 - observable implicit sharing speeds up conversion checking
   and prevents sharing loss
+- top level definitions are treated specially
 - unsaturated and blocked rewrite rule applications are cached
 - monad stacks in the Haskell source code are replaced with a custom solution
 

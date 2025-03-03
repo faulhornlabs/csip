@@ -420,7 +420,7 @@ infer_ env r = case r of
     inferApp Impl env a b
   RApp a b -> do
     inferApp Expl env a b
-  REmbed x -> pure x
+  REmbed (MkEmbedded t v) -> pure (t, v)
   _ -> errorM "can't infer"
  where
   inferApp i env a b = infer env a >>= \(av, ty) -> do
@@ -440,7 +440,7 @@ infer_ env r = case r of
         infer env $ RApp (RHApp a Hole) b
        | icit == ImplClass -> do
         (m, m') <- instanceMeta env
-        infer env $ RApp (RHApp a $ REmbed (m, m')) b
+        infer env $ RApp (RHApp a $ REmbed $ MkEmbedded m m') b
        | otherwise -> error "baj"
 
 --------------------

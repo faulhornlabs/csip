@@ -1108,7 +1108,7 @@ importModule m = do
 instance Parse (Raw_ a) where
   parse = parse >=> scope 
 
-instance Print (Raw_ a) where
+instance PPrint a => Print (Raw_ a) where
   print = unscope >=> print
 
 scope   :: ExpTree' Desug -> RefM (Raw_ a)
@@ -1126,13 +1126,13 @@ scope t = runReader mempty ff  where
           GLam <$> mapM f es <*> pure m <*> local r (insert n m) (f a)
       a :@ b -> (:@) <$> f a <*> f b
 
-unscope :: Raw_ a -> RefM (ExpTree' Desug)
+unscope :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
 unscope t = runReader mempty ff where
   ff r = f t where
 
-    f :: Raw_ a -> RefM (ExpTree' Desug)
+    f :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
     f = \case
-      REmbed{} -> pure $ RVar "<<embed>>"
+      REmbed a -> f $ pprint a
       RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
       RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
       RVar "CPi" :@ a :@       e -> f $ RCPi   a e
@@ -1202,6 +1202,9 @@ pprintToken = RVar . NConst'
 
 instance PPrint ISource where
   pprint = pprint . unISource
+
+instance PPrint Void where
+  pprint = impossible
 
 instance (Ord p, PPrint a) => PPrint (OpSeq p a) where
   pprint Empty = RVar "_"

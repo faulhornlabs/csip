@@ -51,8 +51,12 @@ getApplicative {_} {MkMonad d _} = d
 join : {m} -> Monad m => {a} -> m (m a) -> m a
 join {_} {MkMonad _ f} = f
 
+fmapM : {m a b} -> Monad m => (a -> b) -> m a -> m b
+//  fmapM = (<$>)  // TODO
+fmapM {_} {_} {_} {d} = (<$>) {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}}
+
 (>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
-(>>=) {m} {a} {b} {d} ma f = join {_} {d} ((<$>) {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}} f ma)
+ma >>= f = join (fmapM f ma)
 
 
 
