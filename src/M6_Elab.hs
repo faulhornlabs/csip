@@ -121,11 +121,11 @@ instanceMeta env = do
   m' <- evalEnv env m
   pure (TGen $ TApp (TVal instanceFun) m, m')
 
-instanceFun = Fun_ "instanceOf" instanceOfRef
+instanceFun = Fun_ "lookupDict" lookupDictRef
 
-{-# noinline instanceOfRef #-}
-instanceOfRef :: RuleRef
-instanceOfRef = topRef $ Con "Fail"
+{-# noinline lookupDictRef #-}
+lookupDictRef :: RuleRef
+lookupDictRef = topRef $ Con "Fail"
 
 freshMeta' :: Env -> RefM (Tm, Val)
 freshMeta' env = do
@@ -369,7 +369,7 @@ infer_ env r = case r of
     vta <- check env t CType >>= evalEnv' env (typeName n)
     c <- if isConName n then pure $ mkCon n
       else case n of
-        "instanceOf" -> pure instanceFun
+        "lookupDict" -> pure instanceFun
         _ -> do
           r <- newRef $ Con "Fail"
           pure $ Fun_ n r

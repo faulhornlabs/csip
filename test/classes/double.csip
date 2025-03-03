@@ -10,7 +10,7 @@ Four : N
 Num : Type -> Type
 MkNum : (a : Type) -> (a -> a -> a) -> Num a
 
-instanceOf (Num N) = MkNum N Add
+lookupDict (Num N) = MkNum N Add
 
 
 add : (a : Type) -> Num a => a -> a -> a

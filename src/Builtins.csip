@@ -27,7 +27,7 @@ Pair      : {a b : Ty} -> a -> b -> Prod a b
 Fst       : {a b} -> Prod a b -> a
 Snd       : {a b} -> Prod a b -> b
 
-instanceOf : (a : Type) -> a
+lookupDict : (a : Type) -> a
 
 Bool : Type
 True  : Bool
