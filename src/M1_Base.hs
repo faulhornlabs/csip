@@ -764,9 +764,9 @@ precedenceTableString = unsafePerformIO do
   f <- getDataFileName "precedences"
   IO.readFile f
 
-traceShow :: RefM String -> RefM ()
---traceShow m = m >>= \s -> traceM s
-traceShow _ = pure ()
+traceShow :: String -> RefM String -> RefM ()
+--traceShow s m | s `elem` ["1","2","3","4","5","6","7"] = m >>= \s -> traceM s
+traceShow _ _ = pure ()
 
 a <<>> b = (<>) <$> a <*> b
 

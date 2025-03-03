@@ -1,0 +1,24 @@
+# elab
+# eval
+
+import Builtins
+
+N : Type
+Add : N -> N -> N
+Four : N
+
+Num : Type -> Type
+MkNum : (a : Type) -> (a -> a -> a) -> Num a
+
+superClasses (Num a) = SuperClassNil
+
+lookupDict (Num N) = MkNum N Add
+
+
+add : (a : Type) -> Num a => a -> a -> a
+add a {MkNum _ f} x y = f x y
+
+double : (a : Type) -> Num a => a -> a
+double a x = add a x x
+
+double N Four

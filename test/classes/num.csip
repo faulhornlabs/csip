@@ -10,7 +10,7 @@ addN (Succ n) m = Succ (addN n m)
 Num : Type -> Type
 MkNum : {a : Type} -> (a -> a -> a) -> Num a
 
-instanceOf (Num Nat) = MkNum addN
+lookupDict (Num Nat) = MkNum addN
 
 
 add : {a} -> Num a => a -> a -> a

@@ -7,40 +7,40 @@ import M3_Parse
 import M4_Eval
 
 ---------------------------
-
-updatable v _e = lookupMeta v >>= \case
+{-
+updatable v _e = lookupMeta (metaRef v) >>= \case
   Just{}  -> impossible
-  Nothing -> case v of
---    FVar   | closed e, rigid e -> pure ()
---    FVar   -> undefined
-    WMeta {- | closed e -}       -> pure ()
---    VMeta   -> error' $ ("not closed:\n" <>) <$> (quoteNF' e <&> pprint >>= print)
---    VMetaApp{} -> pure ()
-    _ -> impossible
-
+  Nothing -> pure ()
+-}
+update :: MetaDep -> Val -> RefM ()
 update v e = do
-  () <- updatable v e
-  traceShow $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
-  updateMeta v e
+--  () <- updatable v e
+  traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
+  fe <- force e
+  case fe of
+    WMeta r | v == r -> impossible
+    _ ->  updateMeta (metaRef v) e
 
 metaArgNum v_ = force v_ >>= \case
-  WMeta           -> pure 0
-  WMetaApp_ a _ _ -> (+1) <$> metaArgNum a
+  WMeta _     -> pure 0
+  WMetaApp a _ -> (+1) <$> metaArgNum a
   _ -> undefined
 
 updateClosed a b = do
-  traceShow $ "update " <<>> showM a <<>> "\n := " <<>> showM b
-  closeTm b >>= update a
+  traceShow "2" $ "update " <<>> showM a <<>> "\n := " <<>> showM b
+  v <- closeTm b
+--  v' <- forceClosed v   -- TODO
+  update a v
 
 
 type SVal = (Val, Set Name)
 
 type Indices = Set Int
-type PruneSet = Maybe (Map Val Indices)
+type PruneSet = Maybe (Map MetaDep Indices)
 
 (<.>) = unionWith (<>)
 
-pruneMeta :: Val -> Indices -> RefM ()
+pruneMeta :: MetaDep -> Indices -> RefM ()
 pruneMeta m (toList -> is) = do
   m' <- tMeta
   let
@@ -88,10 +88,7 @@ closeTm v_ = do
         _ -> impossible
       WVar | name v `member` allowed -> pure $ Just mempty
            | otherwise               -> pure Nothing
-      Delta _ -> pure $ Just mempty
-      WCon -> pure $ Just mempty
-      WFun -> pure $ Just mempty
-      WMetaApp dep -> case map snd ts of
+      WMetaApp_ _ _ _ dep -> case map snd ts of
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
            n <- metaArgNum v
@@ -102,6 +99,9 @@ closeTm v_ = do
         Nothing -> pure Nothing
         Just [sa, sb] -> pure $ Just (sa <.> sb)
         _ -> impossible
+      WDelta{} -> pure $ Just mempty
+      WCon{}   -> pure $ Just mempty
+      WFun{}   -> pure $ Just mempty
       _ -> undefined
 
 -------------
@@ -110,10 +110,10 @@ expr a = foreground yellow a
 
 unify :: Val -> Val -> RefM ()
 unify aa{-actual-} bb{-expected-} = do
-  traceShow $ "conv " <<>> showM aa <<>> "\n ==? " <<>> showM bb
+  traceShow "3" $ "conv " <<>> showM aa <<>> "\n ==? " <<>> showM bb
   go aa bb
  where
- ff v@(WMetaApp_ _ b _) = do
+ ff v@(WMetaApp _ b) = do
    b <- force b
    pure (v, case b of WVar -> Just b; _ -> Nothing)
  ff v = pure (v, Nothing)
@@ -124,16 +124,16 @@ unify aa{-actual-} bb{-expected-} = do
   (fb, vb) <- force' b_
   case (va, vb) of
    _ | va == vb -> pure ()
-   (WMeta, _) -> updateClosed va fb >> pure ()
-   (_, WMeta) -> updateClosed vb fa >> pure ()
+   (WMeta d, _) -> updateClosed d fb >> pure ()
+   (_, WMeta d) -> updateClosed d fa >> pure ()
    _ -> do
     (va, arga) <- ff va
     (vb, argb) <- ff vb
     case (va, vb) of
-     (WMetaApp_ a _ _, _) | Just u <- arga -> vLam u fb >>= \x -> go a x
-     (_, WMetaApp_ a _ _) | Just u <- argb -> vLam u fa >>= \x -> go x a
-     (WMetaApp_ a _ _, _) -> vConst fb >>= \x -> go a x
-     (_, WMetaApp_ a _ _) -> vConst fa >>= \x -> go x a
+     (WMetaApp a _, _) | Just u <- arga -> vLam u fb >>= \x -> go a x
+     (_, WMetaApp a _) | Just u <- argb -> vLam u fa >>= \x -> go x a
+     (WMetaApp a _, _) -> vConst fb >>= \x -> go a x
+     (_, WMetaApp a _) -> vConst fa >>= \x -> go x a
      (WLam c, _) -> do
        v <- c <&> vVar
        va' <- vApp fa v

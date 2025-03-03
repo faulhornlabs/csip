@@ -9,7 +9,7 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp :: Val
+pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp, CBool :: Val
 pattern CType   = "Type"
 pattern CPi     = "Pi"
 pattern CHPi    = "HPi"
@@ -23,6 +23,7 @@ pattern CString = "String"
 pattern CAp     = "Ap"
 pattern CApp    = "App"
 pattern CLam    = "Lam"
+pattern CBool   = "Bool"
 
 data Icit = Impl | ImplClass | Expl
   deriving Eq
@@ -119,13 +120,7 @@ instanceMeta :: Env -> RefM (Tm, Val)
 instanceMeta env = do
   m <- freshMeta_ env
   m' <- evalEnv env m
-  pure (TGen $ TApp (TVal instanceFun) m, m')
-
-instanceFun = Fun_ "instanceOf" instanceOfRef
-
-{-# noinline instanceOfRef #-}
-instanceOfRef :: RuleRef
-instanceOfRef = topRef $ Con "Fail"
+  pure (TGen $ TApp (TVal lookupDictFun) m, m')
 
 freshMeta' :: Env -> RefM (Tm, Val)
 freshMeta' env = do
@@ -265,10 +260,10 @@ getPi _ = Nothing
 
 check :: Env -> Raw -> Val -> RefM Tm
 check env r ty = do
-  traceShow $ "check " <<>> showM r <<>> "\n :? " <<>> showM ty
+  traceShow "4" $ "check " <<>> showM r <<>> "\n :? " <<>> showM ty
   tag r $ do
     t <- check_ env r ty
-    traceShow $ "check end " <<>> showM r <<>> "\n ==> " <> showM t
+    traceShow "5" $ "check end " <<>> showM r <<>> "\n ==> " <> showM t
     pure t
 
 check_ :: Env -> Raw -> Val -> RefM Tm
@@ -314,13 +309,14 @@ check_ env r ty = case r of
         pure $ if onTop env then tb else TLet n ta tb
       ROLet n t a b | onTop env -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
+        let c = vCon n Nothing
         ta <- check env a vta
-        tb <- check (defineGlob n (Con n) vta env) b ty
+        tb <- check (defineGlob n c vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
         fta <- fa ta
         ftb <- fb tb
-        pure $ TApps "TopLet" [pa, pb, TVal (Con n), fta, ftb]
+        pure $ TApps "TopLet" [pa, pb, TVal c, fta, ftb]
       ROLet n t a b -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
@@ -337,10 +333,10 @@ check_ env r ty = case r of
 
 infer :: Env -> Raw -> RefM (Tm, Val)
 infer env r = do
-  traceShow $ "infer " <<>> showM r
+  traceShow "6" $ "infer " <<>> showM r
   tag r $ do
     (t, v) <- infer_ env r
-    traceShow $ "infer end " <<>> showM r <<>> "\n ==> " <<>> showM t <<>> "\n :: " <<>> showM v 
+    traceShow "7" $ "infer end " <<>> showM r <<>> "\n ==> " <<>> showM t <<>> "\n :: " <<>> showM v 
     pure (t, v)
 
 infer_ env r = case r of
@@ -367,12 +363,11 @@ infer_ env r = case r of
   RVar{} -> errorM "Not in scope"
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
-    c <- if isConName n then pure $ mkCon n
+    c <- if isConName n then pure $ mkCon n $ Just vta
       else case n of
-        "instanceOf" -> pure instanceFun
-        _ -> do
-          r <- newRef $ Con "Fail"
-          pure $ Fun_ n r
+        "lookupDict" -> pure lookupDictFun
+        "superClasses" -> pure superClassesFun
+        _ -> vFun n CFail
     infer (defineGlob n c vta env) b
   ROLet{} -> do
     (_, m) <- freshMeta' env
@@ -408,6 +403,10 @@ infer_ env r = case r of
     ta <- check env a CType
     tb <- check env b CType
     pure (TVal CIPi `TApp` ta `TApp` tb, CType)
+  RGuard a b -> do
+    tb <- check env b CBool
+    (ta, ty) <- infer env a
+    pure (TGuard ta tb, ty)
   RView a b -> do
     (ta, ty) <- infer env a
     (f, Expl, pa, pb) <- matchPi True env Expl ty
@@ -420,7 +419,7 @@ infer_ env r = case r of
     inferApp Impl env a b
   RApp a b -> do
     inferApp Expl env a b
-  REmbed x -> pure x
+  REmbed (MkEmbedded t v) -> pure (t, v)
   _ -> errorM "can't infer"
  where
   inferApp i env a b = infer env a >>= \(av, ty) -> do
@@ -437,10 +436,10 @@ infer_ env r = case r of
         b <- vApp pb v
         pure (TApp fav tb, b)
        | icit == Impl -> do
-        infer env $ RApp (RHApp a Hole) b
+        infer env $ RApp (RHApp (REmbed $ MkEmbedded av ty) Hole) b
        | icit == ImplClass -> do
         (m, m') <- instanceMeta env
-        infer env $ RApp (RHApp a $ REmbed (m, m')) b
+        infer env $ RApp (RHApp (REmbed $ MkEmbedded av ty) $ REmbed $ MkEmbedded m m') b
        | otherwise -> error "baj"
 
 --------------------
@@ -452,6 +451,7 @@ ruleHead = \case
   _ -> Nothing
  where
   f = \case
+    RGuard a _ -> f a
     RApp a _ -> f a
     RVar n -> Just n
     _ -> Nothing

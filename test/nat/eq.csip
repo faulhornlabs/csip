@@ -1,24 +1,6 @@
 # elab
 # eval
 
-// builtins
-Succ : Nat -> Nat
-ProdNat   : Type
-PairNat   : Nat -> Nat -> ProdNat
-EqNat     : ProdNat -> Nat
-// end of builtins
+import Builtins
 
-
-Bool  : Type
-True  : Bool
-False : Bool
-
-natToBool : Nat -> Bool
-natToBool 1 = True
-natToBool _ = False
-
-eqNat : Nat -> Nat -> Bool
-  = \a b -> natToBool (EqNat (PairNat a b))
-
-
-eqNat (Succ 10) 11
+EqNat (Succ 10) 11

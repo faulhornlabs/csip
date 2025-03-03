@@ -11,6 +11,8 @@ MkFunctor :
   -> ({a b} -> (a -> b) -> m a -> m b)
   -> Functor m
 
+superClasses (Functor m) = SuperClassNil
+
 (<$>) : {m a b} -> Functor m => (a -> b) -> m a -> m b
 (<$>) {_} {_} {_} {MkFunctor f} = f
 
@@ -25,6 +27,10 @@ MkApplicative :
   -> ({a} -> a -> m a)
   -> ({a b} -> m (a -> b) -> m a -> m b)
   -> Applicative m
+
+selApplicativeFunctor : {m} -> Applicative m -> Functor m
+selApplicativeFunctor (MkApplicative d _ _) = d
+superClasses (Applicative m) = SuperClassCons selApplicativeFunctor SuperClassNil
 
 getFunctor : {m} -> Applicative m => Functor m
 getFunctor {_} {MkApplicative d _ _} = d
@@ -45,14 +51,22 @@ MkMonad :
   -> ({a} -> m (m a) -> m a)
   -> Monad m
 
+selMonadApplicative : {m} -> Monad m -> Applicative m
+selMonadApplicative (MkMonad d _) = d
+superClasses (Monad m) = SuperClassCons selMonadApplicative SuperClassNil
+
 getApplicative : {m} -> Monad m => Applicative m
 getApplicative {_} {MkMonad d _} = d
 
 join : {m} -> Monad m => {a} -> m (m a) -> m a
 join {_} {MkMonad _ f} = f
 
+
+
+
 (>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
-(>>=) {m} {a} {b} {d} ma f = join {_} {d} ((<$>) {_} {_} {_} {getFunctor {_} {getApplicative {_} {d}}} f ma)
+// TODO: ma >>= f = join (f <$> ma)
+(>>=) {m} {a} {b} ma f = join (f <$> ma)
 
 
 
@@ -62,7 +76,7 @@ Maybe   : Type ~> Type
 Nothing : {a : Type} -> Maybe a
 Just    : {a : Type} -> a -> Maybe a
 
-// instance Functor (Maybe a) where
+// instance Functor Maybe where
 //   (<$>) f Nothing = Nothing
 //   (<$>) f (Just a) = Just (f a)
 
@@ -70,9 +84,10 @@ mapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
 mapMaybe f Nothing = Nothing
 mapMaybe f (Just x) = Just (f x)
 
-instanceOf (Functor Maybe) = MkFunctor mapMaybe
+dictFunctorMaybe = MkFunctor mapMaybe
+lookupDict (Functor Maybe) = dictFunctorMaybe
 
-// instance Applicative (Maybe a) where
+// instance Applicative Maybe where
 //   pure = Just
 //   Just f <*> Just a = Just (f a)
 //   _ <*> _ = Nothing
@@ -84,10 +99,11 @@ appMaybe : {a b : Type} -> Maybe (a -> b) -> Maybe a -> Maybe b
 appMaybe (Just f) (Just x) = Just (f x)
 appMaybe _ _ = Nothing
 
-instanceOf (Applicative Maybe) = MkApplicative (instanceOf (Functor Maybe)) pureMaybe appMaybe
+dictApplicativeMaybe = MkApplicative dictFunctorMaybe pureMaybe appMaybe
+lookupDict (Applicative Maybe) = dictApplicativeMaybe
 
 
-// instance Monad (Maybe a) where
+// instance Monad Maybe where
 //   join (Just a) = a
 //   join Nothing = Nothing
 
@@ -95,7 +111,8 @@ joinMaybe : {a} -> Maybe (Maybe a) -> Maybe a
 joinMaybe Nothing = Nothing
 joinMaybe (Just x) = x
 
-instanceOf (Monad Maybe) = MkMonad (instanceOf (Applicative Maybe)) joinMaybe
+dictMonadMaybe = MkMonad dictApplicativeMaybe joinMaybe
+lookupDict (Monad Maybe) = dictMonadMaybe
 
 
 
@@ -109,7 +126,8 @@ mapList : {a b : Type} -> (a -> b) -> List a -> List b
 mapList f Nil = Nil
 mapList f (LCons x xs) = LCons (f x) (mapList f xs)
 
-instanceOf (Functor List) = MkFunctor mapList
+dictFunctorList = MkFunctor mapList
+lookupDict (Functor List) = dictFunctorList
 
 pureList : {a : Type} -> a -> List a
 pureList x = LCons x Nil
@@ -126,9 +144,11 @@ appList : {a b : Type} -> List (a -> b) -> List a -> List b
 // TODO: appList fs xs = joinList (mapList (\f -> mapList f xs) fs)
 appList {a} {b} fs xs = joinList (mapList (\f -> mapList f xs) fs)
 
-instanceOf (Applicative List) = MkApplicative (instanceOf (Functor List)) pureList appList
+dictApplicativeList = MkApplicative dictFunctorList pureList appList
+lookupDict (Applicative List) = dictApplicativeList
 
-instanceOf (Monad List) = MkMonad (instanceOf (Applicative List)) joinList
+dictMonadList = MkMonad dictApplicativeList joinList
+lookupDict (Monad List) = dictMonadList
 
 guard : Bool -> List Unit
 guard True = pure TT
@@ -139,15 +159,15 @@ enum a 0 = Nil
 enum a (Succ b) = LCons a (enum (Succ a) b)
 
 pita : Nat -> List (Tuple3 Nat Nat Nat)
-pita n =
-  enum 1 n >>= \m ->
-  enum 1 m >>= \k ->
-  enum 1 k >>= \l ->
-  guard (m*m == k*k + l*l) >>= \_ ->
+pita n = do
+  m <- enum 1 n
+  k <- enum 1 m
+  l <- enum 1 k
+  guard (m*m == k*k + l*l)
   pure (MkTuple3 m k l)
 
 // join (Just (Just 1))
 // the (Maybe Nat) (join (Just Nothing))
 // the (Maybe Nat) (join Nothing)
 
-pita 5
+pita 20

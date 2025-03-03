@@ -2,7 +2,7 @@
 # eval
 
 // builtin
-instanceOf : (a : Type) -> a
+lookup : (a : Type) -> a
 
 
 // class Num a  where
@@ -28,7 +28,7 @@ addN (S n) m = S (addN n m)
 numN : Num N
 numN = MkNum addN
 
-instanceOf (Num N) = numN
+lookup (Num N) = numN
 
 
 N2 : Type
@@ -39,7 +39,7 @@ AddN2 : N2 -> N2 -> N2
 numN2 : Num N2
 numN2 = MkNum AddN2
 
-instanceOf (Num N2) = numN2
+lookup (Num N2) = numN2
 
 
 Wrap : Type -> Type
@@ -53,12 +53,12 @@ addWrap f (MkWrap x) (MkWrap y) = MkWrap (f x y)
 numWrap : {a : Type} -> Num a -> Num (Wrap a)
 numWrap (MkNum f) = MkNum (addWrap f)
 
-instanceOf (Num (Wrap a)) = numWrap (instanceOf (Num a))
+lookup (Num (Wrap a)) = numWrap (lookup (Num a))
 
 
 // double : Num a => a -> a
 double : {a : Type} -> {_ : Num a} -> a -> a
 double {_} {d} x = add {_} {d} x x
 
-double {_} {instanceOf _} (MkWrap (MkWrap Z2))
+double {_} {lookup _} (MkWrap (MkWrap Z2))
 // double (MkWrap (MkWrap Z2))

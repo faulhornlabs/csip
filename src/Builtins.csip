@@ -1,18 +1,22 @@
 
 Ap : {a b} -> (a ~> b) -> a -> b
 
+Bool : Type
+True  : Bool
+False : Bool
+
 Nat       : Type
-ProdNat   : Type
-PairNat   : Nat -> Nat -> ProdNat
 Succ      : Nat -> Nat
-EqNat     : ProdNat -> Nat
+AddNat    : Nat -> Nat -> Nat
+MulNat    : Nat -> Nat -> Nat
+ModNat    : Nat -> Nat -> Nat
+DivNat    : Nat -> Nat -> Nat
+EqNat     : Nat -> Nat -> Bool
 
 String    : Type
-ProdStr   : Type
-PairStr   : String -> String -> ProdStr
 Cons      : String -> String -> String
-AppendStr : ProdStr -> String
-EqStr     : ProdStr -> Nat
+AppendStr : String -> String -> String
+EqStr     : String -> String -> Bool
 
 Ty        : Type
 Arr       : Ty -> Ty -> Ty
@@ -27,11 +31,12 @@ Pair      : {a b : Ty} -> a -> b -> Prod a b
 Fst       : {a b} -> Prod a b -> a
 Snd       : {a b} -> Prod a b -> b
 
-instanceOf : (a : Type) -> a
+lookupDict : (a : Type) -> a
 
-Bool : Type
-True  : Bool
-False : Bool
+SuperClassList : (a : Type) -> Type
+SuperClassNil  : {a} -> SuperClassList a
+SuperClassCons : {a b} -> (a -> b) -> SuperClassList a -> SuperClassList a
 
+superClasses : (a : Type) -> SuperClassList a
 
 "end of Builtins"

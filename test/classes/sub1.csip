@@ -1,0 +1,37 @@
+# elab
+# eval
+
+import Builtins
+
+Num : Type -> Type
+MkNum : {a} -> (a -> a) -> Num a
+
+double : {a} -> Num a => a -> a
+double {a} {MkNum f} x = f x
+
+Num2 : Type -> Type
+MkNum2 : {a} -> Num a -> Num2 a
+
+selNum2Num : {a} -> Num2 a -> Num a
+selNum2Num (MkNum2 d) = d
+superClasses (Num2 a) = SuperClassCons selNum2Num SuperClassNil
+
+numDict = MkNum \n -> AddNat n n
+lookupDict (Num Nat) = numDict
+
+num2Dict = MkNum2 numDict
+lookupDict (Num2 Nat) = num2Dict
+
+selTy : {a} -> Nat -> SuperClassList a -> Type
+selTy 0 (SuperClassCons {_} {t} _ _) = t
+selTy (Succ i) (SuperClassCons _ l) = selTy i l
+
+sel : {a} -> (i : Nat) -> (l : SuperClassList a) -> a -> selTy i l
+sel 0 (SuperClassCons f _) = f
+sel (Succ i) (SuperClassCons _ l) = sel i l
+
+double2 : {a} -> Num2 a => a -> a
+double2 {a} {d} x = double {a} {sel 0 (superClasses (Num2 a)) d} x
+
+\{a} {b} c -> double2 {a} {b} c
+//double2 4

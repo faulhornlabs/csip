@@ -33,10 +33,10 @@
      ->_ ~>_ :->_ |->_ :_ ::_ **_ =>_ ==>_ -->_
      in_
      \_
-    _= _:=
-     =_ :=_
     _|
      |_
+    _= _:=
+     =_ :=_
     _,
      ,_
      import_
@@ -46,8 +46,8 @@
      ;_
      let_ _in if_ _then then_ _else
      [_ _] {_ _} (_ _) <!_ _!>
-     END_ SEMI_
-    _BEGIN _SEMI
+     END_   SEMI_ do_
+    _BEGIN _SEMI _do
      BEGIN_ _END
     _SPACE
      SPACE_

@@ -2,29 +2,25 @@
 import Builtins
 
 
-natToBool : Nat -> Bool
-natToBool 1 = True
-natToBool _ = False
+appendStr = AppendStr
 
-appendStr : String -> String -> String
-  = \a b -> AppendStr (PairStr a b)
-
-eqStr : String -> String -> Bool
-  = \a b -> natToBool (EqStr (PairStr a b))
-
+eqStr = EqStr
 
 (==) : Nat -> Nat -> Bool
-0      == 0      = True
-Succ a == Succ b = a == b
-_      == _      = False
+  = EqNat
 
 (+) : Nat -> Nat -> Nat
-0      + m = m
-Succ n + m = Succ (n + m)
+  = AddNat
 
 (*) : Nat -> Nat -> Nat
-0      * _ = 0
-Succ n * m = m + n * m
+  = MulNat
+
+even : Nat -> Bool
+  = \n -> ModNat n 2 == 0
+odd  : Nat -> Bool
+  = \n -> ModNat n 2 == 1
+
+div = DivNat
 
 
 the : (a : Type) -> a -> a

@@ -8,7 +8,7 @@ module M3_Parse
   , showMixfix, scope, unscope
 
   , ExpTree_
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView, REmbed)
+    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard)
   , PPrint (pprint)
   , showM
   , zVar
@@ -376,19 +376,18 @@ instance Print (OpSeq' Layout) where
 layout  :: OpSeq' Unspaced -> OpSeq' Layout
 layout = g True
    where
-    g :: Bool -> (OpSeq' Unspaced) -> (OpSeq' Layout)
+    g :: Bool -> OpSeq' Unspaced -> OpSeq' Layout
     g top = \case
       Node2 l "\v" r -> semi top (g top l) (g top r)
-      Node3 (Node2 l "\v" Empty) "\t" a "\r" r
-        | la (lastOpSeq l) -> g top l <> brace True (g True a) <> g top r
-        | otherwise  -> g top l <> f a <> g top r
---    Node3 l "\t" ("\v" :> a) "\r" r -> g top l <> f a <> g top r
-      Node3 l "\t"          a  "\r" r -> g top l <> brace top (g top a) <> g top r
+      Node3 l "\t" a "\r" r
+        | Node2 l "\v" Empty <- l, Node2 l "do" Empty <- l
+        -> g top l <> brace True (g True a) <> g top r
+        | Node2 l "\v" Empty <- l
+        -> g top l <> f a <> g top r
+        | otherwise
+        -> g top l <> brace top (g top a) <> g top r
+      Node2 _ t@"do" _ -> error $ "Illegal " <> showToken t
       a -> coerce a
-
-    la (Just "do") = True
-    la (Just "let") = True
-    la _ = False
 
     f (Node3 Empty "\t" a "\r" Empty) = f a
     f a = g False a
@@ -399,7 +398,6 @@ layout = g True
     semi False a b = a <> b
 
     brace _ Empty = Empty
---    brace t@(Node3 Empty "(" a ")" Empty) = t
     brace True  a = sing "(" <> a <> sing ")"
     brace False a = a
 
@@ -566,8 +564,11 @@ pattern NLetTy = MkM [":",";"]
 pattern NExpl  = MkM ["(",":",")"]
 pattern NImpl  = MkM ["{",":","}"]
 
-pattern NImport   = MkM ["import"]
-pattern NLetImport= MkM ["import",";"]
+pattern NImport    = MkM ["import"]
+pattern NLetImport = MkM ["import",";"]
+pattern NLetArr    = MkM ["<-",";"]
+
+pattern NGuard = MkM ["|"]
 
 pattern NEq    = MkM ["="]
 pattern NLet   = MkM ["=",";"]
@@ -591,16 +592,17 @@ pattern NEmpty = MkM ["__"]
 pattern NAny   = MkM ["_"]
 
 pattern NHole :: Mixfix a
-pattern NHole  = MkM ["_"]
-pattern NArr   = MkM ["->"]
-pattern NIArr  = MkM ["~>"]
-pattern NView  = MkM ["-->"]
-pattern NPi    = MkM ["(",":",")","->"]
-pattern NHPi   = MkM ["{",":","}","->"]
-pattern NCPi   = MkM ["=>"]
-pattern NHArr  = MkM ["{","}","->"]
-pattern NRule  = MkM ["==>"]
-pattern NDot   = MkM ["[","]"]
+pattern NHole    = MkM ["_"]
+pattern NLeftArr = MkM ["<-"]
+pattern NArr     = MkM ["->"]
+pattern NIArr    = MkM ["~>"]
+pattern NView    = MkM ["-->"]
+pattern NPi      = MkM ["(",":",")","->"]
+pattern NHPi     = MkM ["{",":","}","->"]
+pattern NCPi     = MkM ["=>"]
+pattern NHArr    = MkM ["{","}","->"]
+pattern NRule    = MkM ["==>"]
+pattern NDot     = MkM ["[","]"]
 
 instance Arity (Mixfix t) where
   arity (MkM a) = arity a
@@ -617,8 +619,9 @@ instance Arity [Token i] where
 
 
 data ExpTree_ b a
-  = RApps_ Int a [ExpTree_ b a]
-  | REmbed b  -- hack
+  = RVar a
+  | EApp Int (ExpTree_ b a) (ExpTree_ b a)
+  | REmbed b
   deriving (Eq, Ord)
 
 type ExpTree = ExpTree_ Void
@@ -626,22 +629,29 @@ type ExpTree = ExpTree_ Void
 coerceExpTree :: ExpTree_ Void a -> ExpTree_ b a
 coerceExpTree = unsafeCoerce
 
-pattern RApps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
-pattern RApps a es <- RApps_ _ a es
-  where RApps a es =  RApps_ (length es - arity a) a es
+instance Arity a => Arity (ExpTree_ b a) where
+  arity (RVar a) = arity a
+  arity (EApp a _ _) = a
+  arity _ = 0
 
-pattern Apps a es = RApps a (Reverse es)
+pattern (:@) :: Arity a => ExpTree_ b a -> ExpTree_ b a -> ExpTree_ b a
+pattern f :@ e <- EApp _ f e
+  where f :@ e =  EApp (arity f - 1) f e
 
-getApp (RApps_ n a (e: es)) = Just (RApps_ (n-1) a es, e)
-getApp _ = Nothing
+pattern Apps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
+pattern Apps a es <- (getApps [] -> Just (a, es))
+  where Apps a es = foldl (:@) (RVar a) es
 
-pattern RVar a =  RApps a []
+getApps es (RVar a) = Just (a, es)
+getApps es (f :@ e) = getApps (e: es) f
+getApps _ _ = Nothing
 
-pattern f :@ e <- (getApp -> Just (f, e))
-  where RApps_ n a es :@ e = RApps_ (n+1) a (e: es)
-        _ :@ _ = impossible
 
-{-# COMPLETE RVar, (:@) #-}
+pattern SApps os es <- (dup -> ((== 0) . arity -> True, Apps os es))
+
+pattern a :@@ b <- (dup -> ((<0) . arity -> True, a :@ b))
+
+{-# COMPLETE RVar, (:@), REmbed #-}
 
 instance (IsString a, Arity a) => IsString (ExpTree_ b a) where
   fromString = RVar . fromString
@@ -735,15 +745,11 @@ xApps a b = norm $ Apps a b
 
 dup a = (a, a)
 
-pattern a :@@ b <- (dup -> (RApps_ ((>0) -> True) _ _, a :@ b))
-
 pattern RApp a b <- a :@@ b
   where RApp a b =  a :@  b
 
-pattern SApps os es <- RApps_ 0 os (Reverse es)
-
 norm r = case r of
-  _ | ar /= 0 -> r
+  _ | arity r /= 0 -> r
   Apps (MkM ["#"])  [a, _] -> a
   Apps NSemi  [RVar NEmpty, a] -> a
   Apps NSemi  [a, RVar NEmpty] -> a
@@ -761,6 +767,7 @@ norm r = case r of
   _ | Just z <- gg NSemi     NOEq       -> z
   _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
+  _ | Just z <- gg NSemi     NLeftArr   -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
   _ | Just z <- gg NLambda   NPi        -> z
@@ -774,8 +781,6 @@ norm r = case r of
   Apps NParens [a] -> a
   r -> r
  where
-
-  ~(RApps_ ar _ _) = r
   (as', rr) = case r of
     Apps (MkM as') rr -> (as', rr)
     _ -> undefined
@@ -840,6 +845,7 @@ pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
+pattern RGuard a b     = ZApps NGuard [a, b]
 pattern RImport n e    = ZApps NLetImport [RVar n, e]
 
 unGLam = \case
@@ -885,6 +891,7 @@ vars t = case t of
     Hole -> []
     RDot{} -> []
     ZApps NView [_, e] -> vars e
+    ZApps NGuard [e, _] -> vars e
     RHApp a b -> vars a <> vars b
     a :@ b -> vars a <> vars b
     RVar n@(ZName (MkM [t])) -> [n | isLowerToken t]
@@ -925,8 +932,10 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
-    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
+    SApps l es | l `elem` [NGuard, NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps NLetArr [a, b, c] -> xApps ">>=" [etr3 b, xApps NTLam [etr3 a, RVar NHole, etr3 c]]
+    SApps NSemi [b, c] -> xApps ">>=" [etr3 b, xApps NTLam [RVar NAny, RVar NHole, etr3 c]]
+--    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
     e -> error' $ print ({- pprint $ op $ unpatch -} e) <&> \r -> "Expression expected\n" <> r
@@ -1064,12 +1073,13 @@ consts :: Set NameStr
 consts = fromListSet
   [ "_"
   , "Ap"
-  , "instanceOf"
+  , "lookupDict", "superClasses", "SuperClassList", "SuperClassNil", "SuperClassCons"
   , "Bool", "True", "False"
-  , "Nat", "ProdNat", "PairNat", "Succ", "EqNat"
+  , "Nat", "ProdNat", "PairNat", "Succ", "EqNat", "AddNat", "MulNat", "DivNat", "ModNat"
   , "String", "ProdStr", "PairStr", "Cons", "AppendStr", "EqStr"
   , "Ty", "Arr", "Prod"
   , "Code", "Lam", "App", "Let", "Pair", "Fst", "Snd"
+  , ">>="
   ]
 
 nameOf :: NameStr -> RefM Name
@@ -1108,7 +1118,7 @@ importModule m = do
 instance Parse (Raw_ a) where
   parse = parse >=> scope 
 
-instance Print (Raw_ a) where
+instance PPrint a => Print (Raw_ a) where
   print = unscope >=> print
 
 scope   :: ExpTree' Desug -> RefM (Raw_ a)
@@ -1126,13 +1136,13 @@ scope t = runReader mempty ff  where
           GLam <$> mapM f es <*> pure m <*> local r (insert n m) (f a)
       a :@ b -> (:@) <$> f a <*> f b
 
-unscope :: Raw_ a -> RefM (ExpTree' Desug)
+unscope :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
 unscope t = runReader mempty ff where
   ff r = f t where
 
-    f :: Raw_ a -> RefM (ExpTree' Desug)
+    f :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
     f = \case
-      REmbed{} -> pure $ RVar "<<embed>>"
+      REmbed a -> f $ pprint a
       RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
       RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
       RVar "CPi" :@ a :@       e -> f $ RCPi   a e
@@ -1143,10 +1153,11 @@ unscope t = runReader mempty ff where
         pure $ RVar m
       GLam es v a
         | NConst n@"_" <- v -> GLam <$> mapM f es <*> pure n <*> f a
-        | n <- nameStr v -> do
-          k <- asks r (lookup n . snd)
-          let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
-          GLam <$> mapM f es <*> pure m <*> local r (maybe id (insert v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)
+        | n <- nameStr v -> asks r (lookup v . fst) >>= \case
+          _ -> do
+            k <- asks r (lookup n . snd)
+            let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
+            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insert v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
 
 addSuffix :: Mixfix a -> String -> Mixfix a
@@ -1202,6 +1213,9 @@ pprintToken = RVar . NConst'
 
 instance PPrint ISource where
   pprint = pprint . unISource
+
+instance PPrint Void where
+  pprint = impossible
 
 instance (Ord p, PPrint a) => PPrint (OpSeq p a) where
   pprint Empty = RVar "_"

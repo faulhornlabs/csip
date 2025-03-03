@@ -29,7 +29,7 @@ Main directives:
 | ---                 | ---         |
 | `# source`          | print the source code |
 | `# source quote`    | print the inner representation of the source code |
-| `# indent quote`    | print the inner representation of the unidented source code |
+| `# indent quote`    | print the inner representation of the unindented source code |
 | `# lex quote`       | print the token list |
 | `# structure quote` | print the parse tree with whitespace |
 | `# layout quote`    | print the parse tree |
@@ -146,8 +146,7 @@ Possible differences:
 
 Staged compilation is defined in [András Kovács's staged repository](https://github.com/AndrasKovacs/staged).
 
-In csip, the representations of terms and values are not affected by staged compilation.
-The representation of object code constructs are the same as the representation of user defined constructors.
+In csip, the representation of object code constructs is the same as the representation of user defined constructors.
 There are no splice and quote operations.
 Object code function applications and lambdas are inserted during converstion checking.
 Object code lets are inserted during elaboration.
@@ -159,28 +158,30 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- type classes are not supported
+- type class and instance definitions should be desugared by hand
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
-- object code constructor definitions are not included in object code
 - foralls for functions and constructors should be explicitly given
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns
 - missing check to rule out recursive meta solutions
 - missing documentation
-- dot patterns (in dependent pattern matching) are not supported
 - local definitions are not supported
-- local do notation is not supported
-- recursive definitions are not properly printed
+- only simple guards are supported
+- only builtin modules can be imported
 - closed data types and closed functions are not supported
+- recursive definitions are not properly printed
 - sharing between values are sometimes lost during printing
+- dot patterns (in dependent pattern matching) are not supported
+- pattern synonyms are not supported
+- there is no stage polymorphism
 - `import` acts as an "include"
-- only the Builtin module can be imported
 - no support for multiple object codes
-- types are not shown in printed output
-- implicit/explicit distinction of lambdas and applications are missing
+- types are not shown in elaborated output
+- implicit/explicit distinction of lambdas and applications are missing in elaborated output
+- `do` should be at the end of the line
 - multiline comments interferes with layout rules
 - string literal printing is not the inverse of the string literal parsing
 - desugared `(a b : c)` does not share `c`
@@ -193,6 +194,7 @@ Implemented performance improvements:
 
 - observable implicit sharing speeds up conversion checking
   and prevents sharing loss
+- top level definitions are treated specially
 - unsaturated and blocked rewrite rule applications are cached
 - monad stacks in the Haskell source code are replaced with a custom solution
 
@@ -244,7 +246,7 @@ remove unconsitent cache during development when needed.
 ## Examples
 
 ```haskell
-\a b -> ((a + b)^5 + b)^10
+\a b -> ((a + b)^100 + b)^80
 ```
 
 is compiled to
@@ -253,35 +255,43 @@ is compiled to
 \a b -> (do
     c = Add (do
           c = Add a b
-          Mul c (do
-                b_1 = Mul c c
-                Mul b_1 b_1
-              )) b
+          b_1 = Mul c (do
+                b_1 = Mul c (Mul c c)
+                b_2 = Mul b_1 b_1
+                b_3 = Mul b_2 b_2
+                Mul b_3 b_3
+              )
+          b_2 = Mul b_1 b_1
+          Mul b_2 b_2
+        ) b
     b_1 = Mul c (do
           b_1 = Mul c c
           Mul b_1 b_1
         )
-    Mul b_1 b_1
+    b_2 = Mul b_1 b_1
+    b_3 = Mul b_2 b_2
+    b_4 = Mul b_3 b_3
+    Mul b_4 b_4
   )
 ```
 
-given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast.csip).
+given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast.csip)
 
 and compiled to
 
 ```haskell
 do
   sqr = \a -> Mul a a
-  \v b -> sqr (do
-        c = Add (do
-              c = Add v b
+  \v b -> sqr (sqr (sqr (sqr (do
+              c = Add (sqr (sqr (do
+                        c = Add v b
+                        Mul c (sqr (sqr (sqr
+                                (Mul c (sqr c))
+                                )))))) b
               Mul c
                 (sqr (sqr c))
-            ) b
-        Mul c
-          (sqr (sqr c))
-      )
+            ))))
 ```
 
-given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast2.csip).
+given the definitions in [`test/staging/powerFast2.csip`](test/staging/powerFast2.csip).
 
