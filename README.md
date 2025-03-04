@@ -29,7 +29,7 @@ Main directives:
 | ---                 | ---         |
 | `# source`          | print the source code |
 | `# source quote`    | print the inner representation of the source code |
-| `# indent quote`    | print the inner representation of the unidented source code |
+| `# indent quote`    | print the inner representation of the unindented source code |
 | `# lex quote`       | print the token list |
 | `# structure quote` | print the parse tree with whitespace |
 | `# layout quote`    | print the parse tree |
@@ -248,7 +248,7 @@ remove unconsitent cache during development when needed.
 ## Examples
 
 ```haskell
-\a b -> ((a + b)^5 + b)^10
+\a b -> ((a + b)^100 + b)^80
 ```
 
 is compiled to
@@ -257,35 +257,43 @@ is compiled to
 \a b -> (do
     c = Add (do
           c = Add a b
-          Mul c (do
-                b_1 = Mul c c
-                Mul b_1 b_1
-              )) b
+          b_1 = Mul c (do
+                b_1 = Mul c (Mul c c)
+                b_2 = Mul b_1 b_1
+                b_3 = Mul b_2 b_2
+                Mul b_3 b_3
+              )
+          b_2 = Mul b_1 b_1
+          Mul b_2 b_2
+        ) b
     b_1 = Mul c (do
           b_1 = Mul c c
           Mul b_1 b_1
         )
-    Mul b_1 b_1
+    b_2 = Mul b_1 b_1
+    b_3 = Mul b_2 b_2
+    b_4 = Mul b_3 b_3
+    Mul b_4 b_4
   )
 ```
 
-given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast.csip).
+given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast.csip)
 
 and compiled to
 
 ```haskell
 do
   sqr = \a -> Mul a a
-  \v b -> sqr (do
-        c = Add (do
-              c = Add v b
+  \v b -> sqr (sqr (sqr (sqr (do
+              c = Add (sqr (sqr (do
+                        c = Add v b
+                        Mul c (sqr (sqr (sqr
+                                (Mul c (sqr c))
+                                )))))) b
               Mul c
                 (sqr (sqr c))
-            ) b
-        Mul c
-          (sqr (sqr c))
-      )
+            ))))
 ```
 
-given the definitions in [`test/staging/powerFast.csip`](test/staging/powerFast2.csip).
+given the definitions in [`test/staging/powerFast2.csip`](test/staging/powerFast2.csip).
 

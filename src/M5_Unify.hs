@@ -82,9 +82,6 @@ closeTm v_ = do
         _ -> impossible
       WVar | name v `member` allowed -> pure $ Just mempty
            | otherwise               -> pure Nothing
-      WDelta{} -> pure $ Just mempty
-      WCon -> pure $ Just mempty
-      WFun{} -> pure $ Just mempty
       WMetaApp_ _ _ _ dep -> case map snd ts of
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
@@ -96,6 +93,9 @@ closeTm v_ = do
         Nothing -> pure Nothing
         Just [sa, sb] -> pure $ Just (sa <.> sb)
         _ -> impossible
+      WDelta{} -> pure $ Just mempty
+      WCon{}   -> pure $ Just mempty
+      WFun{}   -> pure $ Just mempty
       _ -> undefined
 
 -------------

@@ -635,15 +635,7 @@ instance Arity a => Arity (ExpTree_ b a) where
 pattern (:@) :: Arity a => ExpTree_ b a -> ExpTree_ b a -> ExpTree_ b a
 pattern f :@ e <- EApp _ f e
   where f :@ e =  EApp (arity f - 1) f e
-{-
-pattern RApps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
-pattern RApps a es <- (getRApps -> Just (a, es))
-  where RApps a es = foldr (flip (:@)) (RVar a) es
 
-getRApps (RVar a) = Just (a, [])
-getRApps ((getRApps -> Just (a, es)) :@ e) = Just (a, e: es)
-getRApps _ = Nothing
--}
 pattern Apps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
 pattern Apps a es <- (getApps [] -> Just (a, es))
   where Apps a es = foldl (:@) (RVar a) es
@@ -1076,7 +1068,7 @@ consts = fromListSet
   , "Ap"
   , "lookupDict"
   , "Bool", "True", "False"
-  , "Nat", "ProdNat", "PairNat", "Succ", "EqNat"
+  , "Nat", "ProdNat", "PairNat", "Succ", "EqNat", "AddNat", "MulNat", "DivNat", "ModNat"
   , "String", "ProdStr", "PairStr", "Cons", "AppendStr", "EqStr"
   , "Ty", "Arr", "Prod"
   , "Code", "Lam", "App", "Let", "Pair", "Fst", "Snd"

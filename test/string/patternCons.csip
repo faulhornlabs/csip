@@ -1,14 +1,7 @@
 # elab
 # eval
 
-// builtins
-Cons : String -> String -> String
-ProdStr : Type
-PairStr : String -> String -> ProdStr
-AppendStr : ProdStr -> String
-
-appendStr : String -> String -> String
-  = \a b -> AppendStr (PairStr a b)
+import Prelude
 
 f : String -> String
 f "" = ""

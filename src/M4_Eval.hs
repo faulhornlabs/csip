@@ -240,7 +240,7 @@ tmToRaw t = do
            WNat n-> pure (RVar $ NNat n)
            WString n -> pure (RVar $ NString n)
            v@WCon -> pure (RVar $ name v)
-           WDelta n _ -> pure (RVar n)
+           v@WDelta{} -> pure (RVar $ name v)
            WFun_ n r -> lookupRule r >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
            v -> tell wst (mempty, singleton (name v) v) >> pure (RVar $ name v)
         TGen e -> eval' env e >>= quoteTm >>= f env
@@ -274,7 +274,7 @@ data View
   | VVar
   | VMeta MetaRef
   | VFun RuleRef   -- function
-  | VDelta (Val -> RefM Val -> RefM Val) -- builtin function
+  | VDelta Int{-arity-} (RefM Val -> [Val] -> RefM Val) -- builtin function
   | VApp_ Val Val AppKind
   | VSup Combinator [Val]     -- lambda
   | VSel Int Int Val       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
@@ -288,7 +288,7 @@ data AppKind
   = NeutralApp MetaRef MetaDep    -- volatile App depending on a meta
   | FunApp Val{-accumulated result-}
   | ConApp
---  | DeltaApp Int{-missing arguments-}
+  | DeltaApp Int{-remaining arity-}
 
 -----------
 
@@ -305,6 +305,7 @@ pattern WRet n <- (view -> VRet n)
 pattern WApp a b <- (view -> VApp_ a b _)
 pattern WFunApp a b c <- (view -> VApp_ a b (FunApp c))
 pattern WConApp a b <- (view -> VApp_ a b ConApp)
+pattern WDeltaApp a b ar <- (view -> VApp_ a b (DeltaApp ar))
 pattern WMetaApp_ a b c d <- (view -> VApp_ a b (NeutralApp c d))
 pattern WMetaApp a b <- WMetaApp_ a b _ _
 pattern WLam n <- WSup (varName -> n) _
@@ -330,8 +331,8 @@ vCon n = MkVal n True True VCon
 pattern WCon_ n <- MkVal n _    _    VCon
   where WCon_ n =  MkVal n True True VCon
 
-pattern WDelta i f <- MkVal i _    _    (VDelta f)
-  where WDelta i f =  MkVal i True True (VDelta f)
+pattern WDelta i ar f <- MkVal i _    _    (VDelta ar f)
+  where WDelta i ar f =  MkVal i True True (VDelta ar f)
 
 vNat :: Integer -> RefM Val
 vNat i = mkName "i" <&> \n -> MkVal n True True $ VNat i
@@ -392,52 +393,70 @@ vTm n t v = mkValue n (rigid v) (closed v) $ VTm t v
 
 mkCon :: Name -> Val
 mkCon n = case n of
-  "AppendStr" -> f \u def -> forcedSpine u >>= \case
-        ("PairStr", [WString va, WString vb])
-                   -> vString $ va <> vb
-        _          -> def
-  "dec" -> f \u def -> forcedSpine u >>= \case
+  "AppendStr" -> f 2 \_ -> \case [WString va, WString vb] -> vString $ va <> vb; _ -> impossible
+  "EqStr"     -> f 2 \_ -> \case [WString va, WString vb] -> if va == vb then "True" else "False"; _ -> impossible
+  "AddNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va + vb; _ -> impossible
+  "MulNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va * vb; _ -> impossible
+  "DivNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va `div` vb; _ -> impossible
+  "ModNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va `mod` vb; _ -> impossible
+  "EqNat"     -> f 2 \_ -> \case [WNat    va, WNat    vb] -> if va == vb then "True" else "False"; _ -> impossible
+  "dec" -> f 1 \def -> \case
+      [u] -> forcedSpine u >>= \case
         (WNat t, []) -> vNat $ t - 1
         ("Succ", [v]) -> pure v
         _          -> def
-  "tail" -> f \u def -> forcedSpine u >>= \case
+      _ -> impossible
+  "tail" -> f 1 \def -> \case
+      [u] -> forcedSpine u >>= \case
         (WString (_: t), []) -> vString t
         ("Cons", [_, v]) -> pure v
         _          -> def
-  "head" -> f \u def -> forcedSpine u >>= \case
+      _ -> impossible
+  "head" -> f 1 \def -> \case
+      [u] -> forcedSpine u >>= \case
         (WString (h: _), []) -> vString [h]
         ("Cons", [v, _]) -> pure v
         _          -> def
-  "EqStr" -> f \u def -> forcedSpine u >>= \case
-        ("PairStr", [WString va, WString vb])
-                   -> vNat $ if va == vb then 1 else 0
-        _          -> def
-  "EqNat" -> f \u def -> forcedSpine u >>= \case
-        ("PairNat", [WNat va, WNat vb])
-                   -> vNat $ if va == vb then 1 else 0
-        _          -> def
+      _ -> impossible
   n -> vCon n
  where
-  f g = WDelta n g
+  f ar g = WDelta n ar g
+
+evalDelta (WDeltaApp a v _) u def = evalDelta a (v: u) def
+evalDelta (WDelta _ _ g) u def = g def u
+evalDelta _ _ _ = impossible
 
 vApp :: Val -> Val -> RefM Val
 vApp a_ u = do
   (aa, a) <- force' a_
   let def = mkApp aa u $ snd <$> metaDep a
+      def2 ar u
+        | closed u, rigid u = mkValue "app" (rigid a && rigid u) (closed a && closed u) $ VApp_ a u $ DeltaApp (ar - 1)
+        | otherwise         = def
+      def3 = force u >>= \case
+         u | True {- closed u, rigid u -} -> evalDelta a [u] def
+--           | otherwise -> def
   case a of
     WCon  -- TODO: elim
       | "Succ" <- name a -> force u >>= \case
         WNat t -> vNat $ t + 1
         _          -> def
-    WDelta _ g     -> g u def
+    WDelta _ ar _
+      | ar < 1     -> impossible
+      | ar > 1     -> force u >>= \u -> def2 ar u
+      | closed a, rigid a -> def3
+      | otherwise  -> def
+    WDeltaApp _ _ ar
+      | ar < 1     -> impossible
+      | ar > 1     -> force u >>= \u -> def2 ar u
+      | closed a, rigid a -> def3
+      | otherwise  -> def
     WSup c vs      -> evalCombinator c $ vs ++ [u]
-    WFun_ _ r       -> lookupRule r >>= \f -> app_ aa f u
+    WFun_ _ r      -> lookupRule r >>= \f -> app_ aa f u
     WFunApp _ _ f  -> app_ aa f u
     _              -> def
  where
-  app_ aa f u = vApp f u >>= \vv -> mkApp' aa u vv
-
-  mkApp' aa u vv = case vv of
+  app_ aa f u = vApp f u >>= \case
     WRet x -> pure x
     x -> mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u $ FunApp x
 
@@ -648,7 +667,7 @@ quoteNF :: Val -> RefM Raw
 quoteNF v_ = force v_ >>= \case
   WNat n   -> pure $ RVar $ NNat n
   WString n-> pure $ RVar $ NString n
-  WDelta n _ -> pure $ RVar $ n
+  WDelta n _ _ -> pure $ RVar $ n
   v@WCon     -> pure $ RVar $ name v
   v@WVar     -> pure $ RVar $ name v
   v@WMeta{}    -> pure $ RVar $ name v
@@ -696,7 +715,7 @@ quoteTm__ vtm opt v_ = do
       WTm t _ -> pure t
       WVar  -> pure $ TVar $ name v
       _ | opt -> impossible
-      WDelta n _  -> pure $ TVar n
+      WDelta n _ _ -> pure $ TVar n
       WCon  -> pure $ TVar $ name v
       WMeta{} -> pure $ TVar $ name v
 --      WFun_ n r  -> lookupRule n r >>= gg

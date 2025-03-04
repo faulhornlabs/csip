@@ -28,6 +28,7 @@ unquote = f mempty
     E.Lam n a -> E.Lam n $ f e a
     a :@ b -> f e a .@ f e b
     RVar n -> RVar $ fromMaybe n $ lookup n e
+    _ -> impossible
 
   rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
   rLet n a b = RLet n Hole a b
@@ -64,6 +65,7 @@ convert = f  where
     RVar n -> case n of
       m | isConName m -> Con $ g n
       _ -> Var $ g n
+    _ -> impossible
 
   g :: Name -> HName
   g n = case nameId n of
