@@ -9,7 +9,7 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp :: Val
+pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp, CFail :: Val
 pattern CType   = "Type"
 pattern CPi     = "Pi"
 pattern CHPi    = "HPi"
@@ -23,6 +23,7 @@ pattern CString = "String"
 pattern CAp     = "Ap"
 pattern CApp    = "App"
 pattern CLam    = "Lam"
+pattern CFail   = "Fail"
 
 data Icit = Impl | ImplClass | Expl
   deriving Eq
@@ -121,11 +122,9 @@ instanceMeta env = do
   m' <- evalEnv env m
   pure (TGen $ TApp (TVal lookupDictFun) m, m')
 
-lookupDictFun = Fun_ "lookupDict" lookupDictRef
 
-{-# noinline lookupDictRef #-}
-lookupDictRef :: RuleRef
-lookupDictRef = topRef $ Con "Fail"
+{-# noinline lookupDictFun #-}
+lookupDictFun = topM $ vFun "lookupDict" CFail
 
 freshMeta' :: Env -> RefM (Tm, Val)
 freshMeta' env = do
@@ -315,12 +314,12 @@ check_ env r ty = case r of
       ROLet n t a b | onTop env -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
-        tb <- check (defineGlob n (Con n) vta env) b ty
+        tb <- check (defineGlob n (vCon n) vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
         fta <- fa ta
         ftb <- fb tb
-        pure $ TApps "TopLet" [pa, pb, TVal (Con n), fta, ftb]
+        pure $ TApps "TopLet" [pa, pb, TVal (vCon n), fta, ftb]
       ROLet n t a b -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
@@ -370,9 +369,7 @@ infer_ env r = case r of
     c <- if isConName n then pure $ mkCon n
       else case n of
         "lookupDict" -> pure lookupDictFun
-        _ -> do
-          r <- newRef $ Con "Fail"
-          pure $ Fun_ n r
+        _ -> vFun n CFail
     infer (defineGlob n c vta env) b
   ROLet{} -> do
     (_, m) <- freshMeta' env

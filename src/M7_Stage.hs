@@ -6,7 +6,7 @@ module M7_Stage
 import M1_Base
 import M3_Parse hiding (Lam)
 import qualified M3_Parse as E
-import M4_Eval hiding (Con)
+import M4_Eval
 
 stage t = quoteNF t <&> unquote
 
