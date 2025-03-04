@@ -434,10 +434,10 @@ infer_ env r = case r of
         b <- vApp pb v
         pure (TApp fav tb, b)
        | icit == Impl -> do
-        infer env $ RApp (RHApp a Hole) b
+        infer env $ RApp (RHApp (REmbed $ MkEmbedded av ty) Hole) b
        | icit == ImplClass -> do
         (m, m') <- instanceMeta env
-        infer env $ RApp (RHApp a $ REmbed $ MkEmbedded m m') b
+        infer env $ RApp (RHApp (REmbed $ MkEmbedded av ty) $ REmbed $ MkEmbedded m m') b
        | otherwise -> error "baj"
 
 --------------------
