@@ -617,8 +617,9 @@ instance Arity [Token i] where
 
 
 data ExpTree_ b a
-  = RApps_ Int a [ExpTree_ b a]
-  | REmbed b  -- hack
+  = RVar a
+  | EApp Int (ExpTree_ b a) (ExpTree_ b a)
+  | REmbed b
   deriving (Eq, Ord)
 
 type ExpTree = ExpTree_ Void
@@ -626,22 +627,37 @@ type ExpTree = ExpTree_ Void
 coerceExpTree :: ExpTree_ Void a -> ExpTree_ b a
 coerceExpTree = unsafeCoerce
 
+instance Arity a => Arity (ExpTree_ b a) where
+  arity (RVar a) = arity a
+  arity (EApp a _ _) = a
+  arity _ = 0
+
+pattern (:@) :: Arity a => ExpTree_ b a -> ExpTree_ b a -> ExpTree_ b a
+pattern f :@ e <- EApp _ f e
+  where f :@ e =  EApp (arity f - 1) f e
+{-
 pattern RApps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
-pattern RApps a es <- RApps_ _ a es
-  where RApps a es =  RApps_ (length es - arity a) a es
+pattern RApps a es <- (getRApps -> Just (a, es))
+  where RApps a es = foldr (flip (:@)) (RVar a) es
 
-pattern Apps a es = RApps a (Reverse es)
+getRApps (RVar a) = Just (a, [])
+getRApps ((getRApps -> Just (a, es)) :@ e) = Just (a, e: es)
+getRApps _ = Nothing
+-}
+pattern Apps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
+pattern Apps a es <- (getApps [] -> Just (a, es))
+  where Apps a es = foldl (:@) (RVar a) es
 
-getApp (RApps_ n a (e: es)) = Just (RApps_ (n-1) a es, e)
-getApp _ = Nothing
+getApps es (RVar a) = Just (a, es)
+getApps es (f :@ e) = getApps (e: es) f
+getApps _ _ = Nothing
 
-pattern RVar a =  RApps a []
 
-pattern f :@ e <- (getApp -> Just (f, e))
-  where RApps_ n a es :@ e = RApps_ (n+1) a (e: es)
-        _ :@ _ = impossible
+pattern SApps os es <- (dup -> ((== 0) . arity -> True, Apps os es))
 
-{-# COMPLETE RVar, (:@) #-}
+pattern a :@@ b <- (dup -> ((<0) . arity -> True, a :@ b))
+
+{-# COMPLETE RVar, (:@), REmbed #-}
 
 instance (IsString a, Arity a) => IsString (ExpTree_ b a) where
   fromString = RVar . fromString
@@ -735,15 +751,11 @@ xApps a b = norm $ Apps a b
 
 dup a = (a, a)
 
-pattern a :@@ b <- (dup -> (RApps_ ((>0) -> True) _ _, a :@ b))
-
 pattern RApp a b <- a :@@ b
   where RApp a b =  a :@  b
 
-pattern SApps os es <- RApps_ 0 os (Reverse es)
-
 norm r = case r of
-  _ | ar /= 0 -> r
+  _ | arity r /= 0 -> r
   Apps (MkM ["#"])  [a, _] -> a
   Apps NSemi  [RVar NEmpty, a] -> a
   Apps NSemi  [a, RVar NEmpty] -> a
@@ -774,8 +786,6 @@ norm r = case r of
   Apps NParens [a] -> a
   r -> r
  where
-
-  ~(RApps_ ar _ _) = r
   (as', rr) = case r of
     Apps (MkM as') rr -> (as', rr)
     _ -> undefined
