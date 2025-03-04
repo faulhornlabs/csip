@@ -1149,10 +1149,11 @@ unscope t = runReader mempty ff where
         pure $ RVar m
       GLam es v a
         | NConst n@"_" <- v -> GLam <$> mapM f es <*> pure n <*> f a
-        | n <- nameStr v -> do
-          k <- asks r (lookup n . snd)
-          let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
-          GLam <$> mapM f es <*> pure m <*> local r (maybe id (insert v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)
+        | n <- nameStr v -> asks r (lookup v . fst) >>= \case
+          _ -> do
+            k <- asks r (lookup n . snd)
+            let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
+            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insert v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
 
 addSuffix :: Mixfix a -> String -> Mixfix a

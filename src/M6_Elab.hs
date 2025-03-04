@@ -314,13 +314,14 @@ check_ env r ty = case r of
         pure $ if onTop env then tb else TLet n ta tb
       ROLet n t a b | onTop env -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
+        let c = vCon n Nothing
         ta <- check env a vta
-        tb <- check (defineGlob n (vCon n) vta env) b ty
+        tb <- check (defineGlob n c vta env) b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
         fta <- fa ta
         ftb <- fb tb
-        pure $ TApps "TopLet" [pa, pb, TVal (vCon n), fta, ftb]
+        pure $ TApps "TopLet" [pa, pb, TVal c, fta, ftb]
       ROLet n t a b -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
@@ -367,7 +368,7 @@ infer_ env r = case r of
   RVar{} -> errorM "Not in scope"
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
-    c <- if isConName n then pure $ mkCon n
+    c <- if isConName n then pure $ mkCon n $ Just vta
       else case n of
         "lookupDict" -> pure lookupDictFun
         _ -> vFun n CFail
