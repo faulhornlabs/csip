@@ -6,7 +6,6 @@ appendStr = AppendStr
 
 eqStr = EqStr
 
-
 (==) : Nat -> Nat -> Bool
   = EqNat
 
@@ -15,6 +14,13 @@ eqStr = EqStr
 
 (*) : Nat -> Nat -> Nat
   = MulNat
+
+even : Nat -> Bool
+  = \n -> ModNat n 2 == 0
+odd  : Nat -> Bool
+  = \n -> ModNat n 2 == 1
+
+div = DivNat
 
 
 the : (a : Type) -> a -> a

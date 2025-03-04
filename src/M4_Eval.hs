@@ -1,7 +1,7 @@
 module M4_Eval
   ( Combinator, varName
 
-  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView)
+  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard)
   , Tm, tLam, tMeta
   , Raw
 
@@ -139,6 +139,9 @@ type Tm = Tm_ Name
 
 pattern TView :: Tm -> Tm -> Tm
 pattern TView a b = TApp (TApp (TVal (WCon_ "View")) a) b
+
+pattern TGuard :: Tm -> Tm -> Tm
+pattern TGuard a b = TApp (TApp (TVal (WCon_ "Guard")) a) b
 
 getTApps (TApp (getTApps -> (a, es)) e) = (a, e: es)
 getTApps e = (e, [])
@@ -538,6 +541,7 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
  where
   ruleName ns = \case
     TVal (WFun_ _ r) -> pure (r, ns)
+    TGuard a _ -> ruleName ns a
     TApp a b -> do
       n <- mkName $ case b of
         TVar m -> nameStr m
@@ -546,8 +550,12 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
     _ -> undefined
 
   compileLHS :: Tm -> [Name] -> Tm -> Tm -> RefM Tm
+  compileLHS old ns (TGuard a e) rhs = do
+    tx <- tLazy $ TApps old $ TVar <$> reverse ns
+    e <- compilePat (boundvars <> fromListSet ns) tx (TVal $ vCon "True") e $ pure rhs
+    compileLHS old ns a e
   compileLHS old (n: ns) (TApp a b) rhs = do
-    tx <- tLazy $ TApps old $ TVar <$> (reverse $ n: ns)
+    tx <- tLazy $ TApps old $ TVar <$> reverse (n: ns)
     e <- compilePat (boundvars <> fromListSet (n: ns)) tx b (TVar n) $ pure rhs
     compileLHS old ns a =<< tLam n e
   compileLHS _ [] (TVal WFun{}) rhs = pure rhs

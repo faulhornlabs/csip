@@ -8,7 +8,7 @@ module M3_Parse
   , showMixfix, scope, unscope
 
   , ExpTree_
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView, REmbed)
+    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard)
   , PPrint (pprint)
   , showM
   , zVar
@@ -569,6 +569,8 @@ pattern NImpl  = MkM ["{",":","}"]
 pattern NImport   = MkM ["import"]
 pattern NLetImport= MkM ["import",";"]
 
+pattern NGuard = MkM ["|"]
+
 pattern NEq    = MkM ["="]
 pattern NLet   = MkM ["=",";"]
 pattern NTEq   = MkM [":","="]
@@ -842,6 +844,7 @@ pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
 pattern RRule  a b     = ZApps NRule  [a, b]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
+pattern RGuard a b     = ZApps NGuard [a, b]
 pattern RImport n e    = ZApps NLetImport [RVar n, e]
 
 unGLam = \case
@@ -887,6 +890,7 @@ vars t = case t of
     Hole -> []
     RDot{} -> []
     ZApps NView [_, e] -> vars e
+    ZApps NGuard [e, _] -> vars e
     RHApp a b -> vars a <> vars b
     a :@ b -> vars a <> vars b
     RVar n@(ZName (MkM [t])) -> [n | isLowerToken t]
@@ -927,7 +931,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [NGuard, NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
     SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n

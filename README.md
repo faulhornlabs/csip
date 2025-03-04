@@ -165,7 +165,6 @@ The following limitations and bugs are planned to be lifted:
 - object level recursion compiled to object level constructs is not supported
 - object code constructor definitions are not included in object code
 - foralls for functions and constructors should be explicitly given
-- guards are not supported
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns
@@ -182,6 +181,7 @@ The following limitations and bugs are planned to be lifted:
 - `import` acts as an "include"
 - only builtin modules can be imported
 - no support for multiple object codes
+- only simple guards are supported
 - types are not shown in printed output
 - implicit/explicit distinction of lambdas and applications are missing
 - multiline comments interferes with layout rules

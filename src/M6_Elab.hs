@@ -9,7 +9,7 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp, CFail :: Val
+pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp, CFail, CBool :: Val
 pattern CType   = "Type"
 pattern CPi     = "Pi"
 pattern CHPi    = "HPi"
@@ -24,6 +24,7 @@ pattern CAp     = "Ap"
 pattern CApp    = "App"
 pattern CLam    = "Lam"
 pattern CFail   = "Fail"
+pattern CBool   = "Bool"
 
 data Icit = Impl | ImplClass | Expl
   deriving Eq
@@ -405,6 +406,10 @@ infer_ env r = case r of
     ta <- check env a CType
     tb <- check env b CType
     pure (TVal CIPi `TApp` ta `TApp` tb, CType)
+  RGuard a b -> do
+    tb <- check env b CBool
+    (ta, ty) <- infer env a
+    pure (TGuard ta tb, ty)
   RView a b -> do
     (ta, ty) <- infer env a
     (f, Expl, pa, pb) <- matchPi True env Expl ty
@@ -449,6 +454,7 @@ ruleHead = \case
   _ -> Nothing
  where
   f = \case
+    RGuard a _ -> f a
     RApp a _ -> f a
     RVar n -> Just n
     _ -> Nothing
