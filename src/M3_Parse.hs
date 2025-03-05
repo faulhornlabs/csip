@@ -1070,7 +1070,7 @@ consts :: Set NameStr
 consts = fromListSet
   [ "_"
   , "Ap"
-  , "lookupDict"
+  , "lookupDict", "superClasses", "SuperClassList", "SuperClassNil", "SuperClassCons"
   , "Bool", "True", "False"
   , "Nat", "ProdNat", "PairNat", "Succ", "EqNat", "AddNat", "MulNat", "DivNat", "ModNat"
   , "String", "ProdStr", "PairStr", "Cons", "AppendStr", "EqStr"

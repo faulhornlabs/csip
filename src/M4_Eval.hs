@@ -24,6 +24,8 @@ module M4_Eval
   , Embedded (MkEmbedded)
   , MetaRef, MetaDep(..)
   , updateMeta
+
+  , pattern CFail, lookupDictFun, superClassesFun
   ) where
 
 import M1_Base
@@ -540,8 +542,9 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
   updateRule r =<< evalClosed new
   pure ()
  where
+  ruleName :: [Name] -> Tm -> RefM (RuleRef, [Name])
   ruleName ns = \case
-    TVal (WFun_ _ r) -> pure (r, ns)
+    TVal (WFun_ _ r) -> pure (r, reverse ns)
     TGuard a _ -> ruleName ns a
     TApp a b -> do
       n <- mkName $ case b of
@@ -717,7 +720,7 @@ quoteTm__ vtm opt v_ = do
   v <- force__ v_
   (ma_, vs_) <- runWriter $ go v  -- writer is needed for the right order
   let
-    ma v = fromJust $ lookup v ma_
+    ma v = fromMaybe False $ lookup v ma_
     vs = filter ma vs_
 
     ff' = force__ >=> ff
@@ -775,7 +778,7 @@ quoteTm__ vtm opt v_ = do
 -- replace generated terms
 trRule :: Set Name -> (Tm, Tm) -> RefM (Tm, Tm)
 trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
-    lhs' <- getGens True rst st lhs
+    lhs' <- getGens True  rst st lhs
     rhs' <- getGens False rst st rhs
     pure (lhs', rhs')
  where
@@ -788,9 +791,17 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
       TVal{} -> pure t
       TVar{} -> pure t
       TApp a b -> TApp <$> f a <*> f b
-      TGen t -> eval' t >>= metaToVar >>= \ns ->
+      TGen t -> do
+        vns <- eval' t
+        ns <- metaToVar vns
         if get
-          then mkName "w" >>= \n -> modify st (insert ns $ TVar n) >> pure (TVar n)
+          then do
+            n <- mkName "w"
+            case vns of
+              f `WApp` d | f == lookupDictFun -> addSuperClasses (vVar n) d
+              _ -> pure ()
+            modify st $ insert ns $ TVar n
+            pure (TVar n)
           else gets st \m -> fromMaybe (TGen t) $ lookup ns m
       TLet n a b -> TLet n <$> f a <*> local rst (insertSet n) (f b)
       TSup c ts | rigidCombinator c  -> TSup c <$> mapM f ts
@@ -800,10 +811,25 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
           tLam n =<< local rst (insertSet n) (f t)
       t -> error' $ ("TODO(8): " <>) <$> print t
 
+    addSuperClasses v d = do
+                r <- getSelectors =<< vApp superClassesFun d
+                forM_ r \(a, b) -> do
+                  a' <- metaToVar =<< vApp lookupDictFun a
+                  vv <- vApp b v
+                  b' <- metaToVar vv
+                  modify st $ insert a' b'
+                  addSuperClasses vv a
+
+  getSelectors :: Val -> RefM [(Val, Val)]
+  getSelectors v = forcedSpine v >>= \case
+    (WCon "SuperClassCons", [_, a, b, tl]) -> ((a, b):) <$> getSelectors tl
+    (WCon "SuperClassNil", [_]) -> pure []
+    _ -> undefined
+
 metaToVar :: Val -> RefM Tm
 metaToVar v_ = force v_ >>= \w -> case w of
   _ | closed w && rigid w -> pure $ TVal w
-  WVar    -> pure $ TVal w
+  WVar    -> pure $ TVar $ name w
   WMeta{} -> pure $ TVal w
   WApp a b -> TApp <$> metaToVar a <*> metaToVar b
   WSup c vs | rigidCombinator c -> TSup c <$> mapM metaToVar vs
@@ -841,4 +867,18 @@ instance PPrint Val where
     WNat n -> pprint $ NNat n
     WString n -> pprint $ NString n
     a -> pprint $ name a
+
+-----------------------
+
+pattern CFail :: Val
+pattern CFail   = "Fail"
+
+{-# noinline lookupDictFun #-}
+lookupDictFun :: Val
+lookupDictFun = topM $ vFun "lookupDict" CFail
+
+{-# noinline superClassesFun #-}
+superClassesFun :: Val
+superClassesFun = topM $ vFun "superClasses" CFail
+
 

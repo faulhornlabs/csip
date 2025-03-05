@@ -158,7 +158,6 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- type class is not a subtype of its parent class (Eq not found when Ord is given, for example)
 - type class and instance definitions should be desugared by hand
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported

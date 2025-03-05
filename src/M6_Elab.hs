@@ -9,7 +9,7 @@ import M5_Unify
 
 -------------
 
-pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp, CFail, CBool :: Val
+pattern CType, CPi, CHPi, CCode, CTy, CArr, CNat, CString, CApp, CLam, CAp, CBool :: Val
 pattern CType   = "Type"
 pattern CPi     = "Pi"
 pattern CHPi    = "HPi"
@@ -23,7 +23,6 @@ pattern CString = "String"
 pattern CAp     = "Ap"
 pattern CApp    = "App"
 pattern CLam    = "Lam"
-pattern CFail   = "Fail"
 pattern CBool   = "Bool"
 
 data Icit = Impl | ImplClass | Expl
@@ -122,10 +121,6 @@ instanceMeta env = do
   m <- freshMeta_ env
   m' <- evalEnv env m
   pure (TGen $ TApp (TVal lookupDictFun) m, m')
-
-
-{-# noinline lookupDictFun #-}
-lookupDictFun = topM $ vFun "lookupDict" CFail
 
 freshMeta' :: Env -> RefM (Tm, Val)
 freshMeta' env = do
@@ -371,6 +366,7 @@ infer_ env r = case r of
     c <- if isConName n then pure $ mkCon n $ Just vta
       else case n of
         "lookupDict" -> pure lookupDictFun
+        "superClasses" -> pure superClassesFun
         _ -> vFun n CFail
     infer (defineGlob n c vta env) b
   ROLet{} -> do
