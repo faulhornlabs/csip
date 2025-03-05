@@ -163,24 +163,24 @@ The following limitations and bugs are planned to be lifted:
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
+- local do notation is not supported
 - foralls for functions and constructors should be explicitly given
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns
 - missing check to rule out recursive meta solutions
 - missing documentation
-- dot patterns (in dependent pattern matching) are not supported
 - local definitions are not supported
-- local do notation is not supported
-- pattern synonyms are not supported
-- recursive definitions are not properly printed
+- only simple guards are supported
+- only builtin modules can be imported
 - closed data types and closed functions are not supported
+- recursive definitions are not properly printed
 - sharing between values are sometimes lost during printing
+- dot patterns (in dependent pattern matching) are not supported
+- pattern synonyms are not supported
 - there is no stage polymorphism
 - `import` acts as an "include"
-- only builtin modules can be imported
 - no support for multiple object codes
-- only simple guards are supported
 - types are not shown in printed output
 - implicit/explicit distinction of lambdas and applications are missing
 - multiline comments interferes with layout rules
