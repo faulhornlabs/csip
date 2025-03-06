@@ -51,7 +51,7 @@ addWrap : {a : Type} -> (a -> a -> a) -> Wrap a -> Wrap a -> Wrap a
 addWrap f (MkWrap x) (MkWrap y) = MkWrap (f x y)
 
 numWrap : {a : Type} -> Num a -> Num (Wrap a)
-numWrap (MkNum f) = MkNum (addWrap f)
+numWrap {a}/*TODO*/ (MkNum f) = MkNum (addWrap f)
 
 lookup (Num (Wrap a)) = numWrap (lookup (Num a))
 

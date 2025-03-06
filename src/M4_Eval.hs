@@ -802,7 +802,7 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
               _ -> pure ()
             modify st $ insert ns $ TVar n
             pure (TVar n)
-          else gets st \m -> fromMaybe (TGen t) $ lookup ns m
+          else gets st \m -> fromMaybe (if rigidTm ns then TGen t else undefined) $ lookup ns m
       TLet n a b -> TLet n <$> f a <*> local rst (insertSet n) (f b)
       TSup c ts | rigidCombinator c  -> TSup c <$> mapM f ts
       TSup c ts  -> do 
