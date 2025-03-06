@@ -162,7 +162,6 @@ The following limitations and bugs are planned to be lifted:
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
-- local do notation is not supported
 - foralls for functions and constructors should be explicitly given
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
@@ -180,8 +179,9 @@ The following limitations and bugs are planned to be lifted:
 - there is no stage polymorphism
 - `import` acts as an "include"
 - no support for multiple object codes
-- types are not shown in printed output
-- implicit/explicit distinction of lambdas and applications are missing
+- types are not shown in elaborated output
+- implicit/explicit distinction of lambdas and applications are missing in elaborated output
+- `do` should be at the end of the line
 - multiline comments interferes with layout rules
 - string literal printing is not the inverse of the string literal parsing
 - desugared `(a b : c)` does not share `c`

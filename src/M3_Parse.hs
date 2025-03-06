@@ -376,19 +376,18 @@ instance Print (OpSeq' Layout) where
 layout  :: OpSeq' Unspaced -> OpSeq' Layout
 layout = g True
    where
-    g :: Bool -> (OpSeq' Unspaced) -> (OpSeq' Layout)
+    g :: Bool -> OpSeq' Unspaced -> OpSeq' Layout
     g top = \case
       Node2 l "\v" r -> semi top (g top l) (g top r)
-      Node3 (Node2 l "\v" Empty) "\t" a "\r" r
-        | la (lastOpSeq l) -> g top l <> brace True (g True a) <> g top r
-        | otherwise  -> g top l <> f a <> g top r
---    Node3 l "\t" ("\v" :> a) "\r" r -> g top l <> f a <> g top r
-      Node3 l "\t"          a  "\r" r -> g top l <> brace top (g top a) <> g top r
+      Node3 l "\t" a "\r" r
+        | Node2 l "\v" Empty <- l, Node2 l "do" Empty <- l
+        -> g top l <> brace True (g True a) <> g top r
+        | Node2 l "\v" Empty <- l
+        -> g top l <> f a <> g top r
+        | otherwise
+        -> g top l <> brace top (g top a) <> g top r
+      Node2 _ t@"do" _ -> error $ "Illegal " <> showToken t
       a -> coerce a
-
-    la (Just "do") = True
-    la (Just "let") = True
-    la _ = False
 
     f (Node3 Empty "\t" a "\r" Empty) = f a
     f a = g False a
@@ -399,7 +398,6 @@ layout = g True
     semi False a b = a <> b
 
     brace _ Empty = Empty
---    brace t@(Node3 Empty "(" a ")" Empty) = t
     brace True  a = sing "(" <> a <> sing ")"
     brace False a = a
 

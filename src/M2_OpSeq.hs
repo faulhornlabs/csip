@@ -9,7 +9,6 @@ module M2_OpSeq
   , toOpSeq
   , fromOpSeq
   , mapOpSeq
-  , lastOpSeq
   , topOp
   ) where
 
@@ -145,13 +144,6 @@ mapOpSeq f = comm where
       a :> b -> f a <> comm b
       a :< b -> comm a <> comm b
       Empty -> mempty
-
-lastOpSeq = comm Nothing where
-  comm x = \case
-      _ := b -> comm x b
-      a :> b -> comm (Just a) b
-      _ :< b -> comm x b
-      Empty -> x
 
 topOp :: Ord a => OpSeq a b -> ([b], OpSeq a b, [OpSeq a b], OpSeq a b)
 topOp = \case

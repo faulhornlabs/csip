@@ -5,7 +5,6 @@ import Builtins
 Unit : Ty
 TT   : Unit
 
-// FFI
 Carry      : Ty
 ClearCarry : Carry
 SetCarry   : Carry
@@ -21,11 +20,10 @@ vec (Succ n) t = Prod (vec n t) t
 
 addHelper : {r : Ty} -> (n: Nat) -> Carry -> vec n W64 -> vec n W64 -> (Carry -> vec n W64 -> r) -> r
 addHelper 0        c a b pair = pair c TT
-addHelper (Succ n) c a b pair =
-  (d := PlusC c (Snd a) (Snd b);
-   addHelper n (Fst d) (Fst a) (Fst b) \e1 e2 ->
-   pair e1 (Pair e2 (Snd d))
-  )
+addHelper (Succ n) c a b pair = do
+  d := PlusC c (Snd a) (Snd b)
+  addHelper n (Fst d) (Fst a) (Fst b) \e1 e2 ->
+    pair e1 (Pair e2 (Snd d))
 
 add : (n: Nat) -> vec n W64 -> vec n W64 -> vec n W64
   = \n a b -> addHelper n ClearCarry a b \e1 e2 -> e2
