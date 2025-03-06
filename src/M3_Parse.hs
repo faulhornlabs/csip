@@ -8,7 +8,9 @@ module M3_Parse
   , showMixfix, scope, unscope
 
   , ExpTree_
-    (Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard)
+    ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
+    , Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard
+    , RClass, RInstance, RData)
   , PPrint (pprint)
   , showM
   , zVar
@@ -382,11 +384,14 @@ layout = g True
       Node3 l "\t" a "\r" r
         | Node2 l "\v" Empty <- l, Node2 l "do" Empty <- l
         -> g top l <> brace True (g True a) <> g top r
+        | Node2 l "\v" Empty <- l, Node2 l "where" Empty <- l
+        -> g top l <> sing "where2" <> brace True (g True a) <> g top r
         | Node2 l "\v" Empty <- l
         -> g top l <> f a <> g top r
         | otherwise
         -> g top l <> brace top (g top a) <> g top r
-      Node2 _ t@"do" _ -> error $ "Illegal " <> showToken t
+      Node2 _ t@"do"    _ -> error $ "Illegal " <> showToken t
+      Node2 _ t@"where" _ -> error $ "Illegal " <> showToken t
       a -> coerce a
 
     f (Node3 Empty "\t" a "\r" Empty) = f a
@@ -567,6 +572,19 @@ pattern NImpl  = MkM ["{",":","}"]
 pattern NImport    = MkM ["import"]
 pattern NLetImport = MkM ["import",";"]
 pattern NLetArr    = MkM ["<-",";"]
+
+pattern NWhere       = MkM ["where2"]
+pattern NLetWhere    = MkM ["where2",";"]
+pattern NClass       = MkM ["class"]
+pattern NWClass      = MkM ["class","where2"]
+pattern NLetClass    = MkM ["class","where2",";"]
+pattern NInstance    = MkM ["instance"]
+pattern NWInstance   = MkM ["instance","where2"]
+pattern NLetInstance = MkM ["instance","where2",";"]
+pattern NData        = MkM ["data"]
+pattern NWData       = MkM ["data","where2"]
+pattern NLetData     = MkM ["data","where2",";"]
+
 
 pattern NGuard = MkM ["|"]
 
@@ -768,6 +786,10 @@ norm r = case r of
   _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
   _ | Just z <- gg NSemi     NLeftArr   -> z
+  _ | Just z <- gg NSemi     NWhere     -> z
+  _ | Just z <- gg NSemi     NWClass    -> z
+  _ | Just z <- gg NSemi     NWInstance -> z
+  _ | Just z <- gg NSemi     NWData     -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
   _ | Just z <- gg NLambda   NPi        -> z
@@ -778,6 +800,12 @@ norm r = case r of
   _ | Just z <- gg NArr      NExpl      -> z
   _ | Just z <- gg NArr      NImpl      -> z
   _ | Just z <- gg NArr      NBraces    -> z
+  _ | Just z <- gg NWhere    NClass     -> z
+  _ | Just z <- gg NWhere    NInstance  -> z
+  _ | Just z <- gg NWhere    NData      -> z
+  _ | Just z <- gg NLetWhere NClass     -> z
+  _ | Just z <- gg NLetWhere NInstance  -> z
+  _ | Just z <- gg NLetWhere NData      -> z
   Apps NParens [a] -> a
   r -> r
  where
@@ -847,6 +875,9 @@ pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
 pattern RGuard a b     = ZApps NGuard [a, b]
 pattern RImport n e    = ZApps NLetImport [RVar n, e]
+pattern RClass    a b c = ZApps NLetClass    [a, b, c]
+pattern RInstance a b c = ZApps NLetInstance [a, b, c]
+pattern RData     a b c = ZApps NLetData     [a, b, c]
 
 unGLam = \case
   _ :@@ _ -> Nothing
@@ -932,7 +963,9 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [NGuard, NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
+    SApps l es | l `elem` [ NGuard, NDot, NHole, NLetImport, NLetClass, NLetInstance, NLetData, NLetTy, NTLet, NOTLet
+                          , NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView]
+      -> Apps l $ map etr3 es
     SApps NLetArr [a, b, c] -> xApps ">>=" [etr3 b, xApps NTLam [etr3 a, RVar NHole, etr3 c]]
     SApps NSemi [b, c] -> xApps ">>=" [etr3 b, xApps NTLam [RVar NAny, RVar NHole, etr3 c]]
 --    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r

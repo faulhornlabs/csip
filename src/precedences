@@ -1,5 +1,5 @@
      a_ )_ ]_ }_ !>_
-    _a _( _[ _{ _<! _if _let _\ _import
+    _a _( _[ _{ _<! _if _let _\ _import _class _instance _data
      @_
     _@
     _MAXPREC MAXPREC_
@@ -39,15 +39,17 @@
      =_ :=_
     _,
      ,_
-     import_
+     import_ class_ instance_ data_
+     where2_
+    _where2
     _#
      #_
     _;
      ;_
      let_ _in if_ _then then_ _else
      [_ _] {_ _} (_ _) <!_ _!>
-     END_   SEMI_ do_
-    _BEGIN _SEMI _do
+     END_   SEMI_ do_ where_
+    _BEGIN _SEMI _do _where
      BEGIN_ _END
     _SPACE
      SPACE_

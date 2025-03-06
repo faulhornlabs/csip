@@ -3,9 +3,11 @@
 
 import Prelude
 
-// class Functor m  where
-//   (<$>) : (a -> b) -> m a -> m b
 Functor : (Type ~> Type) -> Type
+class (m : Type ~> Type) -> Functor m  where
+   (<$>) : {a b} -> (a -> b) -> m a -> m b
+   ""
+
 MkFunctor :
      {m : Type ~> Type}
   -> ({a b} -> (a -> b) -> m a -> m b)
@@ -17,10 +19,12 @@ superClasses (Functor m) = SuperClassNil
 (<$>) {_} {_} {_} {MkFunctor f} = f
 
 
-// class Functor m => Applicative m  where
-//   pure  : a -> m a
-//   (<*>) : m (a -> b) -> m a -> m b
 Applicative : (Type ~> Type) -> Type
+class (m : _) -> Functor m => Applicative m  where
+  pure  : {a} -> a -> m a
+  (<*>) : {a b} -> m (a -> b) -> m a -> m b
+  ""
+
 MkApplicative :
      {m : Type ~> Type}
   -> Functor m
@@ -32,9 +36,6 @@ selApplicativeFunctor : {m} -> Applicative m -> Functor m
 selApplicativeFunctor (MkApplicative d _ _) = d
 superClasses (Applicative m) = SuperClassCons selApplicativeFunctor SuperClassNil
 
-getFunctor : {m} -> Applicative m => Functor m
-getFunctor {_} {MkApplicative d _ _} = d
-
 pure : {m a} -> Applicative m => a -> m a
 pure {_} {_} {MkApplicative _ p _} = p
 
@@ -42,9 +43,11 @@ pure {_} {_} {MkApplicative _ p _} = p
 (<*>) {_} {_} {_} {MkApplicative _ _ f} = f
 
 
-// class Applicative m => Monad m where
-//   join : m (m a) -> m a
 Monad : (Type ~> Type) -> Type
+class (m : _) -> Applicative m => Monad m where
+  join : {a} -> m (m a) -> m a
+  ""
+
 MkMonad :
      {m : Type ~> Type}
   -> Applicative m
@@ -54,9 +57,6 @@ MkMonad :
 selMonadApplicative : {m} -> Monad m -> Applicative m
 selMonadApplicative (MkMonad d _) = d
 superClasses (Monad m) = SuperClassCons selMonadApplicative SuperClassNil
-
-getApplicative : {m} -> Monad m => Applicative m
-getApplicative {_} {MkMonad d _} = d
 
 join : {m} -> Monad m => {a} -> m (m a) -> m a
 join {_} {MkMonad _ f} = f
@@ -76,9 +76,10 @@ Maybe   : Type ~> Type
 Nothing : {a : Type} -> Maybe a
 Just    : {a : Type} -> a -> Maybe a
 
-// instance Functor Maybe where
-//   (<$>) f Nothing = Nothing
-//   (<$>) f (Just a) = Just (f a)
+instance Functor Maybe where
+  f <$> Nothing = Nothing
+  f <$> Just a  = Just (f a)
+  ""
 
 mapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
 mapMaybe f Nothing = Nothing
@@ -87,10 +88,11 @@ mapMaybe f (Just x) = Just (f x)
 dictFunctorMaybe = MkFunctor mapMaybe
 lookupDict (Functor Maybe) = dictFunctorMaybe
 
-// instance Applicative Maybe where
-//   pure = Just
-//   Just f <*> Just a = Just (f a)
-//   _ <*> _ = Nothing
+instance Applicative Maybe where
+  pure = Just
+  Just f <*> Just a = Just (f a)
+  _      <*> _      = Nothing
+  ""
 
 pureMaybe : {a : Type} -> a -> Maybe a
 pureMaybe = Just
@@ -103,9 +105,10 @@ dictApplicativeMaybe = MkApplicative dictFunctorMaybe pureMaybe appMaybe
 lookupDict (Applicative Maybe) = dictApplicativeMaybe
 
 
-// instance Monad Maybe where
-//   join (Just a) = a
-//   join Nothing = Nothing
+instance Monad Maybe where
+  join (Just a) = a
+  join Nothing = Nothing
+  ""
 
 joinMaybe : {a} -> Maybe (Maybe a) -> Maybe a
 joinMaybe Nothing = Nothing
