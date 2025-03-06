@@ -3,20 +3,20 @@
 
 import Builtins
 
-Num : Type -> Type
-MkNum : {a} -> (a -> a) -> Num a
+data Num : Type -> Type where
+  MkNum : (a -> a) -> Num a
 
-superClasses (Num a) = SuperClassNil
+superClasses (Num a) = SuperClassNil _
 
 double : {a} -> Num a => a -> a
 double {a} {MkNum f} x = f x
 
-Num2 : Type -> Type
-MkNum2 : {a} -> Num a -> Num2 a
+data Num2 : Type -> Type where
+  MkNum2 : Num a -> Num2 a
 
-selNum2Num : {a} -> Num2 a -> Num a
+selNum2Num : Num2 a -> Num a
 selNum2Num (MkNum2 d) = d
-superClasses (Num2 a) = SuperClassCons selNum2Num SuperClassNil
+superClasses (Num2 a) = SuperClassCons _ _ selNum2Num (SuperClassNil _)
 
 numDict = MkNum \n -> AddNat n n
 lookupDict (Num Nat) = numDict
@@ -24,10 +24,7 @@ lookupDict (Num Nat) = numDict
 num2Dict = MkNum2 numDict
 lookupDict (Num2 Nat) = num2Dict
 
-// double2 {a} {d} x = double {a} {selNum2Num d} x
-
-double2 : {a} -> Num2 a => a -> a
-// TODO: double2 x = double x
-double2 {a} x = double x
+double2 : Num2 a => a -> a
+double2 = double
 
 double2 4

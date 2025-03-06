@@ -1,42 +1,64 @@
 
-Ap : {a b} -> (a ~> b) -> a -> b
+Ap : (a ~> b) -> a -> b
 
-Bool : Type
-True  : Bool
-False : Bool
+data Bool : Type where
+  True  : Bool
+  False : Bool
 
-Nat       : Type
-Succ      : Nat -> Nat
+data Nat : Type where
+
+DecNat    : Nat -> Nat
 AddNat    : Nat -> Nat -> Nat
 MulNat    : Nat -> Nat -> Nat
 ModNat    : Nat -> Nat -> Nat
 DivNat    : Nat -> Nat -> Nat
 EqNat     : Nat -> Nat -> Bool
 
-String    : Type
-Cons      : String -> String -> String
+Succ      : Nat -> Nat
+
+data SuccView : Type where
+  SuccOk    : Nat -> SuccView
+  SuccFail  : SuccView
+
+succView  : Nat -> SuccView
+succView 0 = SuccFail
+succView n = SuccOk (DecNat n)
+
+data String : Type where
+
 AppendStr : String -> String -> String
 EqStr     : String -> String -> Bool
+TakeStr   : Nat -> String -> String
+DropStr   : Nat -> String -> String
 
-Ty        : Type
-Arr       : Ty -> Ty -> Ty
-Prod      : Ty -> Ty -> Ty
+Cons      : String -> String -> String
 
-Code      : Ty -> Type
-Lam       : {a b : Ty} -> (a -> b) -> Arr a b
-App       : {a b} -> Arr a b -> a -> b
-Let       : {a b : Ty} -> a -> (a -> b) -> b
-TopLet    : {a b : Ty} -> a -> a -> b -> b
-Pair      : {a b : Ty} -> a -> b -> Prod a b
-Fst       : {a b} -> Prod a b -> a
-Snd       : {a b} -> Prod a b -> b
+data ConsView : Type where
+  ConsOk    : String -> String -> ConsView
+  ConsFail  : ConsView
+
+consView  : String -> ConsView
+consView "" = ConsFail
+consView n = ConsOk (TakeStr 1 n) (DropStr 1 n)
+
+data Ty : Type where
+  Arr       : Ty -> Ty -> Ty
+  Prod      : Ty -> Ty -> Ty
+
+data Code : Ty -> Type where
+  Lam       : {a b : Ty} -> (a -> b) -> Arr a b
+  App       : Arr a b -> a -> b
+  Let       : {a b : Ty} -> a -> (a -> b) -> b
+  TopLet    : {a b : Ty} -> a -> a -> b -> b
+  Pair      : {a b : Ty} -> a -> b -> Prod a b
+  Fst       : Prod a b -> a
+  Snd       : Prod a b -> b
 
 lookupDict : (a : Type) -> a
 
 SuperClassList : (a : Type) -> Type
-SuperClassNil  : {a} -> SuperClassList a
-SuperClassCons : {a b} -> (a -> b) -> SuperClassList a -> SuperClassList a
+SuperClassNil  : (a : Type) -> SuperClassList a
+SuperClassCons : (a : Type) -> (b : Type) -> (a -> b) -> SuperClassList a -> SuperClassList a
 
 superClasses : (a : Type) -> SuperClassList a
 
-"end of Builtins"

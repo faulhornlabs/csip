@@ -1,5 +1,6 @@
 module M5_Unify
   ( unify
+  , deepForce
   ) where
 
 import M1_Base
@@ -16,32 +17,29 @@ update :: MetaDep -> Val -> RefM ()
 update v e = do
 --  () <- updatable v e
   traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
-  fe <- force e
-  case fe of
-    WMeta r | v == r -> impossible
-    _ ->  updateMeta (metaRef v) e
-
-metaArgNum v_ = force v_ >>= \case
-  WMeta _     -> pure 0
-  WMetaApp a _ -> (+1) <$> metaArgNum a
-  _ -> undefined
+  updateMeta (metaRef v) e
 
 updateClosed a b = do
   traceShow "2" $ "update " <<>> showM a <<>> "\n := " <<>> showM b
   v <- closeTm b
 --  v' <- forceClosed v   -- TODO
-  update a v
+  fe <- deepForce v
+  case fe of
+    WMeta r | a == r -> impossible
+    _ -> update a fe
 
 
-type SVal = (Val, Set Name)
+type SVal = (Val, IntSet Name)
 
-type Indices = Set Int
-type PruneSet = Maybe (Map MetaDep Indices)
+type Indices = IntSet Int
+type PruneSet_ = IntMap MetaDep Indices
+type PruneSet = Maybe PruneSet_
 
-(<.>) = unionWith (<>)
+(<.>) :: PruneSet_ -> PruneSet_ -> PruneSet_
+(<.>) = unionWithIM (<>)
 
 pruneMeta :: MetaDep -> Indices -> RefM ()
-pruneMeta m (toList -> is) = do
+pruneMeta m (toListIS -> is) = do
   m' <- tMeta
   let
     mk _ [] vs = pure $ TApps m' $ reverse vs
@@ -55,13 +53,15 @@ pruneMeta m (toList -> is) = do
   v <- eval mempty t
   update m v
 
+-------------------
+
 closeTm :: Val -> RefM Val
 closeTm v_ = do
   v <- force v_
   let sv = (v, mempty)
   m <- go [sv]
   () <- case fromJust $ lookup sv m of
-    Just s -> forM_ (assocs s) \(v, s) -> pruneMeta v s
+    Just s -> forM_ (assocsIM s) \(v, s) -> pruneMeta v s
     Nothing -> undefined
   pure v_
  where
@@ -73,8 +73,11 @@ closeTm v_ = do
       WLam c -> do
         u <- c
         b <- vApp v $ vVar u
-        ret (insertSet u allowed) [b]
+        ret (insertIS u allowed) [b]
       WApp a b     -> ret allowed [a, b]
+      WSel{}   -> undefined
+      WMatch{} -> undefined
+      WRet{}   -> undefined
       _            -> ret allowed []
      where
       ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force es
@@ -82,17 +85,17 @@ closeTm v_ = do
     up :: SVal -> () -> [(SVal, PruneSet)] -> RefM PruneSet
     up (v, allowed) _ ts = case v of
       _ | closed v  -> pure $ Just mempty
-      WSup{} -> case sequence (map snd ts) of
+      WLam{} -> case sequence (map snd ts) of
         Nothing -> pure Nothing
         Just [sa] -> pure $ Just sa
         _ -> impossible
-      WVar | name v `member` allowed -> pure $ Just mempty
+      WVar | name v `memberIS` allowed -> pure $ Just mempty
            | otherwise               -> pure Nothing
       WMetaApp_ _ _ _ dep -> case map snd ts of
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
            n <- metaArgNum v
-           pure $ Just $ sa <.> singleton dep (singletonSet $ n - 1)
+           pure $ Just $ sa <.> singletonIM dep (singletonIS $ n - 1)
         [Just sa, Just sb] -> pure $ Just (sa <.> sb)
         _ -> impossible
       WApp{} -> case sequence (map snd ts) of
@@ -115,7 +118,7 @@ unify aa{-actual-} bb{-expected-} = do
  where
  ff v@(WMetaApp _ b) = do
    b <- force b
-   pure (v, case b of WVar -> Just b; _ -> Nothing)
+   pure (v, case b of WVar -> Just $ name b; _ -> Nothing)
  ff v = pure (v, Nothing)
 
  go :: Val -> Val -> RefM ()

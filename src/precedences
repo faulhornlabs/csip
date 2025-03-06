@@ -1,5 +1,5 @@
-     a_ )_ ]_ }_ !>_
-    _a _( _[ _{ _<! _if _let _\ _import
+     a_ )_ ]_ }_ !>_ whereEnd_
+    _a _( _[ _{ _<! _if _let _\ _import _class _instance _data
      @_
     _@
     _MAXPREC MAXPREC_
@@ -15,6 +15,8 @@
     _+ _-
     _<>
      <>_
+    _::
+     ::_
      <$>_ <*>_
     _<$> _<*>
      <_ <=_ >_ >=_ ==_ /=_
@@ -23,14 +25,14 @@
      &&_
     _||
      ||_
-     >>=_ >>_
-    _>>= _>>
+     >>=_ >>_ <&>_
+    _>>= _>> _<&>
     _MINPREC MINPREC_
      else_
     _<-
      <-_
-    _-> _~> _:-> _|-> _: _:: _** _=> _==> _-->
-     ->_ ~>_ :->_ |->_ :_ ::_ **_ =>_ ==>_ -->_
+    _-> _~> _:-> _|-> _: _** _=> _==> _-->
+     ->_ ~>_ :->_ |->_ :_ **_ =>_ ==>_ -->_
      in_
      \_
     _|
@@ -39,15 +41,16 @@
      =_ :=_
     _,
      ,_
-     import_
     _#
      #_
+     import_
     _;
      ;_
+     class_ instance_ data_ _whereBegin whereBegin_ _whereEnd
      let_ _in if_ _then then_ _else
      [_ _] {_ _} (_ _) <!_ _!>
-     END_   SEMI_ do_
-    _BEGIN _SEMI _do
+     END_   SEMI_ do_ where_
+    _BEGIN _SEMI _do _where
      BEGIN_ _END
     _SPACE
      SPACE_

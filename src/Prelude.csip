@@ -4,16 +4,30 @@ import Builtins
 
 appendStr = AppendStr
 
-eqStr = EqStr
+class {a : Type} -> Eq a where
+  eq : a -> a -> Bool
 
-(==) : Nat -> Nat -> Bool
-  = EqNat
+(==) = eq
 
-(+) : Nat -> Nat -> Nat
-  = AddNat
+instance Eq Nat where
+  eq' a b = EqNat a b
 
-(*) : Nat -> Nat -> Nat
-  = MulNat
+instance Eq String where
+  eq' a b = EqStr a b
+
+
+class {a : Type} -> Num a where
+  add     : a -> a -> a
+  mul     : a -> a -> a
+  fromNat : Nat -> a
+
+(+) = add
+(*) = mul
+
+instance Num Nat where
+  add' a b = AddNat a b
+  mul' a b = MulNat a b
+  fromNat n = n
 
 even : Nat -> Bool
   = \n -> ModNat n 2 == 0
@@ -27,14 +41,29 @@ the : (a : Type) -> a -> a
   = \_ x -> x
 
 
-Unit : Type
-TT   : Unit
+data Unit : Type where
+  TT : Unit
 
-Tuple2 : Type -> Type -> Type
-MkTuple2 : {a b} -> a -> b -> Tuple2 a b
+data Tuple2 : Type -> Type -> Type where
+  T2 : a -> b -> Tuple2 a b
 
-Tuple3 : Type -> Type -> Type -> Type
-MkTuple3 : {a b c} -> a -> b -> c -> Tuple3 a b c
+first : (a -> b) -> Tuple2 a c -> Tuple2 b c
+first f (T2 x y) = T2 (f x) y
+
+second : (a -> b) -> Tuple2 c a -> Tuple2 c b
+second f (T2 x y) = T2 x (f y)
 
 
-"end of Prelude"
+data Tuple3 : Type -> Type -> Type -> Type where
+  T3 : a -> b -> c -> Tuple3 a b c
+
+
+data Maybe : Type ~> Type where
+  Nothing : Maybe a
+  Just    : a -> Maybe a
+
+
+data List : Type ~> Type where
+  Nil    : List a
+  LCons  : a -> List a -> List a
+

@@ -3,18 +3,23 @@
 
 import Builtins
 
-addN : Nat -> Nat -> Nat
-addN 0 n = n
-addN (Succ n) m = Succ (addN n m)
+class {a : Type} -> Num a where
+  add : a -> a -> a
 
-Num : Type -> Type
-MkNum : {a : Type} -> (a -> a -> a) -> Num a
+(+) = add
 
-lookupDict (Num Nat) = MkNum addN
+instance Num Nat where
+  add' a b = AddNat a b
+
+data Wrap : Type -> Type where
+  MkWrap : a -> Wrap a
+
+instance Num a => Num (Wrap a)  where
+  add' (MkWrap x) (MkWrap y) = MkWrap (x + y)
+
+double : Num a => a -> a
+double x = x + x
+
+double (MkWrap 4)
 
 
-add : {a} -> Num a => a -> a -> a
-add {_} {MkNum f} = f
-
-
-add 4 5

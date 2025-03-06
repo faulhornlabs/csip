@@ -42,7 +42,7 @@ module M1_Base
 
   , mainException
   , tag
-  , impossible, undefined, error, error', errorM, assert
+  , impossible, undefined, error, error', errorM, assert, assertM
 
   , walk, downUp, topDown, bottomUp
 
@@ -54,6 +54,11 @@ module M1_Base
   , importFile
 
   , Void
+  , HasId(getId)
+  , IntMap, readIM, insertIM, lookupIM, fromListIM, sizeIM, toListIM, singletonIM, assocsIM, unionWithIM, nullIM
+  , walkIM, downUpIM, topDownIM, bottomUpIM
+  , IntSet, singletonIS, memberIS, insertIS, deleteIS, fromListIS, toListIS, nullIS
+  , nubIS
   )
  where
 
@@ -63,7 +68,7 @@ import Prelude (IO, FilePath)
 import Prelude as IO (readFile)
 
 import Data.Char (digitToInt)
---import qualified Data.IntMap as IM
+import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
 import qualified Data.Array.IArray as Arr
 import qualified Data.Array.Unboxed as Arr
@@ -672,6 +677,12 @@ assert False = error "assertion failed"
 #endif
 assert _ = id
 
+assertM :: HasCallStack => Bool -> RefM ()
+#ifdef DEBUG
+assertM False = errorM "assertion failed"
+#endif
+assertM _ = pure ()
+
 ------------------
 
 head :: HasCallStack => [a] -> a
@@ -752,6 +763,69 @@ bottomUp
 bottomUp init children up x
   = walk (\v -> (,) init <$> children v) (\_ -> pure) (\a _ b -> up a b) [x]
 
+------------------------------------------------- graph algorithms
+
+-- top-down & bottom-up  graph walking;  sharing and cycle friendly
+walkIM
+  :: HasId a
+  => (a -> RefM (b, [a]))              -- down
+  -> (a -> b -> RefM b)                -- shared try
+  -> (a -> b -> [(a, b)] -> RefM b)
+  -> [a]
+  -> RefM (IntMap a b)
+walkIM children  down up xs = fmap snd $ runState mempty go where
+  go st = walk (Left <$> xs)  where
+    walk [] = pure ()
+    walk (Left v: ts) = gets st (lookupIM v) >>= \case
+      Nothing -> do
+        (r, ch) <- children v
+        modify st $ insertIM v r
+        walk $ map Left ch ++ Right (v, ch): ts
+      Just r -> do
+        r' <- down v r
+        modify st $ insertIM v r'
+        walk ts
+    walk (Right (e, ch): ts) = do
+      m <- gets st (readIM e)
+      ms <- forM ch \v -> gets st (readIM v)
+      r <- up e m $ zip ch ms
+      modify st $ insertIM e r
+      walk ts
+
+downUpIM
+  :: HasId a
+  => (a -> RefM (b, [a]))              -- down
+  -> (a -> b -> [(a, c)] -> RefM c)
+  -> [a]
+  -> RefM (IntMap a c)
+downUpIM down up as = walkIM down' (\_ -> pure) up' as <&> fmap g
+ where
+  down' a = down a <&> first Left
+  up' a (Left b) cs = fmap Right $ up a b $ map (second g) cs
+  up' _ _ _ = impossible
+  g (Right c) = c
+  g _ = impossible
+
+topDownIM
+  :: HasId a
+  => (a -> RefM (b, [a]))
+  -> [a]
+  -> RefM (IntMap a b)
+topDownIM down
+  = walkIM down (\_ -> pure) (\_ b _ -> pure b)
+
+bottomUpIM
+  :: HasId a
+  => b
+  -> (a -> RefM [a])
+  -> (a -> [(a, b)] -> RefM b)
+  -> a
+  -> RefM (IntMap a b)
+bottomUpIM init children up x
+  = walkIM (\v -> (,) init <$> children v) (\_ -> pure) (\a _ b -> up a b) [x]
+
+
+----------------------------------------
 
 importFile :: Parse a => Source -> RefM a
 importFile f = do
@@ -788,3 +862,76 @@ data Void
 
 instance Eq  Void where (==) = impossible
 instance Ord Void where compare = impossible
+
+
+-------------------------------------------------- IntMaps
+
+class HasId k where
+  getId :: k -> Int
+
+instance HasId Int where
+  getId i = i
+
+-----
+
+newtype IntMap k a = MkIM (IM.IntMap (k, a))
+  deriving (Semigroup, Monoid)
+
+instance HasId k => Functor (IntMap k) where
+  fmap f (MkIM m) = MkIM $ fmap (second f) m
+
+readIM :: (HasCallStack, HasId k) => k -> IntMap a b -> b
+readIM a (MkIM m) = snd $ fromMaybe (error "elem not in map") $ IM.lookup (getId a) m
+
+insertIM :: HasId k => k -> a -> IntMap k a -> IntMap k a
+insertIM a b (MkIM m) = MkIM $ IM.insert (getId a) (a, b) m
+
+lookupIM a (MkIM m) = fmap snd $ IM.lookup (getId a) m
+
+sizeIM (MkIM m) = IM.size m
+
+fromListIM xs = MkIM $ IM.fromList [(getId a, p) | p@(a, _) <- xs]
+
+toListIM :: IntMap a b -> [b]
+toListIM (MkIM m) = map snd $ toList m
+
+assocsIM :: IntMap a b -> [(a, b)]
+assocsIM (MkIM m) = toList m
+
+singletonIM a b = MkIM $ IM.singleton (getId a) (a, b)
+
+nullIM (MkIM m) = IM.null m
+
+unionWithIM :: HasId a => (b -> b -> b) -> IntMap a b -> IntMap a b -> IntMap a b
+unionWithIM f (MkIM a) (MkIM b) = MkIM $ IM.unionWith (\(a, x) (_, y) -> (a, f x y)) a b
+
+-----
+
+newtype IntSet a = MkIS (IM.IntMap a)
+  deriving (Semigroup, Monoid, Eq, Ord)
+
+insertIS :: HasId k => k -> IntSet k -> IntSet k
+insertIS a (MkIS m) = MkIS $ IM.insert (getId a) a m
+
+singletonIS a = MkIS $ IM.singleton (getId a) a
+
+nullIS (MkIS m) = IM.null m
+
+memberIS :: HasId a => a -> IntSet a -> Bool
+memberIS a (MkIS m) = IM.member (getId a) m
+
+deleteIS a (MkIS m) = MkIS $ IM.delete (getId a) m
+
+fromListIS xs = MkIS $ IM.fromList [(getId a, a) | a <- xs]
+
+toListIS :: IntSet a -> [a]
+toListIS (MkIS m) = toList m
+
+nubIS :: HasId a => [a] -> [a]
+nubIS = f mempty  where
+  f _ [] = []
+  f s (x: xs)
+    | memberIS x s = f s xs
+    | otherwise    = x: f (insertIS x s) xs
+
+

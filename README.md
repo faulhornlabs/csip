@@ -36,7 +36,6 @@ Main directives:
 | `# op quote`        | print the parse expression |
 | `# exptree quote`   | print the parse expression with mixfix operators |
 | `# sugar quote`     | print the desugared source code |
-| `# scope quote`     | print the scope checked source code |
 | `# elab`            | print the elaborated main expression |
 | `# eval`            | print the normalized main expression |
 | `# stage`           | print the staged main expression |
@@ -158,42 +157,44 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- type class and instance definitions should be desugared by hand
-- missing check that no unsolved metas left in global definitions
-- pattern matching compiled to object level constructs is not supported
-- object level recursion compiled to object level constructs is not supported
-- foralls for functions and constructors should be explicitly given
-- missing check that pattern matching is not allowed on object language constructors
-- missing check that the main expression should be Code in staging mode
-- missing check that constructors are saturated in patterns
-- missing check to rule out recursive meta solutions
+- staging feature: pattern matching compiled to object level constructs is not supported
+- staging feature: object level recursion compiled to object level constructs is not supported
+- parsing: class method names cannot be operators
+- errors: pattern matching should not be allowed on object language constructors
+- errors: the main expression should be Code in staging mode
+- errors: constructors should be saturated in patterns
+- errors: recursive meta solutions should not be allowed
+- errors: constructors placement should be checked
+- errors: validity of type class and instance definitions should be checked
 - missing documentation
-- local definitions are not supported
-- only simple guards are supported
-- only builtin modules can be imported
-- closed data types and closed functions are not supported
-- recursive definitions are not properly printed
-- sharing between values are sometimes lost during printing
-- dot patterns (in dependent pattern matching) are not supported
-- pattern synonyms are not supported
-- there is no stage polymorphism
-- `import` acts as an "include"
-- no support for multiple object codes
-- types are not shown in elaborated output
-- implicit/explicit distinction of lambdas and applications are missing in elaborated output
-- `do` should be at the end of the line
-- multiline comments interferes with layout rules
-- string literal printing is not the inverse of the string literal parsing
-- desugared `(a b : c)` does not share `c`
-- user defined operator precedences are not supported
+- feature: local definitions are not supported
+- feature: only simple guards are supported
+- feature: only builtin modules can be imported
+- infinite evaluation is not catched (by "gas", for example)
+- feature: closed data types and closed functions are not supported
+- printing: recursive definitions are not properly printed
+- printing: sharing between values are sometimes lost during printing
+- feautre: dot patterns (in dependent pattern matching) are not supported
+- feature: pattern synonyms are not supported
+- feature: multi parameter type classes are not supported
+- parsing: type class instance methods should be named as method_name ++ `'`
+- staging feature: there is no stage polymorphism
+- feature: `import` acts as an "include"
+- staging feature: no support for multiple object codes
+- printing: types are not shown in elaborated output
+- printing: implicit/explicit distinction of lambdas and applications are missing in elaborated output
+- parsing: `do` and `where` should be at the end of the line
+- parsing: multiline comments interferes with layout rules
+- pringing: string literal printing is not the inverse of the string literal parsing
+- parsing: desugared `(a b : c)` does not share `c`
+- parsing: user defined operator precedences are not supported
 
 
 ## Performance
 
 Implemented performance improvements:
 
-- observable implicit sharing speeds up conversion checking
-  and prevents sharing loss
+- observable implicit sharing speeds up conversion checking and prevents sharing loss
 - top level definitions are treated specially
 - unsaturated and blocked rewrite rule applications are cached
 - monad stacks in the Haskell source code are replaced with a custom solution
@@ -202,13 +203,12 @@ Planned performance improvements:
 
 - optimize chained rewrite rules produced by pattern match compilation
 - fast head of spine access in terms and values
-- run staging on closed meta level values
-- identify names with `Int`s
-- use `IntMap`s instead of `Map`s
-- use linear maps (`IORef`s) instead of `IntMap`s
-- redirect graph nodes after conversion checking
 - parsing and pretty printing should be near linear time operation
 - faster supercombinator evaluation using interpreted register machines
+- run staging on closed meta level values
+- use linear maps (`IORef`s) instead of `IntMap`s
+- type erasure
+- redirect graph nodes after conversion checking
 
 
 ## Development workflows

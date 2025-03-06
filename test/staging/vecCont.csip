@@ -2,31 +2,41 @@
 
 import Builtins
 
-Unit : Ty
-TT   : Unit
 
-Carry      : Ty
-ClearCarry : Carry
-SetCarry   : Carry
+data Unit : Ty where
+  TT : Unit
 
-W64    : Ty
-Zero64 : W64
-PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
+data Carry : Ty where
+  ClearCarry : Carry
+  SetCarry   : Carry
+
+data W64 : Ty where
+  Zero64 : W64
+  PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
 
 
-vec : Nat -> Ty -> Ty
-vec 0        t = Unit
-vec (Succ n) t = Prod (vec n t) t
+data N : Type where
+  Z : N
+  S : N -> N
 
-addHelper : {r : Ty} -> (n: Nat) -> Carry -> vec n W64 -> vec n W64 -> (Carry -> vec n W64 -> r) -> r
-addHelper 0        c a b pair = pair c TT
-addHelper (Succ n) c a b pair = do
+toN : Nat -> N
+toN 0 = Z
+toN (Succ i) = S (toN i)
+
+
+vec : N -> Ty -> Ty
+vec Z     t = Unit
+vec (S n) t = Prod (vec n t) t
+
+addHelper : {r : Ty} -> (n: N) -> Carry -> vec n W64 -> vec n W64 -> (Carry -> vec n W64 -> r) -> r
+addHelper Z     c a b pair = pair c TT
+addHelper (S n) c a b pair = do
   d := PlusC c (Snd a) (Snd b)
   addHelper n (Fst d) (Fst a) (Fst b) \e1 e2 ->
     pair e1 (Pair e2 (Snd d))
 
-add : (n: Nat) -> vec n W64 -> vec n W64 -> vec n W64
+add : (n: N) -> vec n W64 -> vec n W64 -> vec n W64
   = \n a b -> addHelper n ClearCarry a b \e1 e2 -> e2
 
 // main
-add 3
+add (toN 3)

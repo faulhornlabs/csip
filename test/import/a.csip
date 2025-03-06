@@ -6,4 +6,4 @@
 
 import Builtins
 
-Succ 0
+AddNat 1 1

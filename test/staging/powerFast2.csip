@@ -2,15 +2,15 @@
 
 import Prelude
 
-// object code types and functions (foreign function interface)
-Int : Ty
-One : Int
-Mul : Int -> Int -> Int
-Add : Int -> Int -> Int
+data Int : Ty where
+  One : Int
+  Mul : Int -> Int -> Int
+  Add : Int -> Int -> Int
+
+instance Num (Code Int) where
+  add' a b = Add a b
 
 sqr := \a -> Mul a a
-
-(+) = Add
 
 (^) : Int -> Nat -> Int
 a ^ 0 = One

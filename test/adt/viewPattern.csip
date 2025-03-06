@@ -1,0 +1,32 @@
+# elab
+# eval
+
+data N : Type where
+  Z : N
+  S : N -> N
+
+data Parity : Type where
+  Even : Parity
+  Odd  : Parity
+
+data Half : Type where
+  MkHalf : Parity -> N -> Half
+
+half : N -> Half
+half    Z  = MkHalf Even Z
+half (S Z) = MkHalf Odd  Z
+half (S (S (half --> MkHalf p n))) = MkHalf p (S n)
+
+data Int : Type where
+  One : Int
+  Sqr : Int -> Int
+  Mul : Int -> Int -> Int
+  A   : Int
+
+power : N -> Int -> Int
+power    Z  a = One
+power (S Z) a = a
+power (half --> MkHalf Even k) a =        Sqr (power k a)
+power (half --> MkHalf Odd  k) a = Mul a (Sqr (power k a))
+
+power (S (S (S (S (S Z))))) A

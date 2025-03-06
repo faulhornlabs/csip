@@ -1,0 +1,173 @@
+# elab
+# eval
+
+import Prelude
+
+class {m : Type ~> Type} -> Functor m  where
+  fmap : (a -> b) -> m a -> m b
+
+(<$>) = fmap
+
+class Functor m => Applicative m  where
+  pure : a -> m a
+  app  : m (a -> b) -> m a -> m b
+
+(<*>) = app
+
+class Applicative m => Monad m where
+  join : m (m a) -> m a
+
+
+(>>=) : Monad m => m a -> (a -> m b) -> m b
+ma >>= f = join (f <$> ma)
+
+
+class Monad m => MonadFail m where
+  fail : String -> m a
+
+
+stateType : (Type ~> Type) -> Type
+
+class Monad m => MonadState m where
+  state : (stateType m -> Tuple2 a (stateType m)) -> m a
+
+get : MonadState m => m (stateType m)
+get = state \s -> T2 s s
+
+put : MonadState m => stateType m -> m Unit
+put s = state \_ -> T2 TT s
+
+
+class {t : (Type ~> Type) ~> Type ~> Type} -> MonadTrans t where
+  lift : Monad m => {a} -> m a -> t m a
+
+
+
+instance Functor Maybe where
+  fmap' f Nothing  = Nothing
+  fmap' f (Just a) = Just (f a)
+
+instance Applicative Maybe where
+  pure' x = Just x
+
+  app' (Just f) (Just a) = Just (f a)
+  app' _        _        = Nothing
+
+instance Monad Maybe where
+  join' (Just a) = a
+  join' Nothing = Nothing
+
+instance MonadFail Maybe where
+  fail' s = Nothing
+
+
+
+
+data Identity : Type ~> Type where
+  MkIdentity : a -> Identity a
+
+runIdentity : Identity a -> a
+runIdentity (MkIdentity x) = x
+
+instance Functor Identity where
+  fmap' f (MkIdentity a) = MkIdentity (f a)
+
+instance Applicative Identity where
+  pure' x = MkIdentity x
+  app' (MkIdentity f) (MkIdentity x) = MkIdentity (f x)
+
+instance Monad Identity where
+  join' (MkIdentity a) = a
+
+
+
+instance Functor List where
+  fmap' f Nil = Nil
+  fmap' f (LCons x xs) = LCons (f x) (fmap' f xs)
+
+append : List a -> List a -> List a
+append Nil xs = xs
+append (LCons x xs) ys = LCons x (append xs ys)
+
+joinList : List (List a) -> List a
+joinList Nil = Nil
+joinList (LCons x xs) = append x (joinList xs)
+
+instance Applicative List where
+  pure' x = LCons x Nil
+
+  app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
+
+instance Monad List where
+  join' = joinList
+
+instance MonadFail List where
+  fail' s = Nil
+
+
+
+matchT2 : (a -> b -> c) -> Tuple2 a b -> c
+matchT2 f (T2 a b) = f a b
+
+(<&>) : Functor m => m a -> (a -> b) -> m b
+m <&> f = f <$> m
+
+data StateT : Type -> (Type ~> Type) ~> Type ~> Type where
+  MkStateT : {m : Type ~> Type} -> (s -> m (Tuple2 a s)) -> StateT s m a
+
+runStateT : StateT s m a -> s -> m (Tuple2 a s)
+runStateT (MkStateT f) = f
+
+instance Functor m => Functor (StateT s m) where
+  fmap' f (MkStateT g) = MkStateT \x -> g x <&> matchT2 \y s -> T2 (f y) s
+
+instance Monad m => Applicative (StateT s m) where
+  pure' x = MkStateT \s -> pure (T2 x s)
+  app' (MkStateT f) (MkStateT a)
+    = MkStateT \s -> f s >>= matchT2 \g s -> a s <&> matchT2 \x s -> T2 (g x) s
+
+instance Monad m => Monad (StateT s m) where
+  join' (MkStateT m) = MkStateT \s -> m s >>= matchT2 runStateT
+
+// TODO:  stateType (StateT s m) = s
+stateType (Ap (StateT s) m) = s
+
+instance Monad m => MonadState (StateT s m) where
+  state' f = MkStateT \s -> pure (f s)
+
+instance MonadFail m => MonadFail (StateT s m) where
+  fail' msg = MkStateT \s -> fail msg
+
+instance MonadTrans (StateT s) where
+  lift' m = MkStateT \s -> m <&> \x -> T2 x s
+
+
+
+newId : Monad m => StateT Nat m Nat
+// TODO:   newId {m} = state {StateT Nat m} \s -> T2 (1 + s) s
+// TODO:   newId = state \s -> T2 s (1 + s)
+newId = MkStateT \s -> pure (T2 s (1 + s))
+
+sum : Num a => List a -> a
+sum Nil = fromNat 0
+sum (LCons x xs) = x + sum xs
+
+replicate : Nat -> a -> List a
+replicate 0 _ = Nil
+replicate (Succ n) a = LCons a (replicate n a)
+
+sequence : Monad m => List (m a) -> m (List a)
+sequence Nil = pure Nil
+sequence (LCons m ms) = m >>= \x -> LCons x <$> sequence ms
+
+replicateM : Monad m => Nat -> m a -> m (List a)
+replicateM n m = sequence (replicate n m)
+
+main : StateT Nat (StateT Nat Identity) Nat
+  = do
+    x <- lift newId <&> (*) 2
+    y <- replicateM 3 newId <&> sum
+    pure (x + y)
+
+runIdentity (runStateT (runStateT main 1) 1)
+

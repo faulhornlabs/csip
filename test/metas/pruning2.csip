@@ -1,0 +1,5 @@
+# elab
+
+pr2 = \f x y -> f x y
+
+pr2

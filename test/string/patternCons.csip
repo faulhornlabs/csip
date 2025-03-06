@@ -1,11 +1,11 @@
 # elab
 # eval
 
-import Prelude
+import Builtins
 
 f : String -> String
 f "" = ""
-f (Cons a b) = appendStr b a
+f (Cons a b) = AppendStr b a
 
-appendStr (f (f "alma")) (f "")
+AppendStr (f (f "alma")) (f "")
 
