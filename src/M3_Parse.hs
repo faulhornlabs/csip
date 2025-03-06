@@ -2,7 +2,7 @@ module M3_Parse
   ( Phase (..)
   , ISource, Token, OpSeq
 
-  , Name (NNat, NString)
+  , Name
   , NameStr, nameStr, nameId
   , mkName, mkName', mapName, rename, isConName, isVarName
   , showMixfix, scope, unscope, showName
@@ -10,7 +10,7 @@ module M3_Parse
   , ExpTree_
     ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
     , Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard
-    , RClass, RInstance, RData)
+    , RClass, RInstance, RData, RNat, RString)
   , PPrint (pprint)
   , showM
   , zVar
@@ -638,6 +638,8 @@ instance Arity [Token i] where
 
 data ExpTree_ b a
   = RVar a
+  | RNat_ Source Integer
+  | RString_ Source String
   | EApp Int (ExpTree_ b a) (ExpTree_ b a)
   | REmbed b
   deriving (Eq, Ord)
@@ -669,7 +671,7 @@ pattern SApps os es <- (dup -> ((== 0) . arity -> True, Apps os es))
 
 pattern a :@@ b <- (dup -> ((<0) . arity -> True, a :@ b))
 
-{-# COMPLETE RVar, (:@), REmbed #-}
+{-# COMPLETE RVar, (:@), REmbed, RNat_, RString_ #-}
 
 instance (IsString a, Arity a) => IsString (ExpTree_ b a) where
   fromString = RVar . fromString
@@ -820,7 +822,7 @@ norm r = case r of
 patch :: ExpTree' Layout -> ExpTree' POp
 patch = \case
   a :@ b -> norm $ patch a :@ patch b
-  RVar t -> RVar $ coerce t
+  t -> coerce t
 
 instance Print (ExpTree' POp) where
   print = print . unpatch
@@ -937,7 +939,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
     Apps l [n :@ m, a, b] | l `elem` [NTLam, NTHLam, NPi, NHPi] -> etr $ xApps l [n, a, xApps l [m, a, b]]
     Apps l [a :@ b, e] | l == NLam || l == NHLam || l == NArr && isBind b || l == NHArr -> etr $ xApps l [a, xApps l [b, e]]
     a :@ b -> etr a :@ etr b
-    RVar l -> RVar l
+    l -> l
 
   etr2 :: ExpTree' POp -> ExpTree' POp
   etr2 = \case
@@ -959,7 +961,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
           , etr2 m
           ]
     a :@ b -> etr2 a :@ etr2 b
-    RVar l -> RVar l
+    l -> l
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
@@ -993,7 +995,7 @@ sugar = coerce . sug . sug0
     Apps l@NOTLet [RVar n, Hole, b, c]
       -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
     a :@ b -> sug0 a :@ sug0 b
-    RVar a -> RVar (coerce a)
+    a -> coerce a
 
   getRule e = case e of
     Apps NRule _  ->  Just e
@@ -1011,7 +1013,7 @@ sugar = coerce . sug . sug0
     Apps l [RVar n, a, b] | l `elem` [NTLam, NTHLam]
       -> arrow (del 1 3 l) (Apps (del 3 1 $ del 0 1 l) [RVar n, sug a]) (sug b)
     a :@ b -> sug a :@ sug b
-    RVar a -> RVar a
+    a -> a
 
   arrow :: Mixfix Desug -> ExpTree' Desug -> ExpTree' Desug -> ExpTree' Desug
   arrow arr n (Arr arr' m e) | arr == arr', Just nm <- n +@ m = Apps arr [nm, e]
@@ -1074,21 +1076,18 @@ pattern NConst :: NameStr -> Name
 pattern NConst n <- MkName n ((==) (hashNameStr n) -> True)
   where NConst n =  MkName n (hashNameStr n)
 
-pattern NConst' n = MkName (MkM [n]) (-1)
-
-pattern NNat n <- NConst' (MkNat _ n)
-  where NNat n =  NConst' (MkNat (fromString $ show n) n)
-pattern NString n <- NConst' (MkString _ n)
-  where NString n  = NConst' (MkString (fromString $ show n) n)
-
-nameId' (MkName a (-1))   = Left a
-nameId' n = Right $ nameId n
+pattern RNat :: Integer -> Raw_ a
+pattern RNat n <- RNat_ _ n
+  where RNat n =  RNat_ (fromString $ show n) n
+pattern RString :: String -> Raw_ a
+pattern RString n <- RString_ _ n
+  where RString n =  RString_ (fromString $ show n) n
 
 mapName f (MkName a b) = MkName (f a) b
 rename a = mapName $ const a
 
-instance Eq  Name where (==)    = (==)    `on` nameId'
-instance Ord Name where compare = compare `on` nameId'
+instance Eq  Name where (==)    = (==)    `on` nameId
+instance Ord Name where compare = compare `on` nameId
 
 instance Print Name where
   print = print . nameStr
@@ -1161,8 +1160,8 @@ scope t = runReader mempty ff  where
   ff r = coerceExpTree <$> f t  where
     f = \case
       RImport (MkM [m]) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
-      RVar (MkM [n@MkNat{}])    -> pure $ RVar $ NConst' n
-      RVar (MkM [n@MkString{}]) -> pure $ RVar $ NConst' n
+      RVar (MkM [MkNat s n]) -> pure $ RNat_ s n
+      RVar (MkM [MkString s n]) -> pure $ RString_ s n
       RVar n -> asks r (lookup n) >>= \case
         Just m  -> pure $ RVar $ rename n m
         Nothing -> pure $ RVar $ NConst n
@@ -1170,6 +1169,7 @@ scope t = runReader mempty ff  where
           m <- nameOf n
           GLam <$> mapM f es <*> pure m <*> local r (insert n m) (f a)
       a :@ b -> (:@) <$> f a <*> f b
+      _ -> impossible
 
 unscope :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
 unscope t = runReader mempty ff where
@@ -1194,6 +1194,8 @@ unscope t = runReader mempty ff where
             let m = maybe n (\i -> addSuffix n $ "_" <> show i) k
             GLam <$> mapM f es <*> pure m <*> local r (maybe id (insert v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
+      RNat_ a b -> pure $ RVar $ MkM [MkNat a b]
+      RString_ a b -> pure $ RVar $ MkM [MkString a b]
 
 addSuffix :: Mixfix a -> String -> Mixfix a
 addSuffix a s = MkM [mkToken $ showMixfix a <> fromString s]
@@ -1244,7 +1246,7 @@ instance PPrint Source where
     co a b = RVar "<>" :@ a :@ pprint b
 
 pprintToken :: Token Desug -> ExpTree Name
-pprintToken = RVar . NConst'
+pprintToken t = RVar $ NConst $ MkM [t]
 
 instance PPrint ISource where
   pprint = pprint . unISource
@@ -1278,6 +1280,8 @@ instance (Eq a, PPrint a, Arity a) => PPrint (ExpTree_ b a) where
       RVar n     -> pprint n
       REmbed _   -> undefined
       a :@ b     -> RVar "@" :@ f a :@ f b
+      RNat_ a b   -> pprint $ MkM [MkNat a b]
+      RString_ a b -> pprint $ MkM [MkString a b]
 
 
 showM a = print a <&> chars

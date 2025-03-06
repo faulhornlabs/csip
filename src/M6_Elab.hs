@@ -362,8 +362,8 @@ infer_ env r = case r of
     t <- freshMeta env
     (_, m) <- freshMeta' env
     pure (t, m)
-  RVar (NNat n)    -> vNat n    <&> \v -> (TVal v, CNat)
-  RVar (NString n) -> vString n <&> \v -> (TVal v, CString)
+  RNat n    -> vNat n    <&> \v -> (TVal v, CNat)
+  RString n -> vString n <&> \v -> (TVal v, CString)
   RVar n | Just (v, ty) <- lookupGlobal n env -> pure (TVal v, ty)
   RVar n | Just ty      <- lookupLocal  n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"

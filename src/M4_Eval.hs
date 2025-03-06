@@ -242,8 +242,8 @@ tmToRaw t = do
 
       f env = \case
         TVal v_ -> force_ v_ >>= \case
-           WNat n-> pure (RVar $ NNat n)
-           WString n -> pure (RVar $ NString n)
+           WNat n-> pure (RNat n)
+           WString n -> pure (RString n)
            WCon n -> pure (RVar n)
            v@WDelta{} -> pure (RVar $ name v)
            WFun_ n r -> lookupRule r >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
@@ -645,8 +645,8 @@ quoteNF :: Val -> RefM (Raw, Map Name Raw)
 quoteNF v = runWriter g where
  g wst = f v where
   f v_ = force v_ >>= \case
-    WNat n   -> pure $ RVar $ NNat n
-    WString n-> pure $ RVar $ NString n
+    WNat n   -> pure $ RNat n
+    WString n-> pure $ RString n
     WDelta n _ _ -> pure $ RVar $ n
     v | VCon ty <- view v -> do
       case ty of
@@ -670,7 +670,7 @@ quoteNF v = runWriter g where
     _ -> impossible
 
 rMatch n a b c = "match" :@ RVar n :@ a :@ b :@ c
-rSel i j e = "sel" :@ RVar (NNat $ fromIntegral i) :@ RVar (NNat $ fromIntegral j) :@ e
+rSel i j e = "sel" :@ RNat (fromIntegral i) :@ RNat (fromIntegral j) :@ e
 rRet e = "return" :@ e
 
 quoteNF' = quoteTm >=> tmToRaw
@@ -839,8 +839,8 @@ instance Print Val where
 -- TODO
 instance PPrint Val where
   pprint = \case
-    WNat n -> pprint $ NNat n
-    WString n -> pprint $ NString n
+    WNat n -> pprint $ RNat n
+    WString n -> pprint $ RString n
     a -> pprint $ name a
 
 -----------------------
