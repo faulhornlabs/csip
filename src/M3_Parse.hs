@@ -1047,6 +1047,8 @@ data Name = MkName
   , nameId  :: Int
   }
 
+instance HasId Name where getId = nameId
+
 showName = showMixfix . nameStr
 
 instance IsMixfix Name where

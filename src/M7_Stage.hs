@@ -11,7 +11,7 @@ import M4_Eval hiding (name, TVar, TApp)
 stage_ :: Val -> RefM (Raw, [(Name, Raw)])
 stage_ t = do
   (r, m) <- quoteNF t
-  pure (unquote r, [(n, t) | (n, r) <- assocs m, Just t <- [unquoteTy r]])
+  pure (unquote r, [(n, t) | (n, r) <- assocsIM m, Just t <- [unquoteTy r]])
 
 stage :: Val -> RefM Raw --, [(Name, Raw)
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds

@@ -43,6 +43,7 @@ instance Print  DB where print  = print  . dbName
 instance PPrint DB where pprint = pprint . dbName
 instance Eq  DB where (==)    = (==)    `on` dbIndex
 instance Ord DB where compare = compare `on` dbIndex
+instance HasId DB where getId = dbIndex
 
 -------------
 
@@ -58,10 +59,10 @@ instance Eq  Combinator where (==)    = (==)    `on` combName
 instance Ord Combinator where compare = compare `on` combName
 
 evalCombinator :: Combinator -> [Val] -> RefM Val
-evalCombinator (MkCombinator _ _ ns t) vs = eval (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+evalCombinator (MkCombinator _ _ ns t) vs = eval (fromListIM $ zip (zipWith MkDB [0..] ns) vs) t
 
 evalCombinatorTm :: Combinator -> [Tm] -> RefM Tm
-evalCombinatorTm (MkCombinator _ _ ns t) vs = evalTm (fromList $ zip (zipWith MkDB [0..] ns) vs) t
+evalCombinatorTm (MkCombinator _ _ ns t) vs = evalTm (fromListIM $ zip (zipWith MkDB [0..] ns) vs) t
 
 mkCombinator :: Name -> Tm_ Name -> RefM (Combinator, [Name])
 mkCombinator n t = do
@@ -69,30 +70,30 @@ mkCombinator n t = do
   pure (MkCombinator n (rigidTm t') (map nameStr nsA) t', ns_)
  where
 
-  t' = f (fromList $ zip nsA [0..]) t
+  t' = f (fromListIM $ zip nsA [0..]) t
 
   ns' = fvs t
-  isconst = not $ member n ns'
-  ns_ = filter (/= n) $ toList ns'
+  isconst = not $ memberIS n ns'
+  ns_ = filter (/= n) $ toListIS ns'
   nsA = ns_ ++ [if isconst then rename "_" n else n]
 
   fvs = \case
     TGen e -> fvs e
-    TVar n -> singletonSet n
+    TVar n -> singletonIS n
     TVal _ -> mempty
     TApp a b -> fvs a <> fvs b
-    TLet n a b -> fvs a <> delete n (fvs b)
+    TLet n a b -> fvs a <> deleteIS n (fvs b)
     TSup _ ts -> mconcat (map fvs ts)
     TMatch _ a b c -> fvs a <> fvs b <> fvs c
     TSel _ _ e -> fvs e
     TRet e -> fvs e
 
   f env = \case
-    TVar n -> TVar $ MkDB (fromJust $ lookup n env) (nameStr n)
+    TVar n -> TVar $ MkDB (fromJust $ lookupIM n env) (nameStr n)
     TGen e -> TGen $ f env e
     TVal v -> TVal v
     TApp a b -> TApp (f env a) (f env b)
-    TLet n a b | i <- size env -> TLet (MkDB i $ nameStr n) (f env a) (f (insert n i env) b)
+    TLet n a b | i <- sizeIM env -> TLet (MkDB i $ nameStr n) (f env a) (f (insertIM n i env) b)
     TSup c ts -> TSup c $ map (f env) ts
     TMatch n a b c -> TMatch n (f env a) (f env b) (f env c)
     TSel i j e -> TSel i j $ f env e
@@ -178,7 +179,7 @@ rigidTm = f where
 notDefined x = error' $ fmap ("not defined: " <>) $ print x
 
 eval_
-  :: (Print a, Ord a)
+  :: (Print a, Ord a, HasId a)
   => (Val -> RefM b)
   -> (b -> RefM b)
   -> (b -> b -> RefM b)
@@ -187,7 +188,7 @@ eval_
   -> (Name -> b -> b -> b -> RefM b)
   -> (Int -> Int -> b -> RefM b)
   -> (b -> RefM b)
-  -> Map a b
+  -> IntMap a b
   -> Tm_ a
   -> RefM b
 eval_ val box vApp vSup var match sel ret = go
@@ -195,15 +196,15 @@ eval_ val box vApp vSup var match sel ret = go
   go env = \case
     TVal v     -> val v
     TGen x     -> box =<< go env x
-    TVar x     -> maybe (var x) pure $ lookup x env
+    TVar x     -> maybe (var x) pure $ lookupIM x env
     TApp t u   -> join $ vApp <$> go env t <*> go env u
     TSup c ts  -> join $ vSup c <$> mapM (go env) ts
-    TLet x t u -> go env t >>= \v -> go (insert x v env) u
+    TLet x t u -> go env t >>= \v -> go (insertIM x v env) u
     TMatch n a b c -> join $ match n <$> go env a <*> go env b <*> go env c
     TSel i j e -> join $ sel i j <$> go env e
     TRet e     -> join $ ret <$> go env e
 
-evalTm :: Map DB Tm -> Tm_ DB -> RefM Tm
+evalTm :: IntMap DB Tm -> Tm_ DB -> RefM Tm
 evalTm  = eval_
   (pure . TVal)
   (pure . TGen)
@@ -220,25 +221,26 @@ data H a = MkH Name a
 idH (MkH n _) = n
 instance Eq (H a) where (==) = (==) `on` idH
 instance Ord (H a) where compare = compare `on` idH
+instance HasId (H a) where getId = getId . idH
 
 tmToRaw :: Tm -> RefM Raw
 tmToRaw t = do
   (r, ds) <- basic t
-  ma <- topDown down (mkH ds)
-  foldM (\r (n, v) -> pure $ RLet n Hole v r) r $ reverse $ assocs $ mconcat $ toList ma
+  ma <- topDownIM down (mkH ds)
+  foldM (\r (n, v) -> pure $ RLet n Hole v r) r $ reverse $ assocsIM $ mconcat $ toListIM ma
  where
-  mkH ds = [MkH n v | (n, v) <- assocs ds]
+  mkH ds = [MkH n v | (n, v) <- assocsIM ds]
 
-  down :: H Val -> RefM (Map Name Raw, [H Val])
+  down :: H Val -> RefM (IntMap Name Raw, [H Val])
   down (MkH n v) = do
     t <- quoteTm v
     (r, ds) <- basic t
-    pure $ (singleton n r, mkH ds)
+    pure $ (singletonIM n r, mkH ds)
 
-  basic :: Tm -> RefM (Raw, Map Name Val)
+  basic :: Tm -> RefM (Raw, IntMap Name Val)
   basic t = runWriter ff <&> second snd where
     ff wst = f mempty t  where
-      add n env = insert n (vVar n) env
+      add n env = insertIM n (vVar n) env
 
       f env = \case
         TVal v_ -> force_ v_ >>= \case
@@ -246,12 +248,12 @@ tmToRaw t = do
            WString n -> pure (RString n)
            WCon n -> pure (RVar n)
            v@WDelta{} -> pure (RVar $ name v)
-           WFun_ n r -> lookupRule r >>= \v -> tell wst (mempty, singleton n v) >> pure (RVar n)
-           v -> tell wst (mempty, singleton (name v) v) >> pure (RVar $ name v)
+           WFun_ n r -> lookupRule r >>= \v -> tell wst (mempty, singletonIM n v) >> pure (RVar n)
+           v -> tell wst (mempty, singletonIM (name v) v) >> pure (RVar $ name v)
         TGen e -> eval' env e >>= quoteTm >>= f env
         TVar n  -> pure $ RVar n
         TApp a b -> (:@) <$> f env a <*> f env b
-        TLet n a b -> tell wst (singletonSet n, mempty) >> (RLet n Hole <$> f env a <*> f (add n env) b)
+        TLet n a b -> tell wst (singletonIS n, mempty) >> (RLet n Hole <$> f env a <*> f (add n env) b)
         TSup c ts -> do
           n <- varName c
           t <- evalCombinatorTm c $ ts <> [TVar n]
@@ -324,6 +326,8 @@ data Val = MkVal
   }
 -- invariant:  name v == name w  ==>  view v == view w
 
+instance HasId Val where getId = getId . name
+
 -- TODO: assert that names are forced (with time)?
 instance Eq Val where
   (==) = (==) `on` name
@@ -376,6 +380,7 @@ data MetaDep = MkMetaDep {metaDepName :: Name, metaRef :: MetaRef}
 instance Print MetaDep where print = print . metaDepName
 instance Eq MetaDep where (==) = (==) `on` metaDepName
 instance Ord MetaDep where compare = compare `on` metaDepName
+instance HasId MetaDep where getId = getId . metaDepName
 
 tMeta :: RefM Tm
 tMeta = do
@@ -515,7 +520,7 @@ updateRule :: RuleRef -> Val -> RefM ()
 updateRule r b = writeRef r b
 
 addRule :: [Name] -> Tm -> Tm -> RefM ()
-addRule (fromListSet -> boundvars) lhs_ rhs_ = do
+addRule (fromListIS -> boundvars) lhs_ rhs_ = do
   (lhs, rhs) <- trRule boundvars (lhs_, rhs_)
   (r, ns) <- ruleName [] lhs
   old <- lookupRule r
@@ -537,11 +542,11 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
   compileLHS :: Tm -> [Name] -> Tm -> Tm -> RefM Tm
   compileLHS old ns (TGuard a e) rhs = do
     tx <- tLazy $ TApps old $ TVar <$> reverse ns
-    e <- compilePat (boundvars <> fromListSet ns) tx (TVal $ vCon "True" $ Just "Bool") e $ pure rhs
+    e <- compilePat (boundvars <> fromListIS ns) tx (TVal $ vCon "True" $ Just "Bool") e $ pure rhs
     compileLHS old ns a e
   compileLHS old (n: ns) (TApp a b) rhs = do
     tx <- tLazy $ TApps old $ TVar <$> reverse (n: ns)
-    e <- compilePat (boundvars <> fromListSet (n: ns)) tx b (TVar n) $ pure rhs
+    e <- compilePat (boundvars <> fromListIS (n: ns)) tx b (TVar n) $ pure rhs
     compileLHS old ns a =<< tLam n e
   compileLHS _ [] (TVal WFun{}) rhs = pure rhs
   compileLHS _ _ _ _ = undefined
@@ -633,15 +638,15 @@ force v = force' v <&> snd
 
 -------------
 
-eval :: (Print a, Ord a) => Map a Val -> Tm_ a -> RefM Val
+eval :: (Print a, Ord a, HasId a) => IntMap a Val -> Tm_ a -> RefM Val
 eval = eval_ pure pure vApp vSup notDefined vMatch vSel vRet
 
-eval' :: Map Name Val -> Tm -> RefM Val
+eval' :: IntMap Name Val -> Tm -> RefM Val
 eval' = eval_ pure pure vApp vSup (pure . vVar) vMatch vSel vRet
 
 evalClosed = eval mempty
 
-quoteNF :: Val -> RefM (Raw, Map Name Raw)
+quoteNF :: Val -> RefM (Raw, IntMap Name Raw)
 quoteNF v = runWriter g where
  g wst = f v where
   f v_ = force v_ >>= \case
@@ -653,7 +658,7 @@ quoteNF v = runWriter g where
         Nothing -> pure ()
         Just ty -> do
           t <- f ty
-          tell wst $ singleton (name v) t
+          tell wst $ singletonIM (name v) t
       pure (RVar $ name v)
     v@WVar     -> pure $ RVar $ name v
     v@WMeta{}    -> pure $ RVar $ name v
@@ -686,7 +691,7 @@ quoteTm__ vtm opt v_ = do
   v <- force__ v_
   (ma_, vs_) <- runWriter $ go v  -- writer is needed for the right order
   let
-    ma v = fromMaybe False $ lookup v ma_
+    ma v = fromMaybe False $ lookupIM v ma_
     vs = filter ma vs_
 
     ff' = force__ >=> ff
@@ -719,7 +724,7 @@ quoteTm__ vtm opt v_ = do
  where
   force__ = if vtm then force_ else force
 
-  go v wst = walk ch share up [v]
+  go v wst = walkIM ch share up [v]
    where
     share v _ = case v of
        _ | opt, closed v -> pure False
@@ -744,16 +749,16 @@ quoteTm__ vtm opt v_ = do
       _ -> []
 
 -- replace generated terms
-trRule :: Set Name -> (Tm, Tm) -> RefM (Tm, Tm)
+trRule :: IntSet Name -> (Tm, Tm) -> RefM (Tm, Tm)
 trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
     lhs' <- getGens True  rst st lhs
     rhs' <- getGens False rst st rhs
     pure (lhs', rhs')
  where
-  getGens :: Bool -> Reader (Set Name) -> State (Map Tm Tm) -> Tm -> RefM Tm
+  getGens :: Bool -> Reader (IntSet Name) -> State (Map Tm Tm) -> Tm -> RefM Tm
   getGens get rst st t = f get t
    where
-    eval' t = asks rst id >>= \bv -> eval (fromList [(n, vVar n) | n <- toList bv]) t
+    eval' t = asks rst id >>= \bv -> eval (fromListIM [(n, vVar n) | n <- toListIS bv]) t
 
     f get t = case t of
       TView a b
@@ -778,12 +783,12 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
             modify st $ insert ns $ TVar n
             pure (TVar n)
           else gets st \m -> fromMaybe (if rigidTm ns then TGen t else undefined) $ lookup ns m
-      TLet n a b -> TLet n <$> f get a <*> local rst (insertSet n) (f get b)
+      TLet n a b -> TLet n <$> f get a <*> local rst (insertIS n) (f get b)
       TSup c ts | rigidCombinator c  -> TSup c <$> mapM (f get) ts
       TSup c ts  -> do 
           n <- varName c
           t <- evalCombinatorTm c $ ts <> [TVar n]
-          tLam n =<< local rst (insertSet n) (f get t)
+          tLam n =<< local rst (insertIS n) (f get t)
       t -> error' $ ("TODO(8): " <>) <$> print t
 
     addSuperClasses v d = do

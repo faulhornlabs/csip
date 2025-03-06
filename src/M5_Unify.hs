@@ -33,15 +33,17 @@ updateClosed a b = do
   update a v
 
 
-type SVal = (Val, Set Name)
+type SVal = (Val, IntSet Name)
 
-type Indices = Set Int
-type PruneSet = Maybe (Map MetaDep Indices)
+type Indices = IntSet Int
+type PruneSet_ = IntMap MetaDep Indices
+type PruneSet = Maybe PruneSet_
 
-(<.>) = unionWith (<>)
+(<.>) :: PruneSet_ -> PruneSet_ -> PruneSet_
+(<.>) = unionWithIM (<>)
 
 pruneMeta :: MetaDep -> Indices -> RefM ()
-pruneMeta m (toList -> is) = do
+pruneMeta m (toListIS -> is) = do
   m' <- tMeta
   let
     mk _ [] vs = pure $ TApps m' $ reverse vs
@@ -61,7 +63,7 @@ closeTm v_ = do
   let sv = (v, mempty)
   m <- go [sv]
   () <- case fromJust $ lookup sv m of
-    Just s -> forM_ (assocs s) \(v, s) -> pruneMeta v s
+    Just s -> forM_ (assocsIM s) \(v, s) -> pruneMeta v s
     Nothing -> undefined
   pure v_
  where
@@ -73,7 +75,7 @@ closeTm v_ = do
       WLam c -> do
         u <- c
         b <- vApp v $ vVar u
-        ret (insertSet u allowed) [b]
+        ret (insertIS u allowed) [b]
       WApp a b     -> ret allowed [a, b]
       _            -> ret allowed []
      where
@@ -86,13 +88,13 @@ closeTm v_ = do
         Nothing -> pure Nothing
         Just [sa] -> pure $ Just sa
         _ -> impossible
-      WVar | name v `member` allowed -> pure $ Just mempty
+      WVar | name v `memberIS` allowed -> pure $ Just mempty
            | otherwise               -> pure Nothing
       WMetaApp_ _ _ _ dep -> case map snd ts of
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
            n <- metaArgNum v
-           pure $ Just $ sa <.> singleton dep (singletonSet $ n - 1)
+           pure $ Just $ sa <.> singletonIM dep (singletonIS $ n - 1)
         [Just sa, Just sb] -> pure $ Just (sa <.> sb)
         _ -> impossible
       WApp{} -> case sequence (map snd ts) of

@@ -203,8 +203,6 @@ Planned performance improvements:
 - optimize chained rewrite rules produced by pattern match compilation
 - fast head of spine access in terms and values
 - run staging on closed meta level values
-- identify names with `Int`s
-- use `IntMap`s instead of `Map`s
 - use linear maps (`IORef`s) instead of `IntMap`s
 - redirect graph nodes after conversion checking
 - parsing and pretty printing should be near linear time operation

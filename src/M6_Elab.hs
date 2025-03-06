@@ -71,9 +71,9 @@ matchHPi v = spine v <&> \case
 
 data Env = MkEnv
   { boundVars   :: [Name]
-  , localVals   :: Map Name Val
-  , localTypes  :: Map Name Val
-  , globals     :: Map Name (Val, Val)
+  , localVals   :: IntMap Name Val
+  , localTypes  :: IntMap Name Val
+  , globals     :: IntMap Name (Val, Val)
   , isLHS       :: Bool    -- True if lhs is checked
   }
 
@@ -89,12 +89,12 @@ onTop = null . boundVars
 define :: Bool -> Name -> Val -> Val -> Env -> Env
 define bound n v t env
   | bound || not (onTop env)
-  = env { localTypes = insert n t $ localTypes env
-        , localVals = insert n v $ localVals env
+  = env { localTypes = insertIM n t $ localTypes env
+        , localVals = insertIM n v $ localVals env
         , boundVars = (if bound then (n:) else id) $ boundVars env
         }
   | otherwise
-  = env { globals = insert n (v, t) $ globals env
+  = env { globals = insertIM n (v, t) $ globals env
         }
 
 defineGlob n v t e
@@ -103,8 +103,8 @@ defineGlob n v t e
   | otherwise = define False n v t e
 defineBound n = define True n (vVar n)
 
-lookupLocal      v env = lookup v (localTypes  env)
-lookupGlobal     v env = lookup v (globals     env)
+lookupLocal      v env = lookupIM v (localTypes  env)
+lookupGlobal     v env = lookupIM v (globals     env)
 
 evalEnv :: Env -> Tm -> RefM Val
 evalEnv env = eval $ localVals env
