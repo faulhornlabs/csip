@@ -564,8 +564,9 @@ pattern NLetTy = MkM [":",";"]
 pattern NExpl  = MkM ["(",":",")"]
 pattern NImpl  = MkM ["{",":","}"]
 
-pattern NImport   = MkM ["import"]
-pattern NLetImport= MkM ["import",";"]
+pattern NImport    = MkM ["import"]
+pattern NLetImport = MkM ["import",";"]
+pattern NLetArr    = MkM ["<-",";"]
 
 pattern NGuard = MkM ["|"]
 
@@ -591,16 +592,17 @@ pattern NEmpty = MkM ["__"]
 pattern NAny   = MkM ["_"]
 
 pattern NHole :: Mixfix a
-pattern NHole  = MkM ["_"]
-pattern NArr   = MkM ["->"]
-pattern NIArr  = MkM ["~>"]
-pattern NView  = MkM ["-->"]
-pattern NPi    = MkM ["(",":",")","->"]
-pattern NHPi   = MkM ["{",":","}","->"]
-pattern NCPi   = MkM ["=>"]
-pattern NHArr  = MkM ["{","}","->"]
-pattern NRule  = MkM ["==>"]
-pattern NDot   = MkM ["[","]"]
+pattern NHole    = MkM ["_"]
+pattern NLeftArr = MkM ["<-"]
+pattern NArr     = MkM ["->"]
+pattern NIArr    = MkM ["~>"]
+pattern NView    = MkM ["-->"]
+pattern NPi      = MkM ["(",":",")","->"]
+pattern NHPi     = MkM ["{",":","}","->"]
+pattern NCPi     = MkM ["=>"]
+pattern NHArr    = MkM ["{","}","->"]
+pattern NRule    = MkM ["==>"]
+pattern NDot     = MkM ["[","]"]
 
 instance Arity (Mixfix t) where
   arity (MkM a) = arity a
@@ -765,6 +767,7 @@ norm r = case r of
   _ | Just z <- gg NSemi     NOEq       -> z
   _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
+  _ | Just z <- gg NSemi     NLeftArr   -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
   _ | Just z <- gg NLambda   NPi        -> z
@@ -930,7 +933,9 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
     SApps l es | l `elem` [NGuard, NDot, NHole, NLetImport, NLetTy, NTLet, NOTLet, NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView] -> Apps l $ map etr3 es
-    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
+    SApps NLetArr [a, b, c] -> xApps ">>=" [etr3 b, xApps NTLam [etr3 a, RVar NHole, etr3 c]]
+    SApps NSemi [b, c] -> xApps ">>=" [etr3 b, xApps NTLam [RVar NAny, RVar NHole, etr3 c]]
+--    SApps NSemi [a, _] -> error' $ print a <&> \r -> "Definition expected\n" <> r
     a :@ b  -> etr3 a :@ etr3 b
     RVar n@(MkM [t]) | isAtom t || isUpperToken t || isLowerToken t   -> RVar n
     e -> error' $ print ({- pprint $ op $ unpatch -} e) <&> \r -> "Expression expected\n" <> r
@@ -1074,6 +1079,7 @@ consts = fromListSet
   , "String", "ProdStr", "PairStr", "Cons", "AppendStr", "EqStr"
   , "Ty", "Arr", "Prod"
   , "Code", "Lam", "App", "Let", "Pair", "Fst", "Snd"
+  , ">>="
   ]
 
 nameOf :: NameStr -> RefM Name

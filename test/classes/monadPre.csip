@@ -159,11 +159,11 @@ enum a 0 = Nil
 enum a (Succ b) = LCons a (enum (Succ a) b)
 
 pita : Nat -> List (Tuple3 Nat Nat Nat)
-pita n =
-  enum 1 n >>= \m ->
-  enum 1 m >>= \k ->
-  enum 1 k >>= \l ->
-  guard (m*m == k*k + l*l) >>= \_ ->
+pita n = do
+  m <- enum 1 n
+  k <- enum 1 m
+  l <- enum 1 k
+  guard (m*m == k*k + l*l)
   pure (MkTuple3 m k l)
 
 // join (Just (Just 1))
