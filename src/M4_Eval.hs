@@ -551,7 +551,7 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
         TVar m -> nameStr m
         _ -> "v"
       ruleName (n: ns) a
-    _ -> undefined
+    t -> error' $ ("TODO (11): " <>) <$> print t
 
   compileLHS :: Tm -> [Name] -> Tm -> Tm -> RefM Tm
   compileLHS old ns (TGuard a e) rhs = do

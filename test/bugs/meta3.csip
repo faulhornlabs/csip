@@ -1,0 +1,15 @@
+# elab
+# eval
+
+List   : Type -> Type
+
+mapList : {a b : Type} -> (a -> b) -> List a -> List b
+
+append : {a} -> List a -> List a -> List a
+
+joinList : {a} -> List (List a) -> List a
+
+appList : {a b : Type} -> List (a -> b) -> List a -> List b
+appList fs xs = joinList (mapList (\f -> mapList f xs) fs)
+
+appList

@@ -12,10 +12,14 @@ updatable v _e = lookupMeta (metaRef v) >>= \case
   Just{}  -> impossible
   Nothing -> pure ()
 -}
+update :: MetaDep -> Val -> RefM ()
 update v e = do
 --  () <- updatable v e
-  traceShow $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
-  updateMeta (metaRef v) e
+  traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
+  fe <- force e
+  case fe of
+    WMeta r | v == r -> impossible
+    _ ->  updateMeta (metaRef v) e
 
 metaArgNum v_ = force v_ >>= \case
   WMeta _     -> pure 0
@@ -23,8 +27,10 @@ metaArgNum v_ = force v_ >>= \case
   _ -> undefined
 
 updateClosed a b = do
-  traceShow $ "update " <<>> showM a <<>> "\n := " <<>> showM b
-  closeTm b >>= update a
+  traceShow "2" $ "update " <<>> showM a <<>> "\n := " <<>> showM b
+  v <- closeTm b
+--  v' <- forceClosed v   -- TODO
+  update a v
 
 
 type SVal = (Val, Set Name)
@@ -104,7 +110,7 @@ expr a = foreground yellow a
 
 unify :: Val -> Val -> RefM ()
 unify aa{-actual-} bb{-expected-} = do
-  traceShow $ "conv " <<>> showM aa <<>> "\n ==? " <<>> showM bb
+  traceShow "3" $ "conv " <<>> showM aa <<>> "\n ==? " <<>> showM bb
   go aa bb
  where
  ff v@(WMetaApp _ b) = do

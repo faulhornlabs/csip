@@ -260,10 +260,10 @@ getPi _ = Nothing
 
 check :: Env -> Raw -> Val -> RefM Tm
 check env r ty = do
-  traceShow $ "check " <<>> showM r <<>> "\n :? " <<>> showM ty
+  traceShow "4" $ "check " <<>> showM r <<>> "\n :? " <<>> showM ty
   tag r $ do
     t <- check_ env r ty
-    traceShow $ "check end " <<>> showM r <<>> "\n ==> " <> showM t
+    traceShow "5" $ "check end " <<>> showM r <<>> "\n ==> " <> showM t
     pure t
 
 check_ :: Env -> Raw -> Val -> RefM Tm
@@ -333,10 +333,10 @@ check_ env r ty = case r of
 
 infer :: Env -> Raw -> RefM (Tm, Val)
 infer env r = do
-  traceShow $ "infer " <<>> showM r
+  traceShow "6" $ "infer " <<>> showM r
   tag r $ do
     (t, v) <- infer_ env r
-    traceShow $ "infer end " <<>> showM r <<>> "\n ==> " <<>> showM t <<>> "\n :: " <<>> showM v 
+    traceShow "7" $ "infer end " <<>> showM r <<>> "\n ==> " <<>> showM t <<>> "\n :: " <<>> showM v 
     pure (t, v)
 
 infer_ env r = case r of
