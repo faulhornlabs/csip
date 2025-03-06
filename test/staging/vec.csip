@@ -14,14 +14,22 @@ W64    : Ty
 Zero64 : W64
 PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
 
+N : Type
+Z : N
+S : N -> N
 
-vec : Nat -> Ty -> Ty
-vec  0       t = Unit
-vec (Succ n) t = Prod (vec n t) t
+toN : Nat -> N
+toN 0 = Z
+toN (Succ i) = S (toN i)
 
-addHelper : (n: Nat) -> Carry -> vec n W64 -> vec n W64 -> Prod Carry (vec n W64)
-addHelper  0       c a b = Pair c TT
-addHelper (Succ n) c a b = do
+
+vec : N -> Ty -> Ty
+vec Z     t = Unit
+vec (S n) t = Prod (vec n t) t
+
+addHelper : (n: N) -> Carry -> vec n W64 -> vec n W64 -> Prod Carry (vec n W64)
+addHelper Z c a b = Pair c TT
+addHelper (S n) c a b = do
   d := PlusC c (Snd a) (Snd b)
   e := addHelper n (Fst d) (Fst a) (Fst b)
   Pair (Fst e) (Pair (Snd e) (Snd d))
@@ -31,8 +39,8 @@ addHelper (S n) c (as, a) (bs, b) = do
   (c'', ds) := addHelper n c' as bs
   (c'', (ds, d))
 */
-add : (n: Nat) -> vec n W64 -> vec n W64 -> vec n W64
+add : (n: N) -> vec n W64 -> vec n W64 -> vec n W64
   = \n a b -> Snd (addHelper n ClearCarry a b)
 
 // main
-add 3
+add (toN 3)

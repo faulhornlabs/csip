@@ -5,7 +5,7 @@ module M3_Parse
   , Name (NNat, NString)
   , NameStr, nameStr, nameId
   , mkName, mkName', mapName, rename, isConName, isVarName
-  , showMixfix, scope, unscope
+  , showMixfix, scope, unscope, showName
 
   , ExpTree_
     ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
@@ -1045,6 +1045,8 @@ data Name = MkName
   , nameId  :: Int
   }
 
+showName = showMixfix . nameStr
+
 instance IsMixfix Name where
   toMixfix (NConst n) = toMixfix n
   toMixfix _ = Nothing
@@ -1104,7 +1106,7 @@ mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
 
 consts :: Set NameStr
 consts = fromListSet
-  [ "_"
+  [ "_", "View", "Guard"
   , "Ap"
   , "lookupDict", "superClasses", "SuperClassList", "SuperClassNil", "SuperClassCons"
   , "Bool", "True", "False"

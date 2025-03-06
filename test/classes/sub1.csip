@@ -22,16 +22,20 @@ lookupDict (Num Nat) = numDict
 num2Dict = MkNum2 numDict
 lookupDict (Num2 Nat) = num2Dict
 
-selTy : {a} -> Nat -> SuperClassList a -> Type
-selTy 0 (SuperClassCons {_} {t} _ _) = t
-selTy (Succ i) (SuperClassCons _ l) = selTy i l
+N : Type
+Z : N
+S : N -> N
 
-sel : {a} -> (i : Nat) -> (l : SuperClassList a) -> a -> selTy i l
-sel 0 (SuperClassCons f _) = f
-sel (Succ i) (SuperClassCons _ l) = sel i l
+selTy : {a} -> N -> SuperClassList a -> Type
+selTy Z (SuperClassCons {_} {t} _ _) = t
+selTy (S i) (SuperClassCons _ l) = selTy i l
+
+sel : {a} -> (i : N) -> (l : SuperClassList a) -> a -> selTy i l
+sel Z (SuperClassCons f _) = f
+sel (S i) (SuperClassCons _ l) = sel i l
 
 double2 : {a} -> Num2 a => a -> a
-double2 {a} {d} x = double {a} {sel 0 (superClasses (Num2 a)) d} x
+double2 {a} {d} x = double {a} {sel Z (superClasses (Num2 a)) d} x
 
 \{a} {b} c -> double2 {a} {b} c
 //double2 4

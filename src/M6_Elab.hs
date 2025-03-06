@@ -97,7 +97,10 @@ define bound n v t env
   = env { globals = insert n (v, t) $ globals env
         }
 
-defineGlob = define False
+defineGlob n v t e
+--  | not $ rigid t = error' $ (("unsolved meta in type of " <> showName n <> ":\n") <>) <$> print t
+--  | not $ rigid v = error' $ (("unsolved meta in " <> showName n <> ":\n") <>) <$> print v
+  | otherwise = define False n v t e
 defineBound n = define True n (vVar n)
 
 lookupLocal      v env = lookup v (localTypes  env)

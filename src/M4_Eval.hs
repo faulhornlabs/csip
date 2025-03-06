@@ -439,9 +439,10 @@ vApp a_ u = do
       def2 ar u
         | closed u, rigid u = mkValue "app" (rigid a && rigid u) (closed a && closed u) $ VApp_ a u $ DeltaApp (ar - 1)
         | otherwise         = def
-      def3 = force u >>= \case
-         u | True {- closed u, rigid u -} -> evalDelta a [u] def
---           | otherwise -> def
+      def3 = force u >>= \u -> evalDelta a [u] def   -- TODO: remove?
+      def4 = force u >>= \case
+         u | closed u, rigid u -> evalDelta a [u] def
+           | otherwise -> def
   case a of
     WCon{}  -- TODO: elim
       | "Succ" <- name a -> force u >>= \case
@@ -455,7 +456,7 @@ vApp a_ u = do
     WDeltaApp _ _ ar
       | ar < 1     -> impossible
       | ar > 1     -> force u >>= \u -> def2 ar u
-      | closed a, rigid a -> def3
+      | closed a, rigid a -> def4
       | otherwise  -> def
     WSup c vs      -> evalCombinator c $ vs ++ [u]
     WFun_ _ r      -> lookupRule r >>= \f -> app_ aa f u
@@ -568,7 +569,7 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
   compilePat bv f p e m = case p of
     TVar n -> TLet n e <$> m
     TView g p -> compilePat bv f p (TApp g e) m
-    TApps (TVal (getCon -> Just c)) ps -> do
+    TApps (TVal (WCon c)) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
@@ -581,11 +582,6 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
         _ -> TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) tx $ zip [0..] ns) f
     _ -> impossible
 
-getCon (WCon n) = Just n
-getCon (WNat n) = Just $ NNat n
-getCon (WString n) = Just $ NString n
-getCon _ = Nothing
-
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
 
 vSel :: Int -> Int -> Val -> RefM Val
@@ -596,9 +592,7 @@ vSel i j v = spine v >>= \case
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
 vMatch n v ok fail = spine v >>= \case
   (WNat i, _vs) | "Succ" <- n, i > 0 -> vEval ok
-  (WNat i, _vs) | NNat i == n        -> vEval ok
   (WNat{}, _vs)                     -> vEval fail
-  (WString i, _vs) | NString i == n  -> vEval ok
   (WString (_:_), _vs) | "Cons" <- n -> vEval ok
   (WString{}, _vs)                  -> vEval fail
   (WCon c, _vs) | c == n           -> vEval ok
@@ -743,6 +737,8 @@ quoteTm__ vtm opt v_ = do
       WSel i j e -> TSel i j <$> ff' e
       WMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
       WRet a -> TRet <$> ff' a
+      WNat{} -> pure $ TVal v
+      WString{} -> pure $ TVal v
       _ -> impossible
 
   x <- ff v
@@ -783,14 +779,19 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
     pure (lhs', rhs')
  where
   getGens :: Bool -> Reader (Set Name) -> State (Map Tm Tm) -> Tm -> RefM Tm
-  getGens get rst st t = f t
+  getGens get rst st t = f get t
    where
     eval' t = asks rst id >>= \bv -> eval (fromList [(n, vVar n) | n <- toList bv]) t
 
-    f t = case t of
+    f get t = case t of
+      TView a b
+        | get -> TView <$> f False a <*> f get b
+        | otherwise -> undefined
+      TVal WNat{}    | get -> pure $ TView (TVal (mkCon "EqNat" Nothing) `TApp` t) $ TVal "True"
+      TVal WString{} | get -> pure $ TView (TVal (mkCon "EqStr" Nothing) `TApp` t) $ TVal "True"
       TVal{} -> pure t
       TVar{} -> pure t
-      TApp a b -> TApp <$> f a <*> f b
+      TApp a b -> TApp <$> f get a <*> f get b
       TGen t -> do
         vns <- eval' t
         ns <- metaToVar vns
@@ -803,12 +804,12 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
             modify st $ insert ns $ TVar n
             pure (TVar n)
           else gets st \m -> fromMaybe (if rigidTm ns then TGen t else undefined) $ lookup ns m
-      TLet n a b -> TLet n <$> f a <*> local rst (insertSet n) (f b)
-      TSup c ts | rigidCombinator c  -> TSup c <$> mapM f ts
+      TLet n a b -> TLet n <$> f get a <*> local rst (insertSet n) (f get b)
+      TSup c ts | rigidCombinator c  -> TSup c <$> mapM (f get) ts
       TSup c ts  -> do 
           n <- varName c
           t <- evalCombinatorTm c $ ts <> [TVar n]
-          tLam n =<< local rst (insertSet n) (f t)
+          tLam n =<< local rst (insertSet n) (f get t)
       t -> error' $ ("TODO(8): " <>) <$> print t
 
     addSuperClasses v d = do
