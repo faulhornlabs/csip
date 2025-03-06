@@ -554,7 +554,8 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
       tx <- tLazy x
-      pure $ TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) tx $ zip [0..] ns) f
+      ne <- mkName "w"   -- TODO: better naming
+      pure $ TLet ne e $ TMatch c (TVar ne) (foldr (\(i, n) y -> TLet n (TSel len i $ TVar ne) y) tx $ zip [0..] ns) f
     _ -> impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
