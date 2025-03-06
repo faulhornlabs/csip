@@ -6,7 +6,7 @@ module M4_Eval
   , Raw
 
   , Val (WSup, WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta)
-  , vNat, vString, vFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
+  , vNat, vString, mkFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
   , mkCon, RuleRef
   , name, rigid, closed
   , lamName
@@ -401,29 +401,14 @@ mkCon :: Name -> Maybe Val -> Val
 mkCon n ty = case n of
   "AppendStr" -> f 2 \_ -> \case [WString va, WString vb] -> vString $ va <> vb; _ -> impossible
   "EqStr"     -> f 2 \_ -> \case [WString va, WString vb] -> if va == vb then "True" else "False"; _ -> impossible
+  "TakeStr"   -> f 2 \_ -> \case [WNat va, WString vb] -> vString $ take (fromIntegral va) vb; _ -> impossible
+  "DropStr"   -> f 2 \_ -> \case [WNat va, WString vb] -> vString $ drop (fromIntegral va) vb; _ -> impossible
+  "DecNat"    -> f 1 \_ -> \case [WNat    va] -> vNat $ max 0 $ va - 1; _ -> impossible
   "AddNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va + vb; _ -> impossible
   "MulNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va * vb; _ -> impossible
   "DivNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va `div` vb; _ -> impossible
   "ModNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va `mod` vb; _ -> impossible
   "EqNat"     -> f 2 \_ -> \case [WNat    va, WNat    vb] -> if va == vb then "True" else "False"; _ -> impossible
-  "dec" -> f 1 \def -> \case
-      [u] -> forcedSpine u >>= \case
-        (WNat t, []) -> vNat $ t - 1
-        ("Succ", [v]) -> pure v
-        _          -> def
-      _ -> impossible
-  "tail" -> f 1 \def -> \case
-      [u] -> forcedSpine u >>= \case
-        (WString (_: t), []) -> vString t
-        ("Cons", [_, v]) -> pure v
-        _          -> def
-      _ -> impossible
-  "head" -> f 1 \def -> \case
-      [u] -> forcedSpine u >>= \case
-        (WString (h: _), []) -> vString [h]
-        ("Cons", [v, _]) -> pure v
-        _          -> def
-      _ -> impossible
   n -> vCon n ty
  where
   f ar g = WDelta n ar g
@@ -439,21 +424,11 @@ vApp a_ u = do
       def2 ar u
         | closed u, rigid u = mkValue "app" (rigid a && rigid u) (closed a && closed u) $ VApp_ a u $ DeltaApp (ar - 1)
         | otherwise         = def
-      def3 = force u >>= \u -> evalDelta a [u] def   -- TODO: remove?
       def4 = force u >>= \case
          u | closed u, rigid u -> evalDelta a [u] def
            | otherwise -> def
   case a of
-    WCon{}  -- TODO: elim
-      | "Succ" <- name a -> force u >>= \case
-        WNat t -> vNat $ t + 1
-        _          -> def
-    WDelta _ ar _
-      | ar < 1     -> impossible
-      | ar > 1     -> force u >>= \u -> def2 ar u
-      | closed a, rigid a -> def3
-      | otherwise  -> def
-    WDeltaApp _ _ ar
+    (deltaArity -> Just ar)
       | ar < 1     -> impossible
       | ar > 1     -> force u >>= \u -> def2 ar u
       | closed a, rigid a -> def4
@@ -463,6 +438,11 @@ vApp a_ u = do
     WFunApp _ _ f  -> app_ aa f u
     _              -> def
  where
+  deltaArity = \case
+    WDelta _ ar _ -> Just ar
+    WDeltaApp _ _ ar -> Just ar
+    _ -> Nothing
+
   app_ aa f u = vApp f u >>= \case
     WRet x -> pure x
     x -> mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u $ FunApp x
@@ -574,12 +554,7 @@ addRule (fromListSet -> boundvars) lhs_ rhs_ = do
       ns <- sequence $ replicate len $ mkName "w"   -- TODO: better naming
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
       tx <- tLazy x
-      pure $ case (c, ns) of
-        ("Cons", [a, b])
-          -> TMatch c e (TLet a (TApp (TVal $ mkCon "head" Nothing) e) $ TLet b (TApp (TVal $ mkCon "tail" Nothing) e) tx) f
-        ("Succ", [a])
-          -> TMatch c e (TLet a (TApp (TVal $ mkCon "dec" Nothing) e) tx) f
-        _ -> TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) tx $ zip [0..] ns) f
+      pure $ TMatch c e (foldr (\(i, n) y -> TLet n (TSel len i e) y) tx $ zip [0..] ns) f
     _ -> impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
@@ -591,10 +566,6 @@ vSel i j v = spine v >>= \case
 
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
 vMatch n v ok fail = spine v >>= \case
-  (WNat i, _vs) | "Succ" <- n, i > 0 -> vEval ok
-  (WNat{}, _vs)                     -> vEval fail
-  (WString (_:_), _vs) | "Cons" <- n -> vEval ok
-  (WString{}, _vs)                  -> vEval fail
   (WCon c, _vs) | c == n           -> vEval ok
   (WCon{}, _vs)                    -> vEval fail
   (h, _) -> do
@@ -787,6 +758,8 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
       TView a b
         | get -> TView <$> f False a <*> f get b
         | otherwise -> undefined
+      TApps (TVal "Succ") [n]    | get -> f get n <&> \r -> TView (TVal succView) (TVal "SuccOk" `TApp` r)
+      TApps (TVal "Cons") [a, b] | get -> f get a >>= \a -> f get b <&> \b -> TView (TVal consView) (TApps (TVal "ConsOk") [a, b])
       TVal WNat{}    | get -> pure $ TView (TVal (mkCon "EqNat" Nothing) `TApp` t) $ TVal "True"
       TVal WString{} | get -> pure $ TView (TVal (mkCon "EqStr" Nothing) `TApp` t) $ TVal "True"
       TVal{} -> pure t
@@ -872,14 +845,23 @@ instance PPrint Val where
 -----------------------
 
 pattern CFail :: Val
-pattern CFail   = "Fail"
+pattern CFail = "Fail"
 
 {-# noinline lookupDictFun #-}
-lookupDictFun :: Val
 lookupDictFun = topM $ vFun "lookupDict" CFail
 
 {-# noinline superClassesFun #-}
-superClassesFun :: Val
 superClassesFun = topM $ vFun "superClasses" CFail
 
+{-# noinline succView #-}
+succView = topM $ vFun "succView" CFail
 
+{-# noinline consView #-}
+consView = topM $ vFun "consView" CFail
+
+mkFun = \case
+  "succView"     -> pure succView
+  "consView"     -> pure consView
+  "lookupDict"   -> pure lookupDictFun
+  "superClasses" -> pure superClassesFun
+  n -> vFun n CFail

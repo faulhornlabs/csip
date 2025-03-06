@@ -369,11 +369,7 @@ infer_ env r = case r of
   RVar{} -> errorM "Not in scope"
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
-    c <- if isConName n then pure $ mkCon n $ Just vta
-      else case n of
-        "lookupDict" -> pure lookupDictFun
-        "superClasses" -> pure superClassesFun
-        _ -> vFun n CFail
+    c <- if isConName n then pure $ mkCon n $ Just vta else mkFun n
     infer (defineGlob n c vta env) b
   ROLet{} -> do
     (_, m) <- freshMeta' env

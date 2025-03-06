@@ -6,17 +6,34 @@ True  : Bool
 False : Bool
 
 Nat       : Type
-Succ      : Nat -> Nat
+DecNat    : Nat -> Nat
 AddNat    : Nat -> Nat -> Nat
 MulNat    : Nat -> Nat -> Nat
 ModNat    : Nat -> Nat -> Nat
 DivNat    : Nat -> Nat -> Nat
 EqNat     : Nat -> Nat -> Bool
 
+Succ      : Nat -> Nat
+SuccView  : Type
+SuccOk    : Nat -> SuccView
+SuccFail  : SuccView
+succView  : Nat -> SuccView
+succView 0 = SuccFail
+succView n = SuccOk (DecNat n)
+
 String    : Type
-Cons      : String -> String -> String
 AppendStr : String -> String -> String
 EqStr     : String -> String -> Bool
+TakeStr   : Nat -> String -> String
+DropStr   : Nat -> String -> String
+
+Cons      : String -> String -> String
+ConsView  : Type
+ConsOk    : String -> String -> ConsView
+ConsFail  : ConsView
+consView  : String -> ConsView
+consView "" = ConsFail
+consView n = ConsOk (TakeStr 1 n) (DropStr 1 n)
 
 Ty        : Type
 Arr       : Ty -> Ty -> Ty

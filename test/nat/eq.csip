@@ -3,4 +3,4 @@
 
 import Builtins
 
-EqNat (Succ 10) 11
+EqNat (AddNat 1 10) 11

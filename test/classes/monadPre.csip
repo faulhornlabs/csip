@@ -159,7 +159,7 @@ guard False = Nil
 
 enum : Nat -> Nat -> List Nat
 enum a 0 = Nil
-enum a (Succ b) = LCons a (enum (Succ a) b)
+enum a (Succ b) = LCons a (enum (1 + a) b)
 
 pita : Nat -> List (Tuple3 Nat Nat Nat)
 pita n = do

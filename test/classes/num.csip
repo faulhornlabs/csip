@@ -3,14 +3,10 @@
 
 import Builtins
 
-addN : Nat -> Nat -> Nat
-addN 0 n = n
-addN (Succ n) m = Succ (addN n m)
-
 Num : Type -> Type
 MkNum : {a : Type} -> (a -> a -> a) -> Num a
 
-lookupDict (Num Nat) = MkNum addN
+lookupDict (Num Nat) = MkNum AddNat
 
 
 add : {a} -> Num a => a -> a -> a

@@ -1,12 +1,12 @@
 # elab
 # eval
 
-// builtins
 Succ : Nat -> Nat
+AddNat : Nat -> Nat -> Nat
 
 f : Nat -> Nat
 f (Succ (Succ a)) = a
-f a = Succ a
+f a = AddNat 1 a
 
 f (f 3)
 
