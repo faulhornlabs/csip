@@ -171,6 +171,7 @@ The following limitations and bugs are planned to be lifted:
 - local definitions are not supported
 - only simple guards are supported
 - only builtin modules can be imported
+- infinite evaluation is not catched (by "gas", for example)
 - closed data types and closed functions are not supported
 - recursive definitions are not properly printed
 - sharing between values are sometimes lost during printing
@@ -179,6 +180,7 @@ The following limitations and bugs are planned to be lifted:
 - there is no stage polymorphism
 - `import` acts as an "include"
 - no support for multiple object codes
+- pattern synonyms are not supported
 - types are not shown in elaborated output
 - implicit/explicit distinction of lambdas and applications are missing in elaborated output
 - `do` should be at the end of the line
@@ -192,8 +194,7 @@ The following limitations and bugs are planned to be lifted:
 
 Implemented performance improvements:
 
-- observable implicit sharing speeds up conversion checking
-  and prevents sharing loss
+- observable implicit sharing speeds up conversion checking and prevents sharing loss
 - top level definitions are treated specially
 - unsaturated and blocked rewrite rule applications are cached
 - monad stacks in the Haskell source code are replaced with a custom solution
@@ -202,11 +203,12 @@ Planned performance improvements:
 
 - optimize chained rewrite rules produced by pattern match compilation
 - fast head of spine access in terms and values
-- run staging on closed meta level values
-- use linear maps (`IORef`s) instead of `IntMap`s
-- redirect graph nodes after conversion checking
 - parsing and pretty printing should be near linear time operation
 - faster supercombinator evaluation using interpreted register machines
+- run staging on closed meta level values
+- use linear maps (`IORef`s) instead of `IntMap`s
+- type erasure
+- redirect graph nodes after conversion checking
 
 
 ## Development workflows
