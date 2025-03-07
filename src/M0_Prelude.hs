@@ -38,7 +38,7 @@ import Data.String as P
   ( IsString (fromString), unlines, lines, words )
 import Data.Set as P
   ( Set, member, delete, isSubsetOf)
-import Data.Map as P
+import Data.Map.Strict as P
   ( Map, size, insert, lookup, singleton, fromList, keys, unionWith, unionsWith, restrictKeys, withoutKeys )
 
 import Prelude as P

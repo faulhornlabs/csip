@@ -67,7 +67,7 @@ import Prelude (IO, FilePath)
 import Prelude as IO (readFile)
 
 import Data.Char (digitToInt)
-import qualified Data.IntMap as IM
+import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
 import qualified Data.Array.IArray as Arr
 import qualified Data.Array.Unboxed as Arr
