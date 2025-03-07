@@ -8,21 +8,21 @@ import M3_Parse hiding (Lam)
 import qualified M3_Parse as E
 import M4_Eval hiding (name, TVar, TApp)
 
-stage_ :: Val -> RefM (Raw, [(Name, Raw)])
+stage_ :: Val -> RefM (Scoped, [(Name, Scoped)])
 stage_ t = do
   (r, m) <- quoteNF t
   pure (unquote r, [(n, t) | (n, r) <- assocsIM m, Just t <- [unquoteTy r]])
 
-stage :: Val -> RefM Raw --, [(Name, Raw)
+stage :: Val -> RefM Scoped --, [(Name, Scoped)
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
 
 stageHaskell v = do
   (r, ts) <- stage_ v
   pure $ (fromString :: String -> Source) $ show ({- map data2 $ -} groupData $ map (name *** convertTy) ts, convert r)
 
-unquoteTy :: Raw -> Maybe Raw
+unquoteTy :: Scoped -> Maybe Scoped
 unquoteTy = f where
-  f :: Raw -> Maybe Raw
+  f :: Scoped -> Maybe Scoped
   f r = case r of
     RVar "Ty" -> Just r
     RVar "String" -> Just r
@@ -33,7 +33,7 @@ unquoteTy = f where
     a :@ b -> (:@) <$> f a <*> f b
     _ -> Nothing
 
-unquote :: Raw -> Raw
+unquote :: Scoped -> Scoped
 unquote = f mempty
  where
   f e = \case
@@ -104,7 +104,7 @@ name n = case nameId n of
    where
     s = chars $ showMixfix $ nameStr n
 
-convert :: Raw -> Exp
+convert :: Scoped -> Exp
 convert = f  where
   f = \case
     E.Lam n e -> Lam (name n) $ f e
@@ -117,7 +117,7 @@ convert = f  where
       _ -> Var $ name n
     _ -> impossible
 
-convertTy :: Raw -> Ty
+convertTy :: Scoped -> Ty
 convertTy = f  where
   f = \case
     RVar "Pi"  :@ a :@ E.Lam "_" b -> Pi (f a) (f b)

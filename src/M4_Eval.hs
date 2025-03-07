@@ -3,7 +3,7 @@ module M4_Eval
 
   , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard)
   , Tm, tLam, tMeta
-  , Raw
+  , Raw, Scoped
 
   , Val (WSup, WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta)
   , vNat, vString, mkFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
@@ -102,13 +102,15 @@ mkCombinator n t = do
 instance PPrint Combinator where
   pprint (MkCombinator _ _ ns t) = "|->" :@ foldl1 (:@) (map pprint ns) :@ pprint t
 
-varName (MkCombinator _ _ ns _) = mkName $ case last ns of
-  "_" -> "v"{-TODO?-}
+varName_ d (MkCombinator _ _ ns _) = case last ns of
+  "_" -> d
   n -> n
 
-lamName n x = force x >>= \case
-  WLam n -> n
-  _ -> pure n
+varName c = mkName $ varName_ "v"{-TODO?-} c
+
+lamName n x = force x <&> \case
+  WSup c _ -> varName_ n c
+  _ -> n
 
 -------------
 
@@ -223,7 +225,7 @@ instance Eq (H a) where (==) = (==) `on` idH
 instance Ord (H a) where compare = compare `on` idH
 instance HasId (H a) where getId = getId . idH
 
-tmToRaw :: Tm -> RefM Raw
+tmToRaw :: Tm -> RefM Scoped
 tmToRaw t = do
   (r, ds) <- basic t
   ma <- topDownIM down (mkH ds)
@@ -231,13 +233,13 @@ tmToRaw t = do
  where
   mkH ds = [MkH n v | (n, v) <- assocsIM ds]
 
-  down :: H Val -> RefM (IntMap Name Raw, [H Val])
+  down :: H Val -> RefM (IntMap Name Scoped, [H Val])
   down (MkH n v) = do
     t <- quoteTm v
     (r, ds) <- basic t
     pure $ (singletonIM n r, mkH ds)
 
-  basic :: Tm -> RefM (Raw, IntMap Name Val)
+  basic :: Tm -> RefM (Scoped, IntMap Name Val)
   basic t = runWriter ff <&> second snd where
     ff wst = f mempty t  where
       add n env = insertIM n (vVar n) env
@@ -273,6 +275,7 @@ instance PPrint Embedded where
   pprint (MkEmbedded r _) = zVar ["[","]"] :@ pprint r
 
 type Raw = Raw_ Embedded
+type Scoped = Scoped_ Embedded
 
 -------------------------------
 
@@ -394,12 +397,12 @@ mkMetaDep _ = Nothing
 
 -----------
 
-mkValue :: Name -> Bool -> Bool -> View -> RefM Val
+mkValue :: NameStr -> Bool -> Bool -> View -> RefM Val
 mkValue n r c v = do
-  n <- mkName $ nameStr n
+  n <- mkName n
   pure $ MkVal n r c v
 
-vTm :: Name -> Tm -> Val -> RefM Val
+vTm :: NameStr -> Tm -> Val -> RefM Val
 vTm n t v = mkValue n (rigid v) (closed v) $ VTm t v
 
 mkCon :: Name -> Maybe Val -> Val
@@ -640,7 +643,7 @@ eval' = eval_ pure pure vApp vSup (pure . vVar) vMatch vSel vRet
 
 evalClosed = eval mempty
 
-quoteNF :: Val -> RefM (Raw, IntMap Name Raw)
+quoteNF :: Val -> RefM (Scoped, IntMap Name Scoped)
 quoteNF v = runWriter g where
  g wst = f v where
   f v_ = force v_ >>= \case
@@ -840,8 +843,8 @@ instance Print Val where
 -- TODO
 instance PPrint Val where
   pprint = \case
-    WNat n -> pprint $ RNat n
-    WString n -> pprint $ RString n
+    WNat n -> pprint (RNat n :: Raw)
+    WString n -> pprint (RString n :: Raw)
     a -> pprint $ name a
 
 -----------------------

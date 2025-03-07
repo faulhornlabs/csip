@@ -2,10 +2,10 @@ module M3_Parse
   ( Phase (..)
   , ISource, Token, OpSeq
 
-  , Name
+  , Name, nameOf
   , NameStr, nameStr, nameId
   , mkName, mkName', mapName, rename, isConName, isVarName
-  , showMixfix, scope, unscope, showName
+  , showMixfix, showName
 
   , ExpTree_
     ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
@@ -17,7 +17,7 @@ module M3_Parse
   , coerceExpTree
 
   , Mixfix, addSuffix
-  , OpSeq', ExpTree', Raw_
+  , OpSeq', ExpTree', Raw_, Scoped_
   ) where
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -676,6 +676,7 @@ pattern a :@@ b <- (dup -> ((<0) . arity -> True, a :@ b))
 instance (IsString a, Arity a) => IsString (ExpTree_ b a) where
   fromString = RVar . fromString
 
+type ExpTree'_ b a = ExpTree_ b (Mixfix a)
 type ExpTree' a = ExpTree (Mixfix a)
 
 
@@ -1032,11 +1033,43 @@ sugar = coerce . sug . sug0
   arrow arr n e = Apps arr [n, e]
 
 
-instance Parse (ExpTree' Desug) where
+instance Parse (ExpTree'_ b Desug) where
   parse = parse >=> desugar
+    >=> preprocess{-TODO: do in separate phase-}
+    >=> pure . preprocess2{-TODO: do in separate phase-}
 
-instance Print (ExpTree' Desug) where
-  print = print . sugar
+preprocess   :: ExpTree' Desug -> RefM (Raw_ a)
+preprocess t = coerceExpTree <$> f t  where
+    f = \case
+      RData a b c -> f $ include a $ include b c
+      RImport (MkM [m]) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
+      RVar n -> pure $ RVar n
+      a :@ b -> (:@) <$> f a <*> f b
+      RNat_ a b -> pure $ RNat_ a b
+      RString_ a b -> pure $ RString_ a b
+
+preprocess2 t = f t  where
+    f = \case
+      RVar (MkM [MkNat s n]) -> RNat_ s n
+      RVar (MkM [MkString s n]) -> RString_ s n
+      RVar n -> RVar n
+      REmbed x -> REmbed x
+      a :@ b -> f a :@ f b
+      RNat_ a b -> RNat_ a b
+      RString_ a b -> RString_ a b
+
+instance Print (ExpTree'_ b Desug) where
+  print = print . sugar . unembed
+
+unembed :: ExpTree_ a (Mixfix b) -> ExpTree_ a' (Mixfix b)
+unembed = f where
+  f = \case
+    REmbed a -> undefined -- !!! f $ pprint a
+    RNat_ a b -> RVar $ MkM [MkNat a b]
+    RString_ a b -> RVar $ MkM [MkString a b]
+    a :@ b -> f a :@ f b
+    RVar n -> RVar n
+
 
 
 ----------------------------------------------
@@ -1082,10 +1115,9 @@ pattern NConst :: NameStr -> Name
 pattern NConst n <- MkName n ((==) (hashNameStr n) -> True)
   where NConst n =  MkName n (hashNameStr n)
 
-pattern RNat :: Integer -> Raw_ a
 pattern RNat n <- RNat_ _ n
   where RNat n =  RNat_ (fromString $ show n) n
-pattern RString :: String -> Raw_ a
+
 pattern RString n <- RString_ _ n
   where RString n =  RString_ (fromString $ show n) n
 
@@ -1126,7 +1158,7 @@ nameOf :: NameStr -> RefM Name
 nameOf n | n `member` consts = pure $ NConst n
          | otherwise         = mkName n
 
-type Raw_ a = ExpTree_ a Name
+type Raw_ a = ExpTree_ a NameStr
 
 
 ---------------------------------------------
@@ -1160,34 +1192,16 @@ include t s = f t
 -------------------------------------------------
 
 
-instance Parse (Raw_ a) where
-  parse = parse >=> scope 
-
-instance PPrint a => Print (Raw_ a) where
+instance PPrint a => Print (Scoped_ a) where
   print = unscope >=> print
 
-scope   :: ExpTree' Desug -> RefM (Raw_ a)
-scope t = runReader mempty ff  where
-  ff r = coerceExpTree <$> f t  where
-    f = \case
-      RData a b c -> f $ include a $ include b c
-      RImport (MkM [m]) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
-      RVar (MkM [MkNat s n]) -> pure $ RNat_ s n
-      RVar (MkM [MkString s n]) -> pure $ RString_ s n
-      RVar n -> asks r (lookup n) >>= \case
-        Just m  -> pure $ RVar $ rename n m
-        Nothing -> pure $ RVar $ NConst n
-      GLam es n a -> do
-          m <- nameOf n
-          GLam <$> mapM f es <*> pure m <*> local r (insert n m) (f a)
-      a :@ b -> (:@) <$> f a <*> f b
-      _ -> impossible
+type Scoped_ a = ExpTree_ a Name
 
-unscope :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
+unscope :: PPrint a => Scoped_ a -> RefM (ExpTree' Desug)
 unscope t = runReader mempty ff where
   ff r = f t where
 
-    f :: PPrint a => Raw_ a -> RefM (ExpTree' Desug)
+    f :: PPrint a => Scoped_ a -> RefM (ExpTree' Desug)
     f = \case
       REmbed a -> f $ pprint a
       RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
@@ -1218,7 +1232,7 @@ addSuffix a s = MkM [mkToken $ showMixfix a <> fromString s]
 --------------------------------------
 
 class PPrint a where
-  pprint :: a -> Raw_ Void
+  pprint :: a -> Scoped_ Void
 
 
 instance (PPrint a, PPrint b) => PPrint (a, b) where
@@ -1292,8 +1306,8 @@ instance (Eq a, PPrint a, Arity a) => PPrint (ExpTree_ b a) where
       RVar n     -> pprint n
       REmbed _   -> undefined
       a :@ b     -> RVar "@" :@ f a :@ f b
-      RNat_ a b   -> pprint $ MkM [MkNat a b]
-      RString_ a b -> pprint $ MkM [MkString a b]
+      RNat_ a b   -> RNat_ a b
+      RString_ a b -> RString_ a b
 
 
 showM a = print a <&> chars
