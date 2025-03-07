@@ -6,7 +6,6 @@ import Prelude
 Functor : (Type ~> Type) -> Type
 class (m : Type ~> Type) -> Functor m  where
    (<$>) : {a b} -> (a -> b) -> m a -> m b
-   ""
 
 MkFunctor :
      {m : Type ~> Type}
@@ -23,7 +22,6 @@ Applicative : (Type ~> Type) -> Type
 class (m : _) -> Functor m => Applicative m  where
   pure  : {a} -> a -> m a
   (<*>) : {a b} -> m (a -> b) -> m a -> m b
-  ""
 
 MkApplicative :
      {m : Type ~> Type}
@@ -46,7 +44,6 @@ pure {_} {_} {MkApplicative _ p _} = p
 Monad : (Type ~> Type) -> Type
 class (m : _) -> Applicative m => Monad m where
   join : {a} -> m (m a) -> m a
-  ""
 
 MkMonad :
      {m : Type ~> Type}
@@ -79,7 +76,6 @@ Just    : {a : Type} -> a -> Maybe a
 instance Functor Maybe where
   f <$> Nothing = Nothing
   f <$> Just a  = Just (f a)
-  ""
 
 mapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
 mapMaybe f Nothing = Nothing
@@ -92,7 +88,6 @@ instance Applicative Maybe where
   pure = Just
   Just f <*> Just a = Just (f a)
   _      <*> _      = Nothing
-  ""
 
 pureMaybe : {a : Type} -> a -> Maybe a
 pureMaybe = Just
@@ -108,7 +103,6 @@ lookupDict (Applicative Maybe) = dictApplicativeMaybe
 instance Monad Maybe where
   join (Just a) = a
   join Nothing = Nothing
-  ""
 
 joinMaybe : {a} -> Maybe (Maybe a) -> Maybe a
 joinMaybe Nothing = Nothing

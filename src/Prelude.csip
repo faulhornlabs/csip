@@ -37,4 +37,3 @@ Tuple3 : Type -> Type -> Type -> Type
 MkTuple3 : {a b c} -> a -> b -> c -> Tuple3 a b c
 
 
-"end of Prelude"

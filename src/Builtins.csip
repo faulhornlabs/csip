@@ -56,4 +56,3 @@ SuperClassCons : {a b} -> (a -> b) -> SuperClassList a -> SuperClassList a
 
 superClasses : (a : Type) -> SuperClassList a
 
-"end of Builtins"

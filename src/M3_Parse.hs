@@ -96,6 +96,9 @@ operator a = a `elem`
   , ["{", "}"]
   , ["[", "]"]
   , ["let", "in"]
+  , ["class",    "whereBegin", "whereEnd"]
+  , ["instance", "whereBegin", "whereEnd"]
+  , ["data",     "whereBegin", "whereEnd"]
   ]
 
 
@@ -385,11 +388,11 @@ layout = g True
         | Node2 l "\v" Empty <- l, Node2 l "do" Empty <- l
         -> g top l <> brace True (g True a) <> g top r
         | Node2 l "\v" Empty <- l, Node2 l "where" Empty <- l
-        -> g top l <> sing "where2" <> brace True (g True a) <> g top r
+        -> g top l <> sing "whereBegin" <> g True a <> sing "whereEnd" <> g top r
         | Node2 l "\v" Empty <- l
         -> g top l <> f a <> g top r
         | otherwise
-        -> g top l <> brace top (g top a) <> g top r
+        -> g top l <> g top a <> g top r
       Node2 _ t@"do"    _ -> error $ "Illegal " <> showToken t
       Node2 _ t@"where" _ -> error $ "Illegal " <> showToken t
       a -> coerce a
@@ -573,20 +576,16 @@ pattern NImport    = MkM ["import"]
 pattern NLetImport = MkM ["import",";"]
 pattern NLetArr    = MkM ["<-",";"]
 
-pattern NWhere       = MkM ["where2"]
-pattern NLetWhere    = MkM ["where2",";"]
-pattern NClass       = MkM ["class"]
-pattern NWClass      = MkM ["class","where2"]
-pattern NLetClass    = MkM ["class","where2",";"]
-pattern NInstance    = MkM ["instance"]
-pattern NWInstance   = MkM ["instance","where2"]
-pattern NLetInstance = MkM ["instance","where2",";"]
-pattern NData        = MkM ["data"]
-pattern NWData       = MkM ["data","where2"]
-pattern NLetData     = MkM ["data","where2",";"]
+pattern NClass       = MkM ["class","whereBegin","whereEnd"]
+pattern NLetClass    = MkM ["class","whereBegin","whereEnd",";"]
+pattern NInstance    = MkM ["instance","whereBegin","whereEnd"]
+pattern NLetInstance = MkM ["instance","whereBegin","whereEnd",";"]
+pattern NData        = MkM ["data","whereBegin","whereEnd"]
+pattern NLetData     = MkM ["data","whereBegin","whereEnd",";"]
 
 
 pattern NGuard = MkM ["|"]
+pattern NEnd   = MkM ["ModuleEnd"]
 
 pattern NEq    = MkM ["="]
 pattern NLet   = MkM ["=",";"]
@@ -752,7 +751,7 @@ isEmpty _ = False
 
 
 instance Parse (ExpTree' POp) where
-  parse = fmap patch . parse
+  parse = fmap (defEnd . patch) . parse
 
 joinAtN i n (Apps (MkM (splitAt i -> (xs, zs)))
                   (splitAt n -> (as, Apps (MkM ys) bs: cs))
@@ -788,10 +787,9 @@ norm r = case r of
   _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
   _ | Just z <- gg NSemi     NLeftArr   -> z
-  _ | Just z <- gg NSemi     NWhere     -> z
-  _ | Just z <- gg NSemi     NWClass    -> z
-  _ | Just z <- gg NSemi     NWInstance -> z
-  _ | Just z <- gg NSemi     NWData     -> z
+  _ | Just z <- gg NSemi     NClass     -> z
+  _ | Just z <- gg NSemi     NInstance  -> z
+  _ | Just z <- gg NSemi     NData      -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
   _ | Just z <- gg NLambda   NPi        -> z
@@ -802,12 +800,6 @@ norm r = case r of
   _ | Just z <- gg NArr      NExpl      -> z
   _ | Just z <- gg NArr      NImpl      -> z
   _ | Just z <- gg NArr      NBraces    -> z
-  _ | Just z <- gg NWhere    NClass     -> z
-  _ | Just z <- gg NWhere    NInstance  -> z
-  _ | Just z <- gg NWhere    NData      -> z
-  _ | Just z <- gg NLetWhere NClass     -> z
-  _ | Just z <- gg NLetWhere NInstance  -> z
-  _ | Just z <- gg NLetWhere NData      -> z
   Apps NParens [a] -> a
   r -> r
  where
@@ -823,6 +815,16 @@ patch :: ExpTree' Layout -> ExpTree' POp
 patch = \case
   a :@ b -> norm $ patch a :@ patch b
   t -> coerce t
+
+-- TODO: move to separate phase
+defEnd :: ExpTree' POp -> ExpTree' POp
+defEnd = addEnd . \case
+  a :@ b -> defEnd a :@ defEnd b
+  t -> t
+ where
+  addEnd = \case
+    e@(SApps l _) | l `elem` [NTy, NEq, NTEq, NOEq, NOTEq, NImport, NClass, NInstance, NData] -> xApps NSemi [e, REnd]
+    e -> e
 
 instance Print (ExpTree' POp) where
   print = print . unpatch
@@ -880,6 +882,7 @@ pattern RImport n e    = ZApps NLetImport [RVar n, e]
 pattern RClass    a b c = ZApps NLetClass    [a, b, c]
 pattern RInstance a b c = ZApps NLetInstance [a, b, c]
 pattern RData     a b c = ZApps NLetData     [a, b, c]
+pattern REnd            = ZApps NEnd []
 
 unGLam = \case
   _ :@@ _ -> Nothing
@@ -1143,7 +1146,8 @@ importModule m = do
       ROLet n t a b -> ROLet n t a $ f b
       RLetTy  n a b -> RLetTy  n a $ f b
       RImport   a b -> RImport   a $ f b
-      _ -> s
+      REnd -> s
+      _ -> undefined
 
 
 -------------------------------------------------

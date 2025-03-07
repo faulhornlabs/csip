@@ -1,4 +1,4 @@
-     a_ )_ ]_ }_ !>_
+     a_ )_ ]_ }_ !>_ whereEnd_
     _a _( _[ _{ _<! _if _let _\ _import _class _instance _data
      @_
     _@
@@ -39,13 +39,12 @@
      =_ :=_
     _,
      ,_
-     import_ class_ instance_ data_
-     where2_
-    _where2
     _#
      #_
+     import_
     _;
      ;_
+     class_ instance_ data_ _whereBegin whereBegin_ _whereEnd
      let_ _in if_ _then then_ _else
      [_ _] {_ _} (_ _) <!_ _!>
      END_   SEMI_ do_ where_
