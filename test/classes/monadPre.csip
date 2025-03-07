@@ -3,7 +3,6 @@
 
 import Prelude
 
-Functor : (Type ~> Type) -> Type
 class (m : Type ~> Type) -> Functor m  where
    (<$>) : {a b} -> (a -> b) -> m a -> m b
 
@@ -14,11 +13,10 @@ MkFunctor :
 
 superClasses (Functor m) = SuperClassNil
 
-(<$>) : {m a b} -> Functor m => (a -> b) -> m a -> m b
-(<$>) {_} {_} {_} {MkFunctor f} = f
+(<$>) : {m} -> Functor m => {a b} -> (a -> b) -> m a -> m b
+(<$>) {_} {MkFunctor f} = f
 
 
-Applicative : (Type ~> Type) -> Type
 class (m : _) -> Functor m => Applicative m  where
   pure  : {a} -> a -> m a
   (<*>) : {a b} -> m (a -> b) -> m a -> m b
@@ -41,7 +39,6 @@ pure {_} {_} {MkApplicative _ p _} = p
 (<*>) {_} {_} {_} {MkApplicative _ _ f} = f
 
 
-Monad : (Type ~> Type) -> Type
 class (m : _) -> Applicative m => Monad m where
   join : {a} -> m (m a) -> m a
 

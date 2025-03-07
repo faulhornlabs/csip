@@ -342,10 +342,33 @@ infer env r = do
     traceShow "7" $ "infer end " <<>> showM r <<>> "\n ==> " <<>> showM t <<>> "\n :: " <<>> showM v 
     pure (t, v)
 
+codomain = \case
+  RPi _ _ e -> codomain e
+  RHPi _ _ e -> codomain e
+  RCPi _ e -> codomain e
+  RIPi _ e -> codomain e
+  t -> t
+
+appHead = \case
+  RApp a _ -> appHead a
+  RHApp a _ -> appHead a
+  a -> a
+
+getVarName = \case
+  RVar n -> n
+  _t -> undefined --error' $ print t
+
 infer_ env r = case r of
-  RClass    _a _b c -> infer env c
-  RInstance _a _b c -> infer env c
-  RData     _a _b c -> infer env c
+  RClass    a b e | onTop env -> do
+    let n = getVarName $ appHead $ codomain a
+    vta <- check env Hole CType >>= evalEnv' env (typeName n)
+    let c = mkCon n $ Just vta
+    let env' = defineGlob n c vta env
+    _ <- infer env' a
+--    _ <- infer env' b
+    infer env' e
+  RInstance _a _b c | onTop env -> infer env c
+--  RData     _a _b c | onTop env -> infer env c
   REnd -> pure (TVal CType, CType)
   RLam n t a -> do
     vt <- check env t CType >>= evalEnv' env (typeName n)
