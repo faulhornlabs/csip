@@ -404,59 +404,53 @@ vTm n t v = mkValue n (rigid v) (closed v) $ VTm t v
 
 mkCon :: Name -> Maybe Val -> Val
 mkCon n ty = case n of
-  "AppendStr" -> f 2 \_ -> \case [WString va, WString vb] -> vString $ va <> vb; _ -> impossible
-  "EqStr"     -> f 2 \_ -> \case [WString va, WString vb] -> if va == vb then "True" else "False"; _ -> impossible
-  "TakeStr"   -> f 2 \_ -> \case [WNat va, WString vb] -> vString $ take (fromIntegral va) vb; _ -> impossible
-  "DropStr"   -> f 2 \_ -> \case [WNat va, WString vb] -> vString $ drop (fromIntegral va) vb; _ -> impossible
-  "DecNat"    -> f 1 \_ -> \case [WNat    va] -> vNat $ max 0 $ va - 1; _ -> impossible
-  "AddNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va + vb; _ -> impossible
-  "MulNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va * vb; _ -> impossible
-  "DivNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va `div` vb; _ -> impossible
-  "ModNat"    -> f 2 \_ -> \case [WNat    va, WNat    vb] -> vNat $ va `mod` vb; _ -> impossible
-  "EqNat"     -> f 2 \_ -> \case [WNat    va, WNat    vb] -> if va == vb then "True" else "False"; _ -> impossible
+  "AppendStr" -> f 2 \d -> \case [WString va, WString vb] -> vString $ va <> vb; _ -> d
+  "EqStr"     -> f 2 \d -> \case [WString va, WString vb] -> if va == vb then "True" else "False"; _ -> d
+  "TakeStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ take (fromIntegral va) vb; _ -> d
+  "DropStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ drop (fromIntegral va) vb; _ -> d
+  "DecNat"    -> f 1 \d -> \case [WNat va] -> vNat $ max 0 $ va - 1; _ -> d
+  "AddNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va + vb; _ -> d
+  "MulNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va * vb; _ -> d
+  "DivNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va `div` vb; _ -> d
+  "ModNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va `mod` vb; _ -> d
+  "EqNat"     -> f 2 \d -> \case [WNat va, WNat vb] -> if va == vb then "True" else "False"; _ -> d
   n -> vCon n ty
  where
   f ar g = WDelta n ar g
 
-evalDelta (WDeltaApp a v _) u def = evalDelta a (v: u) def
-evalDelta (WDelta _ _ g) u def = g def u
-evalDelta _ _ _ = impossible
-
 vApp :: Val -> Val -> RefM Val
 vApp a_ u = do
   (aa, a) <- force' a_
-  let def = mkApp aa u $ snd <$> metaDep a
-      def2 ar u
-        | closed u, rigid u = mkValue "app" (rigid a && rigid u) (closed a && closed u) $ VApp_ a u $ DeltaApp (ar - 1)
-        | otherwise         = def
-      def4 = force u >>= \case
-         u | closed u, rigid u -> evalDelta a [u] def
-           | otherwise -> def
+  let mkApp_ aa u l = mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u l
+      mkApp u d = do
+        ad <- case snd <$> metaDep d of
+          Just x  -> NeutralApp <$> mkMetaRef <*> pure x
+          Nothing -> pure $ ConApp
+        mkApp_ aa u ad
+
+      evalDelta d (WDeltaApp a v _) us = evalDelta d a (v: us)
+      evalDelta d (WDelta _ _ g) us = g d us
+      evalDelta _ _ _ = impossible
+
+      funApp f = vApp f u >>= \case
+        WRet x -> pure x
+        x -> mkApp_ aa u $ FunApp x
+
   case a of
-    (deltaArity -> Just ar)
-      | ar < 1     -> impossible
-      | ar > 1     -> force u >>= \u -> def2 ar u
-      | closed a, rigid a -> def4
-      | otherwise  -> def
+    (deltaArity -> Just ar) -> force u >>= \u -> case ar of
+      _ | ar < 1     -> impossible
+        | not (closed u && rigid u) -> mkApp u u
+        | ar > 1     -> mkApp_ a u $ DeltaApp (ar - 1)
+        | otherwise  -> evalDelta (mkApp u u) a [u]
     WSup c vs      -> evalCombinator c $ vs ++ [u]
-    WFun_ _ r      -> lookupRule r >>= \f -> app_ aa f u
-    WFunApp _ _ f  -> app_ aa f u
-    _              -> def
+    WFun_ _ r      -> lookupRule r >>= funApp
+    WFunApp _ _ f  -> funApp f
+    _              -> mkApp u a
  where
   deltaArity = \case
-    WDelta _ ar _ -> Just ar
+    WDelta _ ar _    -> Just ar
     WDeltaApp _ _ ar -> Just ar
     _ -> Nothing
-
-  app_ aa f u = vApp f u >>= \case
-    WRet x -> pure x
-    x -> mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u $ FunApp x
-
-  mkApp aa u i = do
-    ad <- case i of
-      Just x  -> NeutralApp <$> mkMetaRef <*> pure x
-      Nothing -> pure $ ConApp
-    mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u ad
 
 tLazy :: Tm -> RefM Tm
 tLazy = tLam "_"
