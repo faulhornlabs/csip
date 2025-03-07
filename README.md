@@ -167,6 +167,7 @@ The following limitations and bugs are planned to be lifted:
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns
 - missing check to rule out recursive meta solutions
+- missing check that constructors are defined in the right place
 - missing documentation
 - local definitions are not supported
 - only simple guards are supported

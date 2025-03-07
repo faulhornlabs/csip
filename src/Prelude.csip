@@ -27,8 +27,8 @@ the : (a : Type) -> a -> a
   = \_ x -> x
 
 
-Unit : Type
-TT   : Unit
+data Unit : Type where
+  TT   : Unit
 
 Tuple2 : Type -> Type -> Type
 MkTuple2 : {a b} -> a -> b -> Tuple2 a b

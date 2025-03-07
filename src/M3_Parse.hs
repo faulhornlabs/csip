@@ -10,7 +10,7 @@ module M3_Parse
   , ExpTree_
     ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
     , Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard
-    , RClass, RInstance, RData, RNat, RString)
+    , RClass, RInstance, RData, RNat, RString, REnd)
   , PPrint (pprint)
   , showM
   , zVar
@@ -394,6 +394,7 @@ layout = g True
         | otherwise
         -> g top l <> g top a <> g top r
       Node2 _ t@"do"    _ -> error $ "Illegal " <> showToken t
+      Node2 a "where" Empty -> g top a <> sing "whereBegin" <> sing "ModuleEnd" <> sing "whereEnd"
       Node2 _ t@"where" _ -> error $ "Illegal " <> showToken t
       a -> coerce a
 
@@ -1136,9 +1137,10 @@ type Raw_ a = ExpTree_ a Name
 importModule :: Source -> RefM (ExpTree' Desug -> ExpTree' Desug)
 importModule m = do
   t <- importFile m
-  pure $ g t
- where
-  g t s = f t
+  pure $ include t
+
+include :: ExpTree' Desug -> ExpTree' Desug -> ExpTree' Desug
+include t s = f t
    where
     f :: ExpTree' Desug -> ExpTree' Desug
     f = \case
@@ -1146,6 +1148,9 @@ importModule m = do
       ROLet n t a b -> ROLet n t a $ f b
       RLetTy  n a b -> RLetTy  n a $ f b
       RImport   a b -> RImport   a $ f b
+      RClass    a b c -> RClass    a b $ f c
+      RInstance a b c -> RInstance a b $ f c
+      RData     a b c -> RData     a b $ f c
       REnd -> s
       _ -> undefined
 
@@ -1165,6 +1170,7 @@ scope   :: ExpTree' Desug -> RefM (Raw_ a)
 scope t = runReader mempty ff  where
   ff r = coerceExpTree <$> f t  where
     f = \case
+      RData a b c -> f $ include a $ include b c
       RImport (MkM [m]) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
       RVar (MkM [MkNat s n]) -> pure $ RNat_ s n
       RVar (MkM [MkString s n]) -> pure $ RString_ s n

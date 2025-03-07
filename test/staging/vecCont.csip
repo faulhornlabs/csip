@@ -2,20 +2,22 @@
 
 import Builtins
 
-Unit : Ty
-TT   : Unit
 
-Carry      : Ty
-ClearCarry : Carry
-SetCarry   : Carry
+data Unit : Ty where
+  TT : Unit
 
-W64    : Ty
-Zero64 : W64
-PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
+data Carry : Ty where
+  ClearCarry : Carry
+  SetCarry   : Carry
 
-N : Type
-Z : N
-S : N -> N
+data W64 : Ty where
+  Zero64 : W64
+  PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
+
+
+data N : Type where
+  Z : N
+  S : N -> N
 
 toN : Nat -> N
 toN 0 = Z

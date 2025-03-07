@@ -69,9 +69,9 @@ join {_} {MkMonad _ f} = f
 
 // Maybe monad
 
-Maybe   : Type ~> Type
-Nothing : {a : Type} -> Maybe a
-Just    : {a : Type} -> a -> Maybe a
+data Maybe : Type ~> Type where
+  Nothing : {a : Type} -> Maybe a
+  Just    : {a : Type} -> a -> Maybe a
 
 instance Functor Maybe where
   f <$> Nothing = Nothing
@@ -115,9 +115,9 @@ lookupDict (Monad Maybe) = dictMonadMaybe
 
 // List monad
 
-List   : Type ~> Type
-Nil    : {a : Type} -> List a
-LCons  : {a : Type} -> a -> List a -> List a
+data List : Type ~> Type where
+  Nil    : {a : Type} -> List a
+  LCons  : {a : Type} -> a -> List a -> List a
 
 mapList : {a b : Type} -> (a -> b) -> List a -> List b
 mapList f Nil = Nil

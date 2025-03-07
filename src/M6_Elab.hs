@@ -346,6 +346,7 @@ infer_ env r = case r of
   RClass    _a _b c -> infer env c
   RInstance _a _b c -> infer env c
   RData     _a _b c -> infer env c
+  REnd -> pure (TVal CType, CType)
   RLam n t a -> do
     vt <- check env t CType >>= evalEnv' env (typeName n)
     let v = vVar n
