@@ -6,7 +6,7 @@ AddNat : Nat -> Nat -> Nat
 
 f : Nat -> Nat
 f (Succ (Succ a)) = a
-f a = AddNat 1 a
+f a = Succ a
 
 f (f 3)
 

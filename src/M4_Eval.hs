@@ -758,7 +758,9 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
       TView a b
         | get -> TView <$> f False a <*> f get b
         | otherwise -> undefined
-      TApps (TVal "Succ") [n]    | get -> f get n <&> \r -> TView (TVal succView) (TVal "SuccOk" `TApp` r)
+      TApps (TVal "Succ") [n]
+        | get       -> f get n <&> \r -> TView (TVal succView) (TVal "SuccOk" `TApp` r)
+        | otherwise -> f get n >>= \r -> vNat 1 <&> \one -> TApps (TVal $ mkCon "AddNat" Nothing) [TVal one, r]
       TApps (TVal "Cons") [a, b] | get -> f get a >>= \a -> f get b <&> \b -> TView (TVal consView) (TApps (TVal "ConsOk") [a, b])
       TVal WNat{}    | get -> pure $ TView (TVal (mkCon "EqNat" Nothing) `TApp` t) $ TVal "True"
       TVal WString{} | get -> pure $ TView (TVal (mkCon "EqStr" Nothing) `TApp` t) $ TVal "True"
