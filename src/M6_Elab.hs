@@ -596,7 +596,11 @@ reverseRules = g where
     RLet  n t a b -> RLet  n t a (g b)
     ROLet n t a b -> ROLet n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
-    r -> r  -- TODO
+    RClass    a b c -> RClass    a b $ g c
+    RInstance a b c -> RInstance a b $ g c
+    RData     a b c -> RData     a b $ g c
+    REnd -> REnd
+    r -> r
 
   f h acc = \case
     RLet n t a b | Just h' <- ruleHead a, h' == h -> f h ((n, t, a): acc) b
