@@ -16,7 +16,7 @@ module M3_Parse
   , zVar
   , coerceExpTree
 
-  , Mixfix, addSuffix
+  , Mixfix, addPrefix, addSuffix
   , OpSeq', ExpTree', Raw_, Scoped_
   ) where
 
@@ -1222,6 +1222,9 @@ unscope t = runReader mempty ff where
       a :@ b -> (:@) <$> f a <*> f b
       RNat_ a b -> pure $ RVar $ MkM [MkNat a b]
       RString_ a b -> pure $ RVar $ MkM [MkString a b]
+
+addPrefix :: String -> Mixfix a -> Mixfix a
+addPrefix s a = MkM [mkToken $ fromString s <> showMixfix a]
 
 addSuffix :: Mixfix a -> String -> Mixfix a
 addSuffix a s = MkM [mkToken $ showMixfix a <> fromString s]

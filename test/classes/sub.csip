@@ -6,7 +6,7 @@ import Builtins
 Num : Type -> Type
 MkNum : {a} -> (a -> a) -> Num a
 
-superClasses (Num a) = SuperClassNil
+superClasses (Num a) = SuperClassNil _
 
 double : {a} -> Num a => a -> a
 double {a} {MkNum f} x = f x
@@ -16,7 +16,7 @@ MkNum2 : {a} -> Num a -> Num2 a
 
 selNum2Num : {a} -> Num2 a -> Num a
 selNum2Num (MkNum2 d) = d
-superClasses (Num2 a) = SuperClassCons selNum2Num SuperClassNil
+superClasses (Num2 a) = SuperClassCons _ _ selNum2Num (SuperClassNil _)
 
 numDict = MkNum \n -> AddNat n n
 lookupDict (Num Nat) = numDict

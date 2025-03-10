@@ -10,7 +10,7 @@ Four : N
 Num : Type -> Type
 MkNum : (a : Type) -> (a -> a -> a) -> Num a
 
-superClasses (Num a) = SuperClassNil
+superClasses (Num a) = SuperClassNil _
 
 lookupDict (Num N) = MkNum N Add
 

@@ -51,8 +51,8 @@ Snd       : {a b} -> Prod a b -> b
 lookupDict : (a : Type) -> a
 
 SuperClassList : (a : Type) -> Type
-SuperClassNil  : {a} -> SuperClassList a
-SuperClassCons : {a b} -> (a -> b) -> SuperClassList a -> SuperClassList a
+SuperClassNil  : (a : Type) -> SuperClassList a
+SuperClassCons : (a : Type) -> (b : Type) -> (a -> b) -> SuperClassList a -> SuperClassList a
 
 superClasses : (a : Type) -> SuperClassList a
 

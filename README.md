@@ -158,11 +158,12 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- type class and instance definitions should be desugared by hand
+- type instance definitions should be desugared by hand
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - foralls for functions and constructors should be explicitly given
+- class constraint should be explicitly given in type class method definitions
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns

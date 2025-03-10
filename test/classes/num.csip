@@ -3,14 +3,9 @@
 
 import Builtins
 
-Num : Type -> Type
-MkNum : {a : Type} -> (a -> a -> a) -> Num a
+class {a : Type} -> Num a where
+  add : {a} -> Num a => a -> a -> a
 
-lookupDict (Num Nat) = MkNum AddNat
-
-
-add : {a} -> Num a => a -> a -> a
-add {_} {MkNum f} = f
-
+lookupDict (Num Nat) = NumDict AddNat
 
 add 4 5

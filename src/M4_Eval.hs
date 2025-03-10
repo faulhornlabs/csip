@@ -26,6 +26,7 @@ module M4_Eval
   , updateMeta
 
   , pattern CFail, lookupDictFun, superClassesFun
+  , addDictSelector
   ) where
 
 import M1_Base
@@ -559,6 +560,18 @@ addRule (fromListIS -> boundvars) lhs_ rhs_ = do
       ne <- mkName "w"   -- TODO: better naming
       pure $ TLet ne e $ TMatch c (TVar ne) (foldr (\(i, n) y -> TLet n (TSel len i $ TVar ne) y) tx $ zip [0..] ns) f
     _ -> impossible
+
+addDictSelector :: Val -> Name -> Int -> Int -> RefM ()
+addDictSelector (WFun_ _ r) dict args i = do
+  old <- lookupRule r
+  w <- mkName "_"
+  d <- mkName "d"
+  lold <- tLazy $ TApps (TVal old) [TVar w, TVar d]
+  body <- tLazy $ TRet $ TSel args i $ TVar d
+  f <- tLam d $ TMatch dict (TVar d) body lold
+  new <- tLam w f
+  updateRule r =<< evalClosed new
+addDictSelector _ _ _ _ = impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
 

@@ -383,15 +383,91 @@ getVarName = \case
   RVar n -> n
   _t -> undefined --error' $ print t
 
+dictName :: NameStr -> NameStr
+dictName n = addSuffix n "Dict"
+
+dictType :: Val -> [Val] -> RefM ([Val], Val)
+dictType classTy methodTys = do
+  (n, parTy, classTy') <- getHPi classTy
+  (supers, classTy'') <- getSupers classTy'
+  methodTys' <- forM methodTys \methodTy -> do
+    (_, methodTy') <- getHPi_ n methodTy
+    (_, methodTy'') <- getSuper methodTy'
+    pure methodTy''
+  t <- mkHPi n parTy $ mkPis supers $ mkPis methodTys' $ pure classTy''
+  supers' <- forM supers \s -> vLam (vVar n) s
+  pure (supers', t)
+ where
+  getHPi__ v = spine v <&> \case
+    (CHPi, [a, b]) -> (a, b)
+    _ -> error' $ print v
+
+  getHPi_ :: Name -> Val -> RefM (Val, Val)
+  getHPi_ n v = getHPi__ v >>= \(a, b) -> vApp b (vVar n) <&> \b -> (a, b)
+
+  getHPi :: Val -> RefM (Name, Val, Val)
+  getHPi v = getHPi__ v >>= \(a, b) -> do
+    n <- lamName "m" b >>= mkName
+    b <- vApp b $ vVar n
+    pure (n, a, b)
+
+  getSuper_ :: Val -> RefM (Maybe (Val, Val))
+  getSuper_ v = spine v <&> \case
+    (CCPi, [a, b]) -> Just (a, b)
+    _ -> Nothing
+
+  getSupers v = getSuper_ v >>= \case
+    Just (c, v) -> getSupers v <&> first (c:)
+    Nothing -> pure ([], v)
+  getSuper v = getSuper_ v <&> fromJust
+
+  mkHPi :: Name -> Val -> RefM Val -> RefM Val
+  mkHPi n a b = b >>= \b -> vLam (vVar n) b >>= \b -> vApps CHPi [a, b]
+
+  mkPi a b = b >>= \b -> vConst b >>= \b -> vApps CPi [a, b]
+
+  mkPis :: [Val] -> RefM Val -> RefM Val
+  mkPis [] b = b
+  mkPis (t: ts) b = mkPi t $ mkPis ts b
+
+defineSuperclasses :: NameStr -> Val -> Name -> Int -> [Val] -> RefM ()
+defineSuperclasses nclass vclass dict num supers = do
+  m <- mkName "m"
+  let c = TVal vclass `TApp` TVar m
+  ss <- forM (zip [0..] supers) \(i, s) -> do
+    sn <- mkName $ addSuffix (addPrefix "sel" nclass) (show i)
+    sf <- mkFun sn
+    addDictSelector sf dict num $ i + 1
+    pure (TVal s `TApp` TVar m, TVal sf `TApp` TVar m)
+  let rhs = foldr (\(a, b) t -> TApps (TVal "SuperClassCons") [c, a, b, t]) (TVal "SuperClassNil" `TApp` c) ss
+  f <- mkFun "superClasses"
+  addRule [m] (TVal f `TApp` c) rhs
+
+
+inferMethods env r = case r of
+  RLetTy n t b | onTop env -> do
+    vta <- check env t CType >>= evalEnv' env (typeName n)
+    let ff n = if isConName n then undefined else mkFun n
+    (n, _, env') <- defineGlob n ff vta env
+    inferMethods env' b <&> first ((n, vta):)
+  REnd -> pure ([], env)
+  _ -> errorM "can't infer method"
+
 infer_ :: Env -> Raw -> RefM (Tm, Val)
 infer_ env r = case r of
-  RClass    a _b e | onTop env -> do
-    let n = getVarName $ appHead $ codomain a
-    vta <- check env Hole CType >>= evalEnv' env (typeName n)
-    (_n, _, env') <- defineGlob n (\n -> pure $ mkCon n $ Just vta) vta env
-    _ <- infer env' a
---    _ <- infer env' b
-    infer env' e
+  RClass a b e | onTop env -> do
+    let n_ = getVarName $ appHead $ codomain a
+    vta <- check env Hole CType >>= evalEnv' env (typeName n_)
+    (_n, tc, env') <- defineGlob n_ (\n -> pure $ mkCon n $ Just vta) vta env
+    ct <- check env' a CType >>= evalEnv env
+    (mts, env'') <- inferMethods env' b
+    (supers, dt) <- dictType ct $ map snd mts
+    (dn, _, env''') <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env''
+    forM_ (zip [0..] mts) \(i, (mname, _)) -> case lookupIM mname (globals env''') of
+      Just (vf, _) -> addDictSelector vf dn (1 + length supers + length mts) (1 + length supers + i)
+      _ -> impossible
+    () <- defineSuperclasses n_ tc dn (1 + length supers + length mts) supers
+    infer env''' e
   RInstance _a _b c | onTop env -> infer env c
 --  RData     _a _b c | onTop env -> infer env c
   REnd -> pure (TVal CType, CType)

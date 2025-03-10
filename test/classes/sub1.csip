@@ -14,7 +14,7 @@ MkNum2 : {a} -> Num a -> Num2 a
 
 selNum2Num : {a} -> Num2 a -> Num a
 selNum2Num (MkNum2 d) = d
-superClasses (Num2 a) = SuperClassCons selNum2Num SuperClassNil
+superClasses (Num2 a) = SuperClassCons _ _ selNum2Num (SuperClassNil _)
 
 numDict = MkNum \n -> AddNat n n
 lookupDict (Num Nat) = numDict
@@ -27,12 +27,12 @@ Z : N
 S : N -> N
 
 selTy : {a} -> N -> SuperClassList a -> Type
-selTy Z (SuperClassCons {_} {t} _ _) = t
-selTy (S i) (SuperClassCons _ l) = selTy i l
+selTy Z (SuperClassCons _ t _ _) = t
+selTy (S i) (SuperClassCons _ _ _ l) = selTy i l
 
 sel : {a} -> (i : N) -> (l : SuperClassList a) -> a -> selTy i l
-sel Z (SuperClassCons f _) = f
-sel (S i) (SuperClassCons _ l) = sel i l
+sel Z (SuperClassCons _ _ f _) = f
+sel (S i) (SuperClassCons _ _ _ l) = sel i l
 
 double2 : {a} -> Num2 a => a -> a
 double2 {a} {d} x = double {a} {sel Z (superClasses (Num2 a)) d} x
