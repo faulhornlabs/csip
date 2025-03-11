@@ -1,6 +1,6 @@
 # elab
 # eval
 
-import Prelude
+import Builtins
 
-eqStr (appendStr "al" "ma") "alma"
+EqStr (AppendStr "al" "ma") "alma"
