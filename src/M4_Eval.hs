@@ -2,7 +2,7 @@ module M4_Eval
   ( Combinator, varName
 
   , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard)
-  , Tm, tLam, tMeta
+  , Tm, tLam, tMeta, tLets
   , Raw, Scoped
 
   , Val (WSup, WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta)
@@ -558,8 +558,10 @@ addRule (fromListIS -> boundvars) lhs_ rhs_ = do
       x <- foldr (uncurry $ compilePat bv f) m $ zip ps $ map TVar ns
       tx <- tLazy x
       ne <- mkName "w"   -- TODO: better naming
-      pure $ TLet ne e $ TMatch c (TVar ne) (foldr (\(i, n) y -> TLet n (TSel len i $ TVar ne) y) tx $ zip [0..] ns) f
+      pure $ TLet ne e $ TMatch c (TVar ne) (tLets (zip ns [TSel len i $ TVar ne | (i, _) <- zip [0..] ns]) tx) f
     _ -> impossible
+
+tLets ds e = foldr (uncurry TLet) e ds
 
 addDictSelector :: Val -> Name -> Int -> Int -> RefM ()
 addDictSelector (WFun_ _ r) dict args i = do
@@ -695,7 +697,7 @@ quoteTm  = quoteTm_ True False
 quoteTm' = quoteTm_ True True
 
 quoteTm_ vtm opt v =
-  quoteTm__ vtm opt v <&> \(vs, x) -> foldl (\t (n, v) -> TLet n v t) x vs
+  quoteTm__ vtm opt v <&> \(vs, x) -> tLets (reverse vs) x
 
 quoteTm__ vtm opt v_ = do
   v <- force__ v_
