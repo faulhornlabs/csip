@@ -432,7 +432,7 @@ getSuper v = spine v <&> \case
     _ -> Nothing
 
 mkHPi :: (Name, Val) -> RefM Val -> RefM Val
-mkHPi (n, a) b = b >>= \b -> vLam (vVar n) b >>= \b -> vApps CHPi [a, b]
+mkHPi (n, a) b = b >>= \b -> vLam n b >>= \b -> vApps CHPi [a, b]
 
 mkCPi a b = b >>= \b -> vApps CCPi [a, b]
 
@@ -453,7 +453,7 @@ dictType classTy methodTys = do
     (_, methodTy'') <- getSuper methodTy' <&> fromJust
     pure methodTy''
   t <- mkHPi (n, parTy) $ mkMult mkPi supers $ mkMult mkPi methodTys' $ pure classTy''
-  supers' <- forM supers \s -> vLam (vVar n) s
+  supers' <- forM supers \s -> vLam n s
   pure (supers', t)
 
 addMethodType :: [(Name, Val)] -> [Val] -> Val -> Env -> (Name, Val) -> RefM (Env, Val)
@@ -461,7 +461,7 @@ addMethodType ns is arg env (n_, t) = do
   let n = addSuffix (nameStr n_) "'"
   ((vn, _{- TODO -}), t) <- getHPi t <&> fromJust
   (_, t) <- getSuper t <&> fromJust
-  f <- vLam (vVar vn) t
+  f <- vLam vn t
   t <- mkMult mkHPi ns $ mkMult mkCPi is $ vApp f arg
   (_, mn, env) <- defineGlob n mkFun t env
   pure (env, mn)
@@ -535,7 +535,7 @@ addLookupDictRule (MkClassData classVal dictVal supers _) ns is_ arg_ mns = do
  where
   abst :: Val -> RefM Tm
   abst v = do
-    f <- vLams (vVar . fst <$> ns) v
+    f <- vLams (fst <$> ns) v
     pure $ TApps (TVal f) $ TVar . fst <$> ns
 
 infer_ :: Env -> Raw -> RefM (Tm, Val)
@@ -569,16 +569,14 @@ infer_ env r = case r of
   RLam n t a -> do
     vt <- check env t CType >>= evalEnv' env (typeName n)
     (n, env') <- defineBound n vt env
-    let v = vVar n
     (ta, va) <- insertH env $ infer env' a
-    f <- vLam v va
+    f <- vLam n va
     (,) <$> tLam n ta <*> vApps CPi [vt, f]
   RHLam n t a -> do
     vt <- check env t CType >>= evalEnv' env (typeName n)
     (n, env') <- defineBound n vt env
-    let v = vVar n
     (ta, va) <- infer env' a
-    f <- vLam v va
+    f <- vLam n va
     (,) <$> tLam n ta <*> vApps CHPi [vt, f]
   Hole -> do
     t <- freshMeta env

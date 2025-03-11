@@ -117,7 +117,7 @@ unify aa{-actual-} bb{-expected-} = do
  where
  ff v@(WMetaApp _ b) = do
    b <- force b
-   pure (v, case b of WVar -> Just b; _ -> Nothing)
+   pure (v, case b of WVar -> Just $ name b; _ -> Nothing)
  ff v = pure (v, Nothing)
 
  go :: Val -> Val -> RefM ()

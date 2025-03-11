@@ -470,17 +470,17 @@ vApps v (a: as) = vApp v a >>= \x -> vApps x as
 vSup :: Combinator -> [Val] -> RefM Val
 vSup c vs = mkValue "lam" (rigidCombinator c && all rigid vs) (all closed vs) $ VSup c vs
 
-vLam_ :: Val -> Tm -> RefM Val
+vLam_ :: Name -> Tm -> RefM Val
 vLam_ n t = do
-  (c, ns) <- mkCombinator (name n) t
+  (c, ns) <- mkCombinator n t
   vSup c $ vVar <$> ns
 
-vLam :: Val -> Val -> RefM Val
+vLam :: Name -> Val -> RefM Val
 vLam n v = force v >>= \case
   WApp a b -> force b >>= \case
-    b@WVar | b == n -> do
+    b@WVar | name b == n -> do
       ta <- quoteTm' a
-      (c, _) <- mkCombinator (name n) ta
+      (c, _) <- mkCombinator n ta
       if isConstComb c
         then pure a
         else def   -- TODO: optimize this
@@ -494,7 +494,7 @@ vLam n v = force v >>= \case
 vConst :: Val -> RefM Val
 vConst v = do
   n <- mkName "_"
-  vLam (vVar n) v
+  vLam n v
 
 isConstComb (MkCombinator _ _ vs _) = last vs == "_"
 
