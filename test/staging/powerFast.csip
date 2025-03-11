@@ -7,11 +7,12 @@ data Int : Ty where
   Mul : Int -> Int -> Int
   Add : Int -> Int -> Int
 
+instance Num (Code Int) where
+  add' a b = Add a b
+
 sqr = \a -> do
   b := a
   Mul b b
-
-(+) = Add
 
 (^) : Int -> Nat -> Int
 a ^ 0 = One

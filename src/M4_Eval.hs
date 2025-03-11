@@ -13,7 +13,7 @@ module M4_Eval
   , force_, force', force
 
   , eval, evalClosed      -- Tm  -> Val
-  , quoteTm'   -- Val -> Tm
+  , quoteTm_, quoteTm'   -- Val -> Tm
   , quoteNF   -- Val -> Raw
   , quoteNF'
 
@@ -131,7 +131,7 @@ data Tm_ a
 
 instance PPrint a => PPrint (Tm_ a) where
   pprint = \case
-    TVar n -> pprint n
+    TVar n -> "Var" :@ pprint n
     TApp a b -> "@" :@ pprint a :@ pprint b
     TSup c ts -> foldl (:@) (pprint c) $ map pprint ts
     TLet n a b -> zVar ["=",";"] :@ pprint n :@ pprint a :@ pprint b
@@ -559,7 +559,13 @@ addRule (fromListIS -> boundvars) lhs_ rhs_ = do
       tx <- tLazy x
       ne <- mkName "w"   -- TODO: better naming
       pure $ TLet ne e $ TMatch c (TVar ne) (tLets (zip ns [TSel len i $ TVar ne | (i, _) <- zip [0..] ns]) tx) f
-    _ -> impossible
+    TApps (TVal _) (_:_) -> undefined
+    TApps v (_:_) -> error' $ print $ pprint v
+    TGen{} -> undefined
+    TVal{} -> undefined
+    TSup{} -> undefined
+    TLet{} -> undefined
+    p -> error' $ (\a b -> "TODO (13):\n  " <> a <> "\n... =\n  " <> b) <$> print p <*> print rhs_
 
 tLets ds e = foldr (uncurry TLet) e ds
 
@@ -693,13 +699,13 @@ rRet e = "return" :@ e
 quoteNF' = quoteTm >=> tmToRaw
 
 quoteTm, quoteTm' :: Val -> RefM Tm
-quoteTm  = quoteTm_ True False
-quoteTm' = quoteTm_ True True
+quoteTm  = quoteTm_ True True False
+quoteTm' = quoteTm_ True True True
 
-quoteTm_ vtm opt v =
-  quoteTm__ vtm opt v <&> \(vs, x) -> tLets (reverse vs) x
+quoteTm_ lets vtm opt v =
+  quoteTm__ lets vtm opt v <&> \(vs, x) -> tLets (reverse vs) x
 
-quoteTm__ vtm opt v_ = do
+quoteTm__ lets vtm opt v_ = do
   v <- force__ v_
   (ma_, vs_) <- runWriter $ go v  -- writer is needed for the right order
   let
@@ -718,8 +724,8 @@ quoteTm__ vtm opt v_ = do
       WTm t _ -> pure t
       WVar  -> pure $ TVar $ name v
       _ | opt -> impossible
-      WDelta n _ _ -> pure $ TVar n
-      WCon n  -> pure $ TVar n
+      WDelta{} -> pure $ TVal v
+      WCon{}  -> pure $ TVal v
       WMeta{} -> pure $ TVar $ name v
 --      WFun_ n r  -> lookupRule n r >>= gg
       WFun{}  -> pure $ TVar $ name v
@@ -739,6 +745,7 @@ quoteTm__ vtm opt v_ = do
   go v wst = walkIM ch share up [v]
    where
     share v _ = case v of
+       _ | not lets -> pure False
        _ | opt, closed v -> pure False
        WMeta{} -> pure False
        WVar  -> pure False
@@ -860,7 +867,15 @@ instance PPrint Val where
   pprint = \case
     WNat n -> pprint (RNat n :: Raw)
     WString n -> pprint (RString n :: Raw)
-    a -> pprint $ name a
+    WVar -> "Var" --pprint (RVar $ name n :: Raw)
+    WFun{} -> "Fun"
+    WCon{} -> "Con"
+    WMeta{} -> "Meta"
+    WApp{} -> "App"
+    WSup{} -> "Sup"
+    WTm{} -> "Tm"
+    WDelta{} -> "Delta"
+    _ -> "???"
 
 -----------------------
 

@@ -521,8 +521,9 @@ inferMethodBodies env r = case r of
 addLookupDictRule :: ClassData -> [(Name, Val)] -> [Val] -> Val -> [Val] -> RefM ()
 addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ arg_ mns = do
   lookup <- TApp . TVal <$> mkFun "lookupDict"
-  arg <- abst arg_
-  is <- mapM abst is_
+  arg <- quoteTm' arg_
+  arg' <- quoteTm_ False False False arg_
+  is <- mapM quoteTm' is_
   ds <- forM is \_ -> mkName "d"
   let rhs
         = tLets (zip ds $ map lookup is)
@@ -532,11 +533,8 @@ addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ ar
         ++ [ TApps (TVal mn) $ map TVar $ ns ++ ds
            | mn <- mns]
         )
-  addRule ns (lookup (TVal classVal `TApp` arg)) rhs
+  addRule ns (lookup (TVal classVal `TApp` arg')) rhs
   pure ()
- where
-  abst :: Val -> RefM Tm
-  abst v = quoteTm' v
 
 infer_ :: Env -> Raw -> RefM (Tm, Val)
 infer_ env r = case r of
