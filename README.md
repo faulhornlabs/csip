@@ -158,17 +158,18 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- type instance definitions should be desugared by hand
 - missing check that no unsolved metas left in global definitions
 - pattern matching compiled to object level constructs is not supported
 - object level recursion compiled to object level constructs is not supported
 - foralls for functions and constructors should be explicitly given
 - class constraint should be explicitly given in type class method definitions
+- class method names cannot be operators
 - missing check that pattern matching is not allowed on object language constructors
 - missing check that the main expression should be Code in staging mode
 - missing check that constructors are saturated in patterns
 - missing check to rule out recursive meta solutions
 - missing check that constructors are defined in the right place
+- missing checks on type class and instance definitions
 - missing documentation
 - local definitions are not supported
 - only simple guards are supported
@@ -179,13 +180,14 @@ The following limitations and bugs are planned to be lifted:
 - sharing between values are sometimes lost during printing
 - dot patterns (in dependent pattern matching) are not supported
 - pattern synonyms are not supported
+- multi parameter type classes are not supported
+- type class instance methods should be named as method_name ++ `'`
 - there is no stage polymorphism
 - `import` acts as an "include"
 - no support for multiple object codes
-- pattern synonyms are not supported
 - types are not shown in elaborated output
 - implicit/explicit distinction of lambdas and applications are missing in elaborated output
-- `do` should be at the end of the line
+- `do` and `where` should be at the end of the line
 - multiline comments interferes with layout rules
 - string literal printing is not the inverse of the string literal parsing
 - desugared `(a b : c)` does not share `c`

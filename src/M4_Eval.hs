@@ -866,16 +866,16 @@ pattern CFail :: Val
 pattern CFail = "Fail"
 
 {-# noinline lookupDictFun #-}
-lookupDictFun = topM $ vFun "lookupDict" CFail
+lookupDictFun = WFun_ "lookupDict" $ topRef CFail
 
 {-# noinline superClassesFun #-}
-superClassesFun = topM $ vFun "superClasses" CFail
+superClassesFun = WFun_ "superClasses" $ topRef CFail
 
 {-# noinline succView #-}
-succView = topM $ vFun "succView" CFail
+succView = WFun_ "succView" $ topRef CFail
 
 {-# noinline consView #-}
-consView = topM $ vFun "consView" CFail
+consView = WFun_ "consView" $ topRef CFail
 
 mkFun = \case
   "succView"     -> pure succView

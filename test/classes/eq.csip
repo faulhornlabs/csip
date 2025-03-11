@@ -1,0 +1,42 @@
+# elab
+# eval
+
+import Builtins
+
+(&&) : Bool -> Bool -> Bool
+True && a = a
+_    && _ = False
+
+not : Bool -> Bool
+not True = False
+not False = True
+
+class {a : Type} -> Eq a where
+  eq  : {a} -> Eq a => a -> a -> Bool
+
+(==) = eq
+(/=) = \a b -> not (a == b)
+
+
+instance Eq Nat where
+  eq' a b = EqNat a b
+
+
+data List : Type -> Type where
+  Nil  : {a} -> List a
+  (::) : {a} -> a -> List a -> List a
+
+instance {a} -> Eq a => Eq (List a)  where
+  eq' {a} Nil       Nil       = True
+  eq' {a} (x :: xs) (y :: ys) = eq {a} x y && eq' xs ys
+  eq' {a} _         _         = False
+
+
+main =
+      (1 :: Nil) :: Nil  ==  (1 :: Nil) :: Nil
+  &&  (2 :: Nil) :: Nil  /=  (1 :: Nil) :: Nil
+  &&         Nil :: Nil  /=  (1 :: Nil) :: Nil
+  &&                Nil  /=  (1 :: Nil) :: Nil
+
+main
+

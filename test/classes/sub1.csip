@@ -5,6 +5,7 @@ import Builtins
 
 Num : Type -> Type
 MkNum : {a} -> (a -> a) -> Num a
+superClasses (Num a) = SuperClassNil _
 
 double : {a} -> Num a => a -> a
 double {a} {MkNum f} x = f x

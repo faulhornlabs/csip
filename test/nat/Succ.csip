@@ -1,8 +1,7 @@
 # elab
 # eval
 
-Succ : Nat -> Nat
-AddNat : Nat -> Nat -> Nat
+import Builtins
 
 f : Nat -> Nat
 f (Succ (Succ a)) = a

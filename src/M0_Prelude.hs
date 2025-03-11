@@ -69,7 +69,7 @@ import Data.Foldable as P
   , concat, concatMap, find, foldlM, foldrM, for_, mapM_, maximumBy, minimumBy, sequence_, sequenceA_, traverse_
   )
 import Data.Traversable as P
-  ( Traversable (sequenceA), traverse, sequence, mapM )
+  ( Traversable (sequenceA), traverse, sequence, mapM, mapAccumM )
 
 import Debug.Trace as P (trace, traceM)
 import Data.Coerce as P (coerce)

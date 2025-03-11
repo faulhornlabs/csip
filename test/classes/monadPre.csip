@@ -4,11 +4,15 @@
 import Prelude
 
 class {m : Type ~> Type} -> Functor m  where
-   (<$>) : {m} -> Functor m => {a b} -> (a -> b) -> m a -> m b
+  fmap : {m} -> Functor m => {a b} -> (a -> b) -> m a -> m b
+
+(<$>) = fmap
 
 class {m} -> Functor m => Applicative m  where
-  pure  : {m} -> Applicative m => {a} -> a -> m a
-  (<*>) : {m} -> Applicative m => {a b} -> m (a -> b) -> m a -> m b
+  pure : {m} -> Applicative m => {a} -> a -> m a
+  app  : {m} -> Applicative m => {a b} -> m (a -> b) -> m a -> m b
+
+(<*>) = app
 
 class {m} -> Applicative m => Monad m where
   join : {m} -> Monad m => {a} -> m (m a) -> m a
@@ -19,7 +23,6 @@ class {m} -> Applicative m => Monad m where
 (>>=) {m} {a} {b} ma f = join (f <$> ma)
 
 
-
 // Maybe monad
 
 data Maybe : Type ~> Type where
@@ -27,43 +30,18 @@ data Maybe : Type ~> Type where
   Just    : {a : Type} -> a -> Maybe a
 
 instance Functor Maybe where
-  f <$> Nothing = Nothing
-  f <$> Just a  = Just (f a)
-
-mapMaybe : {a b : Type} -> (a -> b) -> Maybe a -> Maybe b
-mapMaybe f Nothing = Nothing
-mapMaybe f (Just x) = Just (f x)
-
-dictFunctorMaybe = FunctorDict mapMaybe
-lookupDict (Functor Maybe) = dictFunctorMaybe
+  fmap' f Nothing  = Nothing
+  fmap' f (Just a) = Just (f a)
 
 instance Applicative Maybe where
-  pure = Just
-  Just f <*> Just a = Just (f a)
-  _      <*> _      = Nothing
+  pure' x = Just x
 
-pureMaybe : {a : Type} -> a -> Maybe a
-pureMaybe = Just
-
-appMaybe : {a b : Type} -> Maybe (a -> b) -> Maybe a -> Maybe b
-appMaybe (Just f) (Just x) = Just (f x)
-appMaybe _ _ = Nothing
-
-dictApplicativeMaybe = ApplicativeDict dictFunctorMaybe pureMaybe appMaybe
-lookupDict (Applicative Maybe) = dictApplicativeMaybe
-
+  app' (Just f) (Just a) = Just (f a)
+  app' _        _        = Nothing
 
 instance Monad Maybe where
-  join (Just a) = a
-  join Nothing = Nothing
-
-joinMaybe : {a} -> Maybe (Maybe a) -> Maybe a
-joinMaybe Nothing = Nothing
-joinMaybe (Just x) = x
-
-dictMonadMaybe = MonadDict dictApplicativeMaybe joinMaybe
-lookupDict (Monad Maybe) = dictMonadMaybe
-
+  join' (Just a) = a
+  join' Nothing = Nothing
 
 
 // List monad
@@ -72,15 +50,9 @@ data List : Type ~> Type where
   Nil    : {a : Type} -> List a
   LCons  : {a : Type} -> a -> List a -> List a
 
-mapList : {a b : Type} -> (a -> b) -> List a -> List b
-mapList f Nil = Nil
-mapList f (LCons x xs) = LCons (f x) (mapList f xs)
-
-dictFunctorList = FunctorDict mapList
-lookupDict (Functor List) = dictFunctorList
-
-pureList : {a : Type} -> a -> List a
-pureList x = LCons x Nil
+instance Functor List where
+  fmap' f Nil = Nil
+  fmap' f (LCons x xs) = LCons (f x) (fmap' f xs)
 
 append : {a} -> List a -> List a -> List a
 append Nil xs = xs
@@ -90,15 +62,16 @@ joinList : {a} -> List (List a) -> List a
 joinList Nil = Nil
 joinList (LCons x xs) = append x (joinList xs)
 
-appList : {a b : Type} -> List (a -> b) -> List a -> List b
-// TODO: appList fs xs = joinList (mapList (\f -> mapList f xs) fs)
-appList {a} {b} fs xs = joinList (mapList (\f -> mapList f xs) fs)
+instance Applicative List where
+  pure' x = LCons x Nil
 
-dictApplicativeList = ApplicativeDict dictFunctorList pureList appList
-lookupDict (Applicative List) = dictApplicativeList
+  // TODO: app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
+  app' {a} {b} fs xs = joinList (fmap' (\f -> fmap f xs) fs)
 
-dictMonadList = MonadDict dictApplicativeList joinList
-lookupDict (Monad List) = dictMonadList
+instance Monad List where
+  // TODO: join' = joinList
+  join' m = joinList m
+
 
 guard : Bool -> List Unit
 guard True = pure TT

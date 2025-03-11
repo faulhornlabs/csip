@@ -74,12 +74,13 @@ data Env = MkEnv
   , localVals   :: IntMap Name Val
   , localTypes  :: IntMap Name Val
   , globals     :: IntMap Name (Val, Val)
+  , classes     :: IntMap Name ClassData
   , nameMap     :: Map NameStr Name
   , isLHS       :: Bool    -- True if lhs is checked
   }
 
 memptyEnv :: RefM Env
-memptyEnv = foldM def (MkEnv mempty mempty mempty mempty mempty False)
+memptyEnv = foldM def (MkEnv mempty mempty mempty mempty mempty mempty False)
   [("Nat", CNat), ("String", CString), ("Type", CType)]
  where
   def env (n, v) = do
@@ -88,6 +89,19 @@ memptyEnv = foldM def (MkEnv mempty mempty mempty mempty mempty False)
 
 onTop :: Env -> Bool
 onTop = null . boundVars
+
+data ClassData = MkClassData
+  { _classVal     :: Val
+  , _dictVal      :: Val
+  , _superClasses :: [Val]
+  , _methods      :: [(Name, Val)]    -- names and full (closed) types
+  }
+
+addClass :: Name -> ClassData -> Env -> RefM Env
+addClass n d env = pure $ env { classes = insertIM n d $ classes env }
+
+lookupClass :: Name -> Env -> Maybe ClassData
+lookupClass n env = lookupIM n (classes env)
 
 define_ :: Bool -> NameStr -> (Name -> RefM Val) -> Val -> Env -> RefM (Name, Val, Env)
 define_ bound n_ fv t env_ = do
@@ -383,52 +397,83 @@ getVarName = \case
   RVar n -> n
   _t -> undefined --error' $ print t
 
+getHPi__ v = spine v <&> \case
+    (CHPi, [a, b]) -> Just (a, b)
+    _ -> Nothing
+
+getHPi_ :: Name -> Val -> RefM (Val, Val)
+getHPi_ n v = getHPi__ v <&> fromJust >>= \(a, b) -> vApp b (vVar n) <&> \b -> (a, b)
+
+getHPi :: Val -> RefM (Maybe ((Name, Val), Val))
+getHPi v = getHPi__ v >>= \case
+  Nothing -> pure Nothing
+  Just (a, b) -> do
+    n <- lamName "m" b >>= mkName
+    b <- vApp b $ vVar n
+    pure $ Just ((n, a), b)
+
+getApp :: Val -> RefM (Maybe (Val, Val))
+getApp v = force v <&> \case
+  WApp a b -> Just (a, b)
+  _ -> Nothing
+
+getConName :: Val -> RefM (Maybe Name)
+getConName v = force v <&> \case
+  WCon n -> Just n
+  _ -> Nothing
+
+getMult f v = f v >>= \case
+    Just (c, v) -> getMult f v <&> first (c:)
+    Nothing -> pure ([], v)
+
+getSuper :: Val -> RefM (Maybe (Val, Val))
+getSuper v = spine v <&> \case
+    (CCPi, [a, b]) -> Just (a, b)
+    _ -> Nothing
+
+mkHPi :: (Name, Val) -> RefM Val -> RefM Val
+mkHPi (n, a) b = b >>= \b -> vLam (vVar n) b >>= \b -> vApps CHPi [a, b]
+
+mkCPi a b = b >>= \b -> vApps CCPi [a, b]
+
+mkPi a b = b >>= \b -> vConst b >>= \b -> vApps CPi [a, b]
+
+mkMult :: (a -> RefM b -> RefM b) -> [a] -> RefM b -> RefM b
+mkMult f as m = foldr f m as
+
 dictName :: NameStr -> NameStr
 dictName n = addSuffix n "Dict"
 
 dictType :: Val -> [Val] -> RefM ([Val], Val)
 dictType classTy methodTys = do
-  (n, parTy, classTy') <- getHPi classTy
-  (supers, classTy'') <- getSupers classTy'
+  ((n, parTy), classTy') <- getHPi classTy <&> fromJust
+  (supers, classTy'') <- getMult getSuper classTy'
   methodTys' <- forM methodTys \methodTy -> do
     (_, methodTy') <- getHPi_ n methodTy
-    (_, methodTy'') <- getSuper methodTy'
+    (_, methodTy'') <- getSuper methodTy' <&> fromJust
     pure methodTy''
-  t <- mkHPi n parTy $ mkPis supers $ mkPis methodTys' $ pure classTy''
+  t <- mkHPi (n, parTy) $ mkMult mkPi supers $ mkMult mkPi methodTys' $ pure classTy''
   supers' <- forM supers \s -> vLam (vVar n) s
   pure (supers', t)
- where
-  getHPi__ v = spine v <&> \case
-    (CHPi, [a, b]) -> (a, b)
-    _ -> error' $ print v
 
-  getHPi_ :: Name -> Val -> RefM (Val, Val)
-  getHPi_ n v = getHPi__ v >>= \(a, b) -> vApp b (vVar n) <&> \b -> (a, b)
+addMethodType :: [(Name, Val)] -> [Val] -> Val -> Env -> (Name, Val) -> RefM (Env, Val)
+addMethodType ns is arg env (n_, t) = do
+  let n = addSuffix (nameStr n_) "'"
+  ((vn, _{- TODO -}), t) <- getHPi t <&> fromJust
+  (_, t) <- getSuper t <&> fromJust
+  f <- vLam (vVar vn) t
+  t <- mkMult mkHPi ns $ mkMult mkCPi is $ vApp f arg
+  (_, mn, env) <- defineGlob n mkFun t env
+  pure (env, mn)
 
-  getHPi :: Val -> RefM (Name, Val, Val)
-  getHPi v = getHPi__ v >>= \(a, b) -> do
-    n <- lamName "m" b >>= mkName
-    b <- vApp b $ vVar n
-    pure (n, a, b)
-
-  getSuper_ :: Val -> RefM (Maybe (Val, Val))
-  getSuper_ v = spine v <&> \case
-    (CCPi, [a, b]) -> Just (a, b)
-    _ -> Nothing
-
-  getSupers v = getSuper_ v >>= \case
-    Just (c, v) -> getSupers v <&> first (c:)
-    Nothing -> pure ([], v)
-  getSuper v = getSuper_ v <&> fromJust
-
-  mkHPi :: Name -> Val -> RefM Val -> RefM Val
-  mkHPi n a b = b >>= \b -> vLam (vVar n) b >>= \b -> vApps CHPi [a, b]
-
-  mkPi a b = b >>= \b -> vConst b >>= \b -> vApps CPi [a, b]
-
-  mkPis :: [Val] -> RefM Val -> RefM Val
-  mkPis [] b = b
-  mkPis (t: ts) b = mkPi t $ mkPis ts b
+-- variables, instances, class name, arg type
+analyzeInstanceHead :: Val -> RefM ([(Name, Val)], [Val], Name, Val)
+analyzeInstanceHead t = do
+  (ns, t) <- getMult getHPi t
+  (is, t) <- getMult getSuper t
+  (cn, t) <- getApp t <&> fromJust
+  cn <- getConName cn <&> fromJust
+  pure (ns, is, cn, t)
 
 defineSuperclasses :: NameStr -> Val -> Name -> Int -> [Val] -> RefM ()
 defineSuperclasses nclass vclass dict num supers = do
@@ -443,32 +488,82 @@ defineSuperclasses nclass vclass dict num supers = do
   f <- mkFun "superClasses"
   addRule [m] (TVal f `TApp` c) rhs
 
-
+inferMethods :: Env -> Raw -> RefM ([(Name, Val)], Env)
 inferMethods env r = case r of
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
     let ff n = if isConName n then undefined else mkFun n
-    (n, _, env') <- defineGlob n ff vta env
-    inferMethods env' b <&> first ((n, vta):)
+    (n, _, env) <- defineGlob n ff vta env
+    inferMethods env b <&> first ((n, vta):)
   REnd -> pure ([], env)
   _ -> errorM "can't infer method"
+
+inferMethodBodies :: Env -> Raw -> RefM ()
+inferMethodBodies env r = case r of
+  RLet _ Hole a b -> do
+    inferBody env a
+    inferMethodBodies env b
+  REnd -> pure ()
+  r -> error' $ ("can't infer method body :\n" <>) <$> print r
+ where
+  inferBody env r = case r of
+    RPi n a b -> do
+      ta <- check env a CType
+      va <- evalEnv' env (typeName n) ta
+      (_, env') <- defineBound n va env
+      inferBody env' b
+    RRule a b -> do
+      (ta, vta) <- infer (env {isLHS = True}) a
+      tb <- check env b vta
+      addRule (boundVars env) ta tb
+    r -> error' $ ("can't infer method body:\n" <>) <$> print r
+
+addLookupDictRule :: ClassData -> [(Name, Val)] -> [Val] -> Val -> [Val] -> RefM ()
+addLookupDictRule (MkClassData classVal dictVal supers _) ns is_ arg_ mns = do
+  lookup <- mkFun "lookupDict"
+  arg <- abst arg_
+  is <- mapM abst is_
+  let rhs = TApps (TVal dictVal)
+        ( arg
+        :  [TVal lookup `TApp` (TVal c `TApp` arg) | c <- supers]
+        ++ [   TApps (TVal mn) $ [TVar n | (n, _) <- ns]
+            ++ [TVal lookup `TApp` i | i <- is]             -- TODO: share these
+           | mn <- mns]
+        )
+  addRule (map fst ns) (TVal lookup `TApp` (TVal classVal `TApp` arg)) rhs
+  pure ()
+ where
+  abst :: Val -> RefM Tm
+  abst v = do
+    f <- vLams (vVar . fst <$> ns) v
+    pure $ TApps (TVal f) $ TVar . fst <$> ns
 
 infer_ :: Env -> Raw -> RefM (Tm, Val)
 infer_ env r = case r of
   RClass a b e | onTop env -> do
     let n_ = getVarName $ appHead $ codomain a
     vta <- check env Hole CType >>= evalEnv' env (typeName n_)
-    (_n, tc, env') <- defineGlob n_ (\n -> pure $ mkCon n $ Just vta) vta env
-    ct <- check env' a CType >>= evalEnv env
-    (mts, env'') <- inferMethods env' b
+    (n, tc, env) <- defineGlob n_ (\n -> pure $ mkCon n $ Just vta) vta env
+    ct <- check env a CType >>= evalEnv env
+    (mts, env) <- inferMethods env b
     (supers, dt) <- dictType ct $ map snd mts
-    (dn, _, env''') <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env''
-    forM_ (zip [0..] mts) \(i, (mname, _)) -> case lookupIM mname (globals env''') of
+    (dn, dv, env) <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env
+    env <- addClass n (MkClassData tc dv supers mts) env
+    forM_ (zip [0..] mts) \(i, (mname, _)) -> case lookupIM mname (globals env) of
       Just (vf, _) -> addDictSelector vf dn (1 + length supers + length mts) (1 + length supers + i)
       _ -> impossible
     () <- defineSuperclasses n_ tc dn (1 + length supers + length mts) supers
-    infer env''' e
-  RInstance _a _b c | onTop env -> infer env c
+    infer env e
+  RInstance a b c | onTop env -> do
+    ct <- check env a CType >>= evalEnv env
+    (ns, is, n, arg) <- analyzeInstanceHead ct
+    case lookupClass n env of
+      Nothing -> undefined
+      Just cd@(MkClassData _ _ _ mts) -> do
+        (env, mns) <- mapAccumM (addMethodType ns is arg) env mts
+        () <- addLookupDictRule cd ns is arg mns
+        () <- inferMethodBodies env b
+        infer env c
 --  RData     _a _b c | onTop env -> infer env c
   REnd -> pure (TVal CType, CType)
   RLam n t a -> do
@@ -597,7 +692,7 @@ reverseRules = g where
     ROLet n t a b -> ROLet n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
     RClass    a b c -> RClass    a b $ g c
-    RInstance a b c -> RInstance a b $ g c
+    RInstance a b c -> RInstance a (g b) $ g c
     RData     a b c -> RData     a b $ g c
     REnd -> REnd
     r -> r
