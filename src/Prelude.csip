@@ -41,12 +41,28 @@ the : (a : Type) -> a -> a
 
 
 data Unit : Type where
-  TT   : Unit
+  TT : Unit
 
-Tuple2 : Type -> Type -> Type
-MkTuple2 : {a b} -> a -> b -> Tuple2 a b
+data Tuple2 : Type -> Type -> Type where
+  T2 : {a b} -> a -> b -> Tuple2 a b
 
-Tuple3 : Type -> Type -> Type -> Type
-MkTuple3 : {a b c} -> a -> b -> c -> Tuple3 a b c
+first : {a b c} -> (a -> b) -> Tuple2 a c -> Tuple2 b c
+first f (T2 x y) = T2 (f x) y
 
+second : {a b c} -> (a -> b) -> Tuple2 c a -> Tuple2 c b
+second f (T2 x y) = T2 x (f y)
+
+
+data Tuple3 : Type -> Type -> Type -> Type where
+  T3 : {a b c} -> a -> b -> c -> Tuple3 a b c
+
+
+data Maybe : Type ~> Type where
+  Nothing : {a : Type} -> Maybe a
+  Just    : {a : Type} -> a -> Maybe a
+
+
+data List : Type ~> Type where
+  Nil    : {a : Type} -> List a
+  LCons  : {a : Type} -> a -> List a -> List a
 

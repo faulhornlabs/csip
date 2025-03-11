@@ -87,7 +87,7 @@ pita n = do
   k <- enum 1 m
   l <- enum 1 k
   guard (m*m == k*k + l*l)
-  pure (MkTuple3 m k l)
+  pure (T3 m k l)
 
 // join (Just (Just 1))
 // the (Maybe Nat) (join (Just Nothing))

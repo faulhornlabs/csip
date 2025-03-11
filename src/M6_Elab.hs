@@ -459,7 +459,7 @@ dictType classTy methodTys = do
 addMethodType :: [(Name, Val)] -> [Val] -> Val -> Env -> (Name, Val) -> RefM (Env, Val)
 addMethodType ns is arg env (n_, t) = do
   let n = addSuffix (nameStr n_) "'"
-  ((vn, _{- TODO -}), t) <- getHPi t <&> fromJust
+  ((vn, _), t) <- getHPi t <&> fromJust
   (_, t) <- getSuper t <&> fromJust
   f <- vLam vn t
   t <- mkMult mkHPi ns $ mkMult mkCPi is $ vApp f arg
@@ -519,7 +519,7 @@ inferMethodBodies env r = case r of
     r -> error' $ ("can't infer method body:\n" <>) <$> print r
 
 addLookupDictRule :: ClassData -> [(Name, Val)] -> [Val] -> Val -> [Val] -> RefM ()
-addLookupDictRule (MkClassData classVal dictVal supers _) ns is_ arg_ mns = do
+addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ arg_ mns = do
   lookup <- TApp . TVal <$> mkFun "lookupDict"
   arg <- abst arg_
   is <- mapM abst is_
@@ -529,17 +529,14 @@ addLookupDictRule (MkClassData classVal dictVal supers _) ns is_ arg_ mns = do
         $ TApps (TVal dictVal)
         ( arg
         :  [lookup (TVal c `TApp` arg) | c <- supers]
-        ++ [   TApps (TVal mn) $ [TVar n | (n, _) <- ns]
-            ++ map TVar ds
+        ++ [ TApps (TVal mn) $ map TVar $ ns ++ ds
            | mn <- mns]
         )
-  addRule (map fst ns) (lookup (TVal classVal `TApp` arg)) rhs
+  addRule ns (lookup (TVal classVal `TApp` arg)) rhs
   pure ()
  where
   abst :: Val -> RefM Tm
-  abst v = do
-    f <- vLams (fst <$> ns) v
-    pure $ TApps (TVal f) $ TVar . fst <$> ns
+  abst v = quoteTm' v
 
 infer_ :: Env -> Raw -> RefM (Tm, Val)
 infer_ env r = case r of
