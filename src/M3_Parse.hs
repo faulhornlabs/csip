@@ -620,6 +620,7 @@ pattern NHPi     = MkM ["{",":","}","->"]
 pattern NCPi     = MkM ["=>"]
 pattern NHArr    = MkM ["{","}","->"]
 pattern NRule    = MkM ["==>"]
+pattern NLetRule = MkM ["==>",";"]
 pattern NDot     = MkM ["[","]"]
 
 instance Arity (Mixfix t) where
@@ -792,6 +793,7 @@ norm r = case r of
   _ | Just z <- gg NSemi     NClass     -> z
   _ | Just z <- gg NSemi     NInstance  -> z
   _ | Just z <- gg NSemi     NData      -> z
+  _ | Just z <- gg NSemi     NRule      -> z
   _ | Just z <- gg NLambda   NArr       -> z
   _ | Just z <- gg NLambda   NHArr      -> z
   _ | Just z <- gg NLambda   NPi        -> z
@@ -876,7 +878,7 @@ pattern RIPi     t   e = ZApps NIArr  [        t,    e]
 pattern RLet   n t d e = ZApps NTLet  [RVar n, t, d, e]
 pattern ROLet  n t d e = ZApps NOTLet [RVar n, t, d, e]
 pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
-pattern RRule  a b     = ZApps NRule  [a, b]
+pattern RRule  a b   e = ZApps NLetRule [a, b, e]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
 pattern RGuard a b     = ZApps NGuard [a, b]
@@ -920,22 +922,6 @@ pattern Arr  a b c <- Apps (getHArr -> Just a) [b, c]
 isBind Bind{} = True
 isBind _ = False
 
-lams :: [Mixfix a] -> ExpTree' a -> ExpTree' a
-lams [] e = e
-lams (n: ns) e = RPi n (ZVar NHole) $ lams ns e
-
-vars :: ExpTree' POp -> [Mixfix POp]
-vars t = case t of
-    Hole -> []
-    RDot{} -> []
-    ZApps NView [_, e] -> vars e
-    ZApps NGuard [e, _] -> vars e
-    RHApp a b -> vars a <> vars b
-    a :@ b -> vars a <> vars b
-    RVar n@(ZName (MkM [t])) -> [n | isLowerToken t]
-    e -> error' $ ("invalid pattern: " <>) <$> print e
-    
-
 desugar :: ExpTree' POp -> RefM (ExpTree' Desug)
 desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
@@ -960,18 +946,14 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
       | RVar{} <- n -> xApps z [xApps NTy [etr2 n, RVar NHole], etr2 b, etr2 m]
     RVar z@NLet  :@ n :@ b :@ m
       | RVar{} <- n -> xApps z [xApps NTy [etr2 n, RVar NHole], etr2 b, etr2 m]
-      | a <- etr2 n -> xApps z
-          [ xApps NTy [RVar NAny, RVar NHole]
-          , lams (nub $ tail $ vars a) (RRule a $ etr2 b)
-          , etr2 m
-          ]
+      | a <- etr2 n -> xApps (del 0 1 z) [xApps NRule [a, etr2 b], etr2 m]
     a :@ b -> etr2 a :@ etr2 b
     l -> l
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
     SApps l es | l `elem` [ NGuard, NDot, NHole, NLetImport, NLetClass, NLetInstance, NLetData, NLetTy, NTLet, NOTLet
-                          , NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NRule, NView]
+                          , NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NLetRule, NView]
       -> Apps l $ map etr3 es
     SApps NLetArr [a, b, c] -> xApps ">>=" [etr3 b, xApps NTLam [etr3 a, RVar NHole, etr3 c]]
     SApps NSemi [b, c] -> xApps ">>=" [etr3 b, xApps NTLam [RVar NAny, RVar NHole, etr3 c]]
@@ -993,19 +975,14 @@ sugar = coerce . sug . sug0
       -> Apps (del 1 3 l) [RVar $ coerce n, sug0 b]
     Apps l@NPi [ZVar NAny, a, b]
       -> Apps (del 0 3 l) [sug0 a, sug0 b]
-    Apps l@NTLet [ZVar NAny, Hole, b, c] | Just r <- getRule b
-      -> Apps (del 0 2 l) [sug0 r, sug0 c]
+    Apps l@NLetRule [a, b, c]
+      -> Apps (del 0 1 l) [Apps (del 1 1 l) [sug0 a, sug0 b], sug0 c]
     Apps l@NTLet [RVar n, Hole, b, c]
       -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
     Apps l@NOTLet [RVar n, Hole, b, c]
       -> Apps (del 0 1 l) [RVar n, sug0 b, sug0 c]
     a :@ b -> sug0 a :@ sug0 b
     a -> coerce a
-
-  getRule e = case e of
-    Apps NRule _  ->  Just e
-    Apps NPi [RVar _, _, b] -> getRule b
-    _ -> Nothing
 
   sug :: ExpTree' Desug -> ExpTree' Desug
   sug = \case
@@ -1064,7 +1041,7 @@ instance Print (ExpTree'_ b Desug) where
 unembed :: ExpTree_ a (Mixfix b) -> ExpTree_ a' (Mixfix b)
 unembed = f where
   f = \case
-    REmbed a -> undefined -- !!! f $ pprint a
+    REmbed _ -> undefined -- !!! f $ pprint a
     RNat_ a b -> RVar $ MkM [MkNat a b]
     RString_ a b -> RVar $ MkM [MkString a b]
     a :@ b -> f a :@ f b
@@ -1177,6 +1154,7 @@ include t s = f t
     f :: ExpTree' Desug -> ExpTree' Desug
     f = \case
       RLet  n t a b -> RLet  n t a $ f b
+      RRule   a b c -> RRule   a b $ f c
       ROLet n t a b -> ROLet n t a $ f b
       RLetTy  n a b -> RLetTy  n a $ f b
       RImport   a b -> RImport   a $ f b

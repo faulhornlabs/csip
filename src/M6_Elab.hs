@@ -108,15 +108,15 @@ define_ bound n_ fv t_ env_ = do
   n <- nameOf n_
   v <- fv n >>= deepForce
   t <- deepForce t_
-  let
-   env = env_ {nameMap = insert n_ n $ nameMap env_}
-   env' = if bound || not (onTop env)
-    then
+  let env = env_ {nameMap = insert n_ n $ nameMap env_}
+  env' <- if bound || not (onTop env)
+    then pure
     env { localTypes = insertIM n t $ localTypes env
         , localVals = insertIM n v $ localVals env
         , boundVars = (if bound then (n:) else id) $ boundVars env
         }
-    else
+--    else if not (rigid v) then print v >>= \s -> errorM $ "meta in global definition: " <> showName n <> " = " <> s
+    else pure
     env { globals = insertIM n (v, t) $ globals env
         }
   pure (n, v, env')
@@ -501,23 +501,15 @@ inferMethods env r = case r of
 
 inferMethodBodies :: Env -> Raw -> RefM ()
 inferMethodBodies env r = case r of
-  RLet _ Hole a b -> do
-    inferBody env a
-    inferMethodBodies env b
+  RRule a b c -> do
+      let ns = [n | n <- fvs a, Nothing <- [lookupName n env]]
+      env' <- foldM addName env ns
+      (ta, vta) <- infer (env' {isLHS = True}) a
+      tb <- check env' b vta
+      addRule (boundVars env') ta tb
+      inferMethodBodies env c
   REnd -> pure ()
   r -> error' $ ("can't infer method body :\n" <>) <$> print r
- where
-  inferBody env r = case r of
-    RPi n a b -> do
-      ta <- check env a CType
-      va <- evalEnv' env (typeName n) ta
-      (_, env') <- defineBound n va env
-      inferBody env' b
-    RRule a b -> do
-      (ta, vta) <- infer (env {isLHS = True}) a
-      tb <- check env b vta
-      addRule (boundVars env) ta tb
-    r -> error' $ ("can't infer method body:\n" <>) <$> print r
 
 addLookupDictRule :: ClassData -> [(Name, Val)] -> [Val] -> Val -> [Val] -> RefM ()
 addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ arg_ mns = do
@@ -596,6 +588,13 @@ infer_ env r = case r of
     ty <- vApp CCode m
     t <- check env r ty
     pure (t, ty)
+  RRule a b c | onTop env -> do
+    let ns = [n | n <- fvs a, Nothing <- [lookupName n env]]
+    env' <- foldM addName env ns
+    (ta, vta) <- infer (env' {isLHS = True}) a
+    tb <- check env' b vta
+    addRule (boundVars env') ta tb
+    infer env c
   RLet n t a b -> do
     (ta, vta) <- case t of
       Hole -> infer env a
@@ -607,16 +606,11 @@ infer_ env r = case r of
     (n, env') <- define False n va vta env
     (tb, vtb) <- infer env' b
     pure (if onTop env then tb else TLet n ta tb, vtb)
-  RRule a b {- | onTop env -} -> do
-    (ta, vta) <- infer (env {isLHS = True}) a
-    tb <- check env b vta
-    addRule (boundVars env) ta tb
-    pure (TVal CType, CType)  -- TODO?
   (getPi -> Just (pi, n, a, b)) -> do
     ta <- check env a CType
     va <- evalEnv' env (typeName n) ta
-    (n, env') <- defineBound n va env
-    tb <- check env' b CType
+    (n, env) <- defineBound n va env
+    tb <- check env b CType
     l <- tLam n tb
     pure (pi `TApp` ta `TApp` l, CType)
   RCPi a b -> do
@@ -667,14 +661,15 @@ infer_ env r = case r of
         infer env $ RApp (RHApp (REmbed $ MkEmbedded av ty) $ REmbed $ MkEmbedded m m') b
        | otherwise -> error "baj"
 
+addName :: Env -> NameStr -> RefM Env
+addName env n = do
+  (_, m) <- freshMeta' env
+  defineBound n m env <&> snd
+
 --------------------
 
 ruleHead :: Raw -> Maybe NameStr
-ruleHead = \case
-  RRule a _  -> f a
-  RPi _ _ b -> ruleHead b
-  _ -> Nothing
- where
+ruleHead = f where
   f = \case
     RGuard a _ -> f a
     RApp a _ -> f a
@@ -684,7 +679,7 @@ ruleHead = \case
 reverseRules :: Raw -> Raw
 reverseRules = g where
   g = \case
-    RLet n t a b | Just h <- ruleHead a -> f h [(n, t, a)] b
+    RRule a c b | Just h <- ruleHead a -> f h [(a, c)] b
     RLet  n t a b -> RLet  n t a (g b)
     ROLet n t a b -> ROLet n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
@@ -695,8 +690,8 @@ reverseRules = g where
     r -> r
 
   f h acc = \case
-    RLet n t a b | Just h' <- ruleHead a, h' == h -> f h ((n, t, a): acc) b
-    r -> foldr (\(n, t, a) b -> RLet n t a b) (g r) acc
+    RRule a c b | Just h' <- ruleHead a, h' == h -> f h ((a, c): acc) b
+    r -> foldr (\(a, c) b -> RRule a c b) (g r) acc
 
 inferTop :: Raw -> RefM (Tm, Val)
 inferTop r = do
@@ -708,4 +703,21 @@ instance Parse (Tm, Val) where
 
 instance Parse Tm where
   parse s = parse s <&> (fst :: (Tm, Val) -> Tm)
+
+
+fvs :: Raw -> [NameStr]
+fvs = nub . go where
+  go = \case
+    Hole -> []
+    RDot{} -> []
+    RView _ b -> go b
+    RGuard a _ -> go a
+    RHApp a b -> go a <> go b
+    RApp a b -> go a <> go b
+    RVar a -> [a]
+    RNat{} -> []
+    RString{} -> []
+    x -> error' $ ("fvs: " <>) <$> print x
+
+
 

@@ -58,6 +58,7 @@ module M1_Base
   , IntMap, readIM, insertIM, lookupIM, fromListIM, sizeIM, toListIM, singletonIM, assocsIM, unionWithIM
   , walkIM, downUpIM, topDownIM, bottomUpIM
   , IntSet, singletonIS, memberIS, insertIS, deleteIS, fromListIS, toListIS
+  , nubIS
   )
  where
 
@@ -915,3 +916,12 @@ fromListIS xs = MkIS $ IM.fromList [(getId a, a) | a <- xs]
 
 toListIS :: IntSet a -> [a]
 toListIS (MkIS m) = toList m
+
+nubIS :: HasId a => [a] -> [a]
+nubIS = f mempty  where
+  f _ [] = []
+  f s (x: xs)
+    | memberIS x s = f s xs
+    | otherwise    = x: f (insertIS x s) xs
+
+
