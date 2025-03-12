@@ -104,9 +104,10 @@ lookupClass :: Name -> Env -> Maybe ClassData
 lookupClass n env = lookupIM n (classes env)
 
 define_ :: Bool -> NameStr -> (Name -> RefM Val) -> Val -> Env -> RefM (Name, Val, Env)
-define_ bound n_ fv t env_ = do
+define_ bound n_ fv t_ env_ = do
   n <- nameOf n_
-  v <- fv n
+  v <- fv n >>= deepForce
+  t <- deepForce t_
   let
    env = env_ {nameMap = insert n_ n $ nameMap env_}
    env' = if bound || not (onTop env)

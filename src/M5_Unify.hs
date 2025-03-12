@@ -1,5 +1,6 @@
 module M5_Unify
   ( unify
+  , deepForce
   ) where
 
 import M1_Base
@@ -87,11 +88,11 @@ deepForce v_ = do
 
     up :: Val -> Maybe Name -> [(Val, Val)] -> RefM Val
     up v mn (map snd -> ts) = case v of
-      _ | rigid v  -> pure v
-      WMetaApp{} -> pure v
-      WMeta{} -> pure v
-      WLam{} | Just n <- mn, [body] <- ts -> vLam n body
-      WApp{} | [a, b] <- ts -> vApp a b
+      _ | rigid v -> pure v
+      WMetaApp{}  -> pure v
+      WMeta{}     -> pure v
+      WLam{}  | Just n <- mn, [body] <- ts -> vLam n body
+      WApp{}  | [a, b] <- ts -> vApp a b
       WTm a _ | [b] <- ts -> vTm (nameStr $ name v) a b
       _ -> undefined
 
