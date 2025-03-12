@@ -5,7 +5,7 @@ module M4_Eval
   , Tm, tLam, tMeta, tLets
   , Raw, Scoped
 
-  , Val (WSup, WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta)
+  , Val (WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta,  WSel, WMatch, WRet)
   , vNat, vString, mkFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
   , mkCon, RuleRef
   , name, rigid, closed
@@ -286,13 +286,16 @@ data View
   | VMeta MetaRef
   | VFun RuleRef   -- function
   | VDelta Int{-arity-} (RefM Val -> [Val] -> RefM Val) -- builtin function
+  | VNat Integer
+  | VString String
+
   | VApp_ Val Val AppKind
   | VSup Combinator [Val]     -- lambda
+
   | VSel Int Int Val       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
   | VMatch Name Val Val Val (Maybe (MetaRef, MetaDep))
   | VRet Val
-  | VNat Integer
-  | VString String
+
   | VTm Tm Val
 
 data AppKind
@@ -695,6 +698,8 @@ quoteNF v = runWriter g where
 rMatch n a b c = "match" :@ RVar n :@ a :@ b :@ c
 rSel i j e = "sel" :@ RNat (fromIntegral i) :@ RNat (fromIntegral j) :@ e
 rRet e = "return" :@ e
+
+--------------------------------
 
 quoteNF' = quoteTm >=> tmToRaw
 

@@ -16,10 +16,7 @@ update :: MetaDep -> Val -> RefM ()
 update v e = do
 --  () <- updatable v e
   traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
-  fe <- force e
-  case fe of
-    WMeta r | v == r -> impossible
-    _ ->  updateMeta (metaRef v) e
+  updateMeta (metaRef v) e
 
 metaArgNum v_ = force v_ >>= \case
   WMeta _     -> pure 0
@@ -30,7 +27,10 @@ updateClosed a b = do
   traceShow "2" $ "update " <<>> showM a <<>> "\n := " <<>> showM b
   v <- closeTm b
 --  v' <- forceClosed v   -- TODO
-  update a v
+  fe <- deepForce v
+  case fe of
+    WMeta r | a == r -> impossible
+    _ -> update a fe
 
 
 type SVal = (Val, IntSet Name)
@@ -57,6 +57,47 @@ pruneMeta m (toListIS -> is) = do
   v <- eval mempty t
   update m v
 
+-------------------
+
+deepForce :: Val -> RefM Val
+deepForce v_ = do
+  v <- force_ v_
+  m <- go [v]
+  pure $ fromJust $ lookup v m
+ where
+  go sv = downUp down up sv
+   where
+    down :: Val -> RefM (Maybe Name, [Val])
+    down v = case v of
+      _ | rigid v  -> ret Nothing []
+      WMeta{}      -> ret Nothing []
+      WMetaApp{}   -> ret Nothing []
+      WLam c -> do
+        u <- c
+        b <- vApp v $ vVar u
+        ret (Just u) [b]
+      WApp a b     -> ret Nothing [a, b]
+      WTm _ b      -> ret Nothing [b]
+      WSel{}       -> undefined
+      WMatch{}     -> undefined
+      WRet{}       -> undefined
+      _ -> impossible
+     where
+      ret mn es = (,) mn <$> mapM force_ es
+
+    up :: Val -> Maybe Name -> [(Val, Val)] -> RefM Val
+    up v mn (map snd -> ts) = case v of
+      _ | rigid v  -> pure v
+      WMetaApp{} -> pure v
+      WMeta{} -> pure v
+      WLam{} | Just n <- mn, [body] <- ts -> vLam n body
+      WApp{} | [a, b] <- ts -> vApp a b
+      WTm a _ | [b] <- ts -> vTm (nameStr $ name v) a b
+      _ -> undefined
+
+
+-------------------
+
 closeTm :: Val -> RefM Val
 closeTm v_ = do
   v <- force v_
@@ -77,6 +118,9 @@ closeTm v_ = do
         b <- vApp v $ vVar u
         ret (insertIS u allowed) [b]
       WApp a b     -> ret allowed [a, b]
+      WSel{}   -> undefined
+      WMatch{} -> undefined
+      WRet{}   -> undefined
       _            -> ret allowed []
      where
       ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force es
@@ -84,7 +128,7 @@ closeTm v_ = do
     up :: SVal -> () -> [(SVal, PruneSet)] -> RefM PruneSet
     up (v, allowed) _ ts = case v of
       _ | closed v  -> pure $ Just mempty
-      WSup{} -> case sequence (map snd ts) of
+      WLam{} -> case sequence (map snd ts) of
         Nothing -> pure Nothing
         Just [sa] -> pure $ Just sa
         _ -> impossible
