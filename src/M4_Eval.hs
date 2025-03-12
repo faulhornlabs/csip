@@ -17,7 +17,6 @@ module M4_Eval
   , quoteNF   -- Val -> Raw
   , quoteNF'
 
-  , updateRule
   , addRule
 
   , spine, forcedSpine
@@ -518,7 +517,9 @@ lookupRule :: RuleRef -> RefM Val
 lookupRule r = readRef r
 
 updateRule :: RuleRef -> Val -> RefM ()
-updateRule r b = writeRef r b
+updateRule r b
+--  | not (rigid b) = error "rule body is not rigid"
+  | otherwise = writeRef r b
 
 addRule :: [Name] -> Tm -> Tm -> RefM ()
 addRule (fromListIS -> boundvars) lhs_ rhs_ = do

@@ -15,7 +15,9 @@ class {a : Type} -> Eq a where
   eq  : {a} -> Eq a => a -> a -> Bool
 
 (==) = eq
-(/=) = \a b -> not (a == b)
+
+(/=) : {a} -> Eq a => a -> a -> Bool
+a /= b = not (a == b)
 
 
 instance Eq Nat where

@@ -84,7 +84,7 @@ memptyEnv = foldM def (MkEnv mempty mempty mempty mempty mempty mempty False)
   [("Nat", CNat), ("String", CString), ("Type", CType)]
  where
   def env (n, v) = do
-        (_, _, env) <- defineGlob n (\_ -> pure v) CType env
+        (_, _, _, env) <- defineGlob n (\_ -> pure v) CType env
         pure env
 
 onTop :: Env -> Bool
@@ -103,33 +103,37 @@ addClass n d env = pure $ env { classes = insertIM n d $ classes env }
 lookupClass :: Name -> Env -> Maybe ClassData
 lookupClass n env = lookupIM n (classes env)
 
-define_ :: Bool -> NameStr -> (Name -> RefM Val) -> Val -> Env -> RefM (Name, Val, Env)
-define_ bound n_ fv t_ env_ = do
+define_ :: Maybe Bool -> NameStr -> (Name -> RefM Val) -> Val -> Env -> RefM (Name, Val, Val, Env)
+define_ bound n_ fv t env = do
   n <- nameOf n_
-  v <- fv n >>= deepForce
+  v <- fv n
+  (v, t, env) <- define__ bound n v t (env {nameMap = insert n_ n $ nameMap env})
+  pure (n, v, t, env)
+
+define__ bound n v_ t_ env = do
+  v <- deepForce v_
   t <- deepForce t_
-  let env = env_ {nameMap = insert n_ n $ nameMap env_}
-  env' <- if bound || not (onTop env)
+  let strict = fromMaybe False bound
+  env <- if isNothing bound || not (onTop env)
     then pure
     env { localTypes = insertIM n t $ localTypes env
         , localVals = insertIM n v $ localVals env
-        , boundVars = (if bound then (n:) else id) $ boundVars env
+        , boundVars = (if isNothing bound then (n:) else id) $ boundVars env
         }
---    else if not (rigid v) then print v >>= \s -> errorM $ "meta in global definition: " <> showName n <> " = " <> s
+    else if strict && not (rigid t) then print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
+    else if strict && not (rigid v) then print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
     else pure
     env { globals = insertIM n (v, t) $ globals env
         }
-  pure (n, v, env')
+  pure (v, t, env)
 
-define :: Bool -> NameStr -> Val -> Val -> Env -> RefM (Name, Env)
-define bound n v t env = define_ bound n (\_ -> pure v) t env <&> \(n, _, env) -> (n, env)
+defineGlob' :: NameStr -> Val -> Val -> Env -> RefM (Name, Env)
+defineGlob' n v t env = defineGlob n (\_ -> pure v) t env <&> \(n, _, _, env) -> (n, env)
 
-defineGlob n v t e
---  | not $ rigid t = error' $ (("unsolved meta in type of " <> showName n <> ":\n") <>) <$> print t
---  | not $ rigid v = error' $ (("unsolved meta in " <> showName n <> ":\n") <>) <$> print v
-  | otherwise = define_ False n v t e
+defineGlob = defineGlob_ True
+defineGlob_ strict n v t e = define_ (Just strict) n v t e
 
-defineBound n t env = define_ True n (\n -> pure $ vVar n) t env <&> \(n, _, env) -> (n, env)
+defineBound n t env = define_ Nothing n (\n -> pure $ vVar n) t env <&> \(n, _, _, env) -> (n, env)
 
 lookupName n env = lookup n $ nameMap env
 
@@ -346,14 +350,14 @@ check_ env r ty = case r of
             ta <- check env a vta
             pure (ta, vta)
         va <- evalEnv' env n ta
-        (n, env') <- define False n va vta env
+        (n, env') <- defineGlob' n va vta env
         tb <- check env' b ty
         pure $ if onTop env then tb else TLet n ta tb
       ROLet n t a b | onTop env -> do
         vta <- check env t CType >>= evalEnv' env (typeName n)
-        (_n, c, env') <- defineGlob n (\n -> pure $ vCon n Nothing) vta env
         ta <- check env a vta
-        tb <- check env' b ty
+        (_n, c, vta, env) <- defineGlob n (\n -> pure $ vCon n Nothing) vta env
+        tb <- check env b ty
         (fa, pa) <- matchCode env vta
         (fb, pb) <- matchCode env ty
         fta <- fa ta
@@ -464,7 +468,7 @@ addMethodType ns is arg env (n_, t) = do
   (_, t) <- getSuper t <&> fromJust
   f <- vLam vn t
   t <- mkMult mkHPi ns $ mkMult mkCPi is $ vApp f arg
-  (_, mn, env) <- defineGlob n mkFun t env
+  (_, mn, _, env) <- defineGlob n mkFun t env
   pure (env, mn)
 
 -- variables, instances, class name, arg type
@@ -494,7 +498,7 @@ inferMethods env r = case r of
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
     let ff n = if isConName n then undefined else mkFun n
-    (n, _, env) <- defineGlob n ff vta env
+    (n, _, _, env) <- defineGlob n ff vta env
     inferMethods env b <&> first ((n, vta):)
   REnd -> pure ([], env)
   _ -> errorM "can't infer method"
@@ -534,11 +538,12 @@ infer_ env r = case r of
   RClass a b e | onTop env -> do
     let n_ = getVarName $ appHead $ codomain a
     vta <- check env Hole CType >>= evalEnv' env (typeName n_)
-    (n, tc, env) <- defineGlob n_ (\n -> pure $ mkCon n $ Just vta) vta env
+    (n, tc, vta, env) <- defineGlob_ False n_ (\n -> pure $ mkCon n $ Just vta) vta env
     ct <- check env a CType >>= evalEnv env
+    (tc, _, env) <- define__ (Just True) n tc vta env
     (mts, env) <- inferMethods env b
     (supers, dt) <- dictType ct $ map snd mts
-    (dn, dv, env) <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env
+    (dn, dv, _dt, env) <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env
     env <- addClass n (MkClassData tc dv supers mts) env
     forM_ (zip [0..] mts) \(i, (mname, _)) -> case lookupIM mname (globals env) of
       Just (vf, _) -> addDictSelector vf dn (1 + length supers + length mts) (1 + length supers + i)
@@ -581,7 +586,7 @@ infer_ env r = case r of
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
     let ff n = if isConName n then pure $ mkCon n $ Just vta else mkFun n
-    (_n, _, env') <- defineGlob n ff vta env
+    (_n, _, _, env') <- defineGlob n ff vta env
     infer env' b
   ROLet{} -> do
     (_, m) <- freshMeta' env
@@ -603,7 +608,7 @@ infer_ env r = case r of
         ta <- check env a vta
         pure (ta, vta)
     va <- evalEnv' env n ta
-    (n, env') <- define False n va vta env
+    (n, env') <- defineGlob' n va vta env
     (tb, vtb) <- infer env' b
     pure (if onTop env then tb else TLet n ta tb, vtb)
   (getPi -> Just (pi, n, a, b)) -> do
