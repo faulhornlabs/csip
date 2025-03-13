@@ -12,7 +12,7 @@ module M4_Eval
   , lamName
   , force_, force', force
 
-  , eval, evalClosed      -- Tm  -> Val
+  , eval, evalClosed, evalClosed'      -- Tm  -> Val
   , quoteTm_, quoteTm'   -- Val -> Tm
   , quoteNF   -- Val -> Raw
   , quoteNF'
@@ -26,7 +26,7 @@ module M4_Eval
 
   , pattern CFail, lookupDictFun, superClassesFun
   , addDictSelector
-  , deepForce, metaArgNum
+  , deepForce, strictForce, metaArgNum
   , closedTm
   ) where
 
@@ -327,6 +327,12 @@ data AppKind
   | ConApp
   | DeltaApp Int{-remaining arity-}
 
+rigidAppKind = \case
+  NeutralApp{} -> False
+  FunApp v -> rigid v
+  DeltaApp{} -> True
+  ConApp -> True
+
 -----------
 
 pattern WNat n <- (view -> VNat n)
@@ -432,7 +438,9 @@ mkValue n r c v = do
   pure $ MkVal n r c v
 
 vTm :: NameStr -> Tm -> Val -> RefM Val
-vTm n t v = mkValue n (rigid v) (closed v) $ VTm t v
+vTm n t v
+--  | not (rigidTm t) = pure v
+  | otherwise = mkValue n (rigid v {- TODO: && rigidTm t -}) (closed v) $ VTm t v
 
 mkCon :: Name -> Maybe Val -> Val
 mkCon n ty = case n of
@@ -453,7 +461,7 @@ mkCon n ty = case n of
 vApp :: Val -> Val -> RefM Val
 vApp a_ u = do
   (aa, a) <- force' a_
-  let mkApp_ aa u l = mkValue "app" (rigid aa && rigid u) (closed aa && closed u) $ VApp_ aa u l
+  let mkApp_ aa u l = mkValue "app" (rigid aa && rigid u && rigidAppKind l) (closed aa && closed u) $ VApp_ aa u l
       mkApp u d = do
         ad <- case snd <$> metaDep d of
           Just x  -> NeutralApp <$> mkMetaRef <*> pure x
@@ -693,6 +701,7 @@ eval' :: IntMap Name Val -> Tm -> RefM Val
 eval' = eval_ pure pure vApp vSup (pure . vVar) vMatch vSel vRet
 
 evalClosed = eval mempty
+evalClosed' v = evalClosed v >>= strictForce
 
 quoteNF :: Val -> RefM (Scoped, IntMap Name Scoped)
 quoteNF v = runWriter g where
@@ -941,6 +950,11 @@ mkFun = \case
 
 -------------------
 
+strictForce :: Val -> RefM Val
+strictForce v = deepForce v >>= \case
+  v | rigid v -> pure v
+    | otherwise -> print v >>= \s -> errorM $ "meta in value:\n" <> s
+
 deepForce :: Val -> RefM Val
 deepForce v_ = do
   v <- force_ v_
@@ -974,6 +988,7 @@ deepForce v_ = do
       WMeta{}     -> pure v
       WLam{}  | Just n <- mn, [body] <- ts -> vLam n body
       WApp{}  | [a, b] <- ts -> vApp a b
+--      WTm a _ | [b] <- ts -> if rigidTm a then vTm (nameStr $ name v) a b else pure b
       WTm a _ | [b] <- ts -> vTm (nameStr $ name v) a b
       _ -> undefined
 

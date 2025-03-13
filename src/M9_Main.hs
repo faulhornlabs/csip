@@ -63,12 +63,12 @@ doCmds cmd s = do
     "sugar"     -> sh =<< (parse s :: RefM (ExpTree' Desug))
     "scope"     -> sh =<< (parse s :: RefM Raw)
     "elab"      -> sh =<< (parse s :: RefM Tm)
-    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF <&> fst)
+    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF <&> fst)
     "type"      -> sh =<< (parse s >>= inferTop <&> snd >>= quoteNF')
-    "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= quoteNF')
-    "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stage)
+    "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF')
+    "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage)
     "haskell_stage"
-                -> sh =<< ((parse s :: RefM Tm) >>= evalClosed >>= stageHaskell)
+                -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stageHaskell)
     _ -> error $ "Unknown command: " <> cmd
    where
     sh = if quote then sh' else print
