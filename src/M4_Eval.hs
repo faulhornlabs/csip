@@ -866,7 +866,7 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
           else do
             m <- gets st id
             ns <- metaToVar (pure "TODO (20)") m vns
-            pure $ TGen $ fromMaybe (if rigidTm ns then ns else undefined) $ lookup ns m
+            pure $ TGen $ fromMaybe ns $ lookup ns m
       t -> error' $ ("TODO(8): " <>) <$> print t
 
     addSuperClasses m v d = do
@@ -916,13 +916,13 @@ instance PPrint Val where
   pprint = \case
     WNat n -> pprint (RNat n :: Raw)
     WString n -> pprint (RString n :: Raw)
-    WVar -> "Var" --pprint (RVar $ name n :: Raw)
+    v@WVar -> "Var" :@ pprint (name v)
     WSup c vs -> "WSup" :@ pprint c :@ pprint vs
-    WCon{} -> "Con"
-    WMeta{} -> "Meta"
+    v@WCon{} -> "Con" :@ pprint (name v)
+    v@WMeta{} -> "Meta" :@ pprint (name v)
     WApp{} -> "App"
     WTm{} -> "Tm"
-    WDelta{} -> "Delta"
+    v@WDelta{} -> "Delta" :@ pprint (name v)
     WFun n -> "Fun" :@ pprint n
     _ -> "???"
 

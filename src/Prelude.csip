@@ -19,6 +19,7 @@ instance Eq String where
 class {a : Type} -> Num a where
   add : {a} -> Num a => a -> a -> a
   mul : {a} -> Num a => a -> a -> a
+  fromNat : {a} -> Num a => Nat -> a
 
 (+) = add
 (*) = mul
@@ -26,7 +27,7 @@ class {a : Type} -> Num a where
 instance Num Nat where
   add' a b = AddNat a b
   mul' a b = MulNat a b
-
+  fromNat n = n
 
 even : Nat -> Bool
   = \n -> ModNat n 2 == 0

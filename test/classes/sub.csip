@@ -24,10 +24,7 @@ lookupDict (Num Nat) = numDict
 num2Dict = MkNum2 numDict
 lookupDict (Num2 Nat) = num2Dict
 
-// double2 {a} {d} x = double {a} {selNum2Num d} x
-
 double2 : {a} -> Num2 a => a -> a
-// TODO: double2 x = double x
-double2 {a} x = double x
+double2 = double
 
 double2 4

@@ -66,6 +66,9 @@ instance MonadFail Maybe where
 data Identity : Type ~> Type where
   MkIdentity : {a} -> a -> Identity a
 
+runIdentity : {a} -> Identity a -> a
+runIdentity (MkIdentity x) = x
+
 instance Functor Identity where
   fmap' f (MkIdentity a) = MkIdentity (f a)
 
@@ -103,19 +106,68 @@ instance MonadFail List where
 
 
 
+matchT2 : {a b c} -> (a -> b -> c) -> Tuple2 a b -> c
+matchT2 f (T2 a b) = f a b
 
-data StateT : Type -> (Type ~> Type) -> Type ~> Type where
+(<&>) : {m} -> Functor m => {a b} -> m a -> (a -> b) -> m b
+m <&> f = f <$> m
+
+data StateT : Type -> (Type ~> Type) ~> Type ~> Type where
   MkStateT : {s} -> {m : Type ~> Type} -> {a} -> (s -> m (Tuple2 a s)) -> StateT s m a
 
+runStateT : {m s a} -> StateT s m a -> s -> m (Tuple2 a s)
+runStateT (MkStateT f) = f
+
 instance {m s} -> Functor m => Functor (StateT s m) where
-  fmap' f (MkStateT g) = MkStateT \x -> fmap (first f) (g x)
+  fmap' f (MkStateT g) = MkStateT \x -> g x <&> matchT2 \y s -> T2 (f y) s
 
+instance {m s} -> Monad m => Applicative (StateT s m) where
+  pure' x = MkStateT \s -> pure (T2 x s)
+  app' (MkStateT f) (MkStateT a)
+    = MkStateT \s -> f s >>= matchT2 \g s -> a s <&> matchT2 \x s -> T2 (g x) s
 
-stateType (StateT s m) = s
+instance {m s} -> Monad m => Monad (StateT s m) where
+  join' (MkStateT m) = MkStateT \s -> m s >>= matchT2 runStateT
+
+// TODO:  stateType (StateT s m) = s
+stateType (Ap (StateT s) m) = s
 
 instance {m s} -> Monad m => MonadState (StateT s m) where
   state' f = MkStateT \s -> pure (f s)
 
+instance {m s} -> MonadFail m => MonadFail (StateT s m) where
+  fail' msg = MkStateT \s -> fail msg
 
-get
+instance {s} -> MonadTrans (StateT s) where
+  lift' m = MkStateT \s -> m <&> \x -> T2 x s
+
+
+
+newId : {m} -> Monad m => StateT Nat m Nat
+// TODO:   newId {m} = state {StateT Nat m} \s -> T2 (1 + s) s
+// TODO:   newId = state \s -> T2 s (1 + s)
+newId = MkStateT \s -> pure (T2 s (1 + s))
+
+sum : {a} -> Num a => List a -> a
+sum Nil = fromNat 0
+sum (LCons x xs) = x + sum xs
+
+replicate : {a} -> Nat -> a -> List a
+replicate 0 _ = Nil
+replicate (Succ n) a = LCons a (replicate n a)
+
+sequence : {m a} -> Monad m => List (m a) -> m (List a)
+sequence Nil = pure Nil
+sequence (LCons m ms) = m >>= \x -> LCons x <$> sequence ms
+
+replicateM : {m a} -> Monad m => Nat -> m a -> m (List a)
+replicateM n m = sequence (replicate n m)
+
+main : StateT Nat (StateT Nat Identity) Nat
+  = do
+    x <- lift newId <&> (*) 2
+    y <- replicateM 3 newId <&> sum
+    pure (x + y)
+
+runIdentity (runStateT (runStateT main 1) 1)
 

@@ -67,8 +67,7 @@ instance Applicative List where
   app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
 
 instance Monad List where
-  // TODO: join' = joinList
-  join' m = joinList m
+  join' = joinList
 
 
 guard : Bool -> List Unit

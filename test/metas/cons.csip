@@ -29,7 +29,7 @@ cons : {A}{n:Nat} -> A -> Vec A n -> Vec A (suc n)
 
 u = Type
 
-// TODO
+// TODO: better show
 test =
   (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u
   (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u (cons u
