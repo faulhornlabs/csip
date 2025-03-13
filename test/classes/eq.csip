@@ -12,7 +12,7 @@ not True = False
 not False = True
 
 class {a : Type} -> Eq a where
-  eq  : {a} -> Eq a => a -> a -> Bool
+  eq : a -> a -> Bool
 
 (==) = eq
 
@@ -29,9 +29,9 @@ data List : Type -> Type where
   (::) : {a} -> a -> List a -> List a
 
 instance {a} -> Eq a => Eq (List a)  where
-  eq' {a} Nil       Nil       = True
-  eq' {a} (x :: xs) (y :: ys) = eq {a} x y && eq' xs ys
-  eq' {a} _         _         = False
+  eq' Nil       Nil       = True
+  eq' (x :: xs) (y :: ys) = eq x y && eq' xs ys    // TODO: eq xs ys
+  eq' _         _         = False
 
 
 main =

@@ -114,12 +114,14 @@ defineGlob_ n_ fv t_ env elab = do
       | not (rigid t)   -> print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
       | not (rigid v), n_ /= "lookupDict"   -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
       | otherwise       -> pure env { globals = insertIM n (v, t) $ globals env }
-  pure (n, v_, t, env, ct)
+  pure (n, v, t, env, ct)
 
 addName' n_ fv env = do
   n <- nameOf n_
   v <- fv n
   pure (n, v, env {nameMap = insert n_ n $ nameMap env})
+
+addName_ n env = env {nameMap = insert (nameStr n) n $ nameMap env}
 
 addLocal bound n v t env
   = env { localTypes = insertIM n t $ localTypes env
@@ -481,6 +483,12 @@ addMethodType ns is arg env (n_, t) = do
   (_, mn, _, env) <- defineGlob n mkFun t env
   pure (env, mn)
 
+decomposeHead :: Val -> RefM ([(Name, Val)], [Val], Val)
+decomposeHead t = do
+  (ns, t) <- getMult getHPi t
+  (is, t) <- getMult getSuper t
+  pure (ns, is, t)
+
 -- variables, instances, class name, arg type
 analyzeInstanceHead :: Val -> RefM ([(Name, Val)], [Val], Name, Val)
 analyzeInstanceHead t = do
@@ -503,13 +511,13 @@ defineSuperclasses nclass vclass dict num supers = do
   f <- mkFun "superClasses"
   addRule "superClasses" [m] (TVal f `TApp` c) rhs
 
-inferMethods :: Env -> Raw -> RefM ([(Name, Val)], Env)
-inferMethods env r = case r of
-  RLetTy n t b | onTop env -> do
-    vta <- check env t CType >>= evalEnv' env (typeName n)
+inferMethods :: ((Env -> RefM Val) -> Env -> RefM Val) -> Env -> Raw -> RefM ([(Name, Val)], Env)
+inferMethods under env r = case r of
+  RLetTy n t b -> do
+    vta <- under (\env -> check env t CType >>= evalEnv' env (typeName n)) env
     let ff n = if isConName n then undefined else mkFun n
     (n, _, _, env) <- defineGlob n ff vta env
-    inferMethods env b <&> first ((n, vta):)
+    inferMethods under env b <&> first ((n, vta):)
   REnd -> pure ([], env)
   _ -> errorM "can't infer method"
 
@@ -545,6 +553,21 @@ addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ ar
   addRule "lookupDict" ns (lookup (TVal classVal `TApp` arg')) rhs
   pure ()
 
+introClass :: Val -> (Env -> RefM Val) -> Env -> RefM Val
+introClass c f env = do
+  v <- f env
+  vApps CCPi [c, v]
+
+introType :: (Name, Val) -> (Env -> RefM Val) -> Env -> RefM Val
+introType (n, t) f env = do
+  v <- f $ addLocal True n (vVar n) t $ addName_ n env
+  f <- vLam n v
+  vApps CHPi [t, f]
+
+multIntro :: (a -> (Env -> RefM Val) -> Env -> RefM Val) -> [a] -> (Env -> RefM Val) -> Env -> RefM Val
+multIntro _ [] g = g
+multIntro f (a: as) g = f a $ multIntro f as g
+
 infer_ :: Env -> Raw -> RefM (Tm, Val)
 infer_ env r = case r of
   RClass a b e | onTop env -> do
@@ -552,7 +575,9 @@ infer_ env r = case r of
     vta <- check env Hole CType >>= evalEnv' env (typeName n_)
     (n, tc, _, env, ct) <- defineGlob_ n_ (\n -> pure $ mkCon n $ Just vta) vta env
        \env -> check env a CType >>= evalEnv env
-    (mts, env) <- inferMethods env b
+    (is, _ss, cc) <- decomposeHead ct
+    let under m = multIntro introType is $ introClass cc m
+    (mts, env) <- inferMethods under env b
     (supers, dt) <- dictType ct $ map snd mts
     (dn, dv, _dt, env) <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env
     env <- addClass n (MkClassData tc dv supers mts) env

@@ -5,7 +5,7 @@ import Builtins
 appendStr = AppendStr
 
 class {a : Type} -> Eq a where
-  eq : {a} -> Eq a => a -> a -> Bool
+  eq : a -> a -> Bool
 
 (==) = eq
 
@@ -17,9 +17,9 @@ instance Eq String where
 
 
 class {a : Type} -> Num a where
-  add : {a} -> Num a => a -> a -> a
-  mul : {a} -> Num a => a -> a -> a
-  fromNat : {a} -> Num a => Nat -> a
+  add     : a -> a -> a
+  mul     : a -> a -> a
+  fromNat : Nat -> a
 
 (+) = add
 (*) = mul

@@ -36,7 +36,6 @@ Main directives:
 | `# op quote`        | print the parse expression |
 | `# exptree quote`   | print the parse expression with mixfix operators |
 | `# sugar quote`     | print the desugared source code |
-| `# scope quote`     | print the scope checked source code |
 | `# elab`            | print the elaborated main expression |
 | `# eval`            | print the normalized main expression |
 | `# stage`           | print the staged main expression |
@@ -158,40 +157,38 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- missing check that no unsolved metas left in global definitions
-- pattern matching compiled to object level constructs is not supported
-- object level recursion compiled to object level constructs is not supported
-- foralls for functions and constructors should be explicitly given
-- class constraint should be explicitly given in type class method definitions
-- class method names cannot be operators
-- missing check that pattern matching is not allowed on object language constructors
-- missing check that the main expression should be Code in staging mode
-- missing check that constructors are saturated in patterns
-- missing check to rule out recursive meta solutions
-- missing check that constructors are defined in the right place
-- missing checks on type class and instance definitions
+- staging feature: pattern matching compiled to object level constructs is not supported
+- staging feature: object level recursion compiled to object level constructs is not supported
+- parsing: foralls for functions and constructors should be explicitly given
+- parsing: class method names cannot be operators
+- errors: pattern matching should not be allowed on object language constructors
+- errors: the main expression should be Code in staging mode
+- errors: constructors should be saturated in patterns
+- errors: recursive meta solutions should not be allowed
+- errors: constructors placement should be checked
+- errors: validity of type class and instance definitions should be checked
 - missing documentation
-- local definitions are not supported
-- only simple guards are supported
-- only builtin modules can be imported
+- feature: local definitions are not supported
+- feature: only simple guards are supported
+- feature: only builtin modules can be imported
 - infinite evaluation is not catched (by "gas", for example)
-- closed data types and closed functions are not supported
-- recursive definitions are not properly printed
-- sharing between values are sometimes lost during printing
-- dot patterns (in dependent pattern matching) are not supported
-- pattern synonyms are not supported
-- multi parameter type classes are not supported
-- type class instance methods should be named as method_name ++ `'`
-- there is no stage polymorphism
-- `import` acts as an "include"
-- no support for multiple object codes
-- types are not shown in elaborated output
-- implicit/explicit distinction of lambdas and applications are missing in elaborated output
-- `do` and `where` should be at the end of the line
-- multiline comments interferes with layout rules
-- string literal printing is not the inverse of the string literal parsing
-- desugared `(a b : c)` does not share `c`
-- user defined operator precedences are not supported
+- feature: closed data types and closed functions are not supported
+- printing: recursive definitions are not properly printed
+- printing: sharing between values are sometimes lost during printing
+- feautre: dot patterns (in dependent pattern matching) are not supported
+- feature: pattern synonyms are not supported
+- feature: multi parameter type classes are not supported
+- parsing: type class instance methods should be named as method_name ++ `'`
+- staging feature: there is no stage polymorphism
+- feature: `import` acts as an "include"
+- staging feature: no support for multiple object codes
+- printing: types are not shown in elaborated output
+- printing: implicit/explicit distinction of lambdas and applications are missing in elaborated output
+- parsing: `do` and `where` should be at the end of the line
+- parsing: multiline comments interferes with layout rules
+- pringing: string literal printing is not the inverse of the string literal parsing
+- parsing: desugared `(a b : c)` does not share `c`
+- parsing: user defined operator precedences are not supported
 
 
 ## Performance

@@ -4,7 +4,7 @@
 import Builtins
 
 class {a : Type} -> Num a where
-  add : {a} -> Num a => a -> a -> a
+  add : a -> a -> a
 
 (+) = add
 
