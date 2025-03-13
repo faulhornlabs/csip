@@ -516,6 +516,7 @@ inferMethods env r = case r of
 inferMethodBodies :: Env -> Raw -> RefM ()
 inferMethodBodies env r = case r of
   RRule a b c -> addRule' env a b >> inferMethodBodies env c
+  RLet a Hole b c -> addRule' env (RVar a) b >> inferMethodBodies env c
   REnd -> pure ()
   r -> error' $ ("can't infer method body :\n" <>) <$> print r
 
