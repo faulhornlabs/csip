@@ -283,8 +283,9 @@ conv_ env a b = do
 insertH :: Env -> RefM (Tm, Val) -> RefM (Tm, Val)
 insertH env et = et >>= \(e, t) -> matchHPi t >>= \case
   Nothing -> pure (e, t)
-  Just (ImplClass, _, b) -> do
-    (m, _) <- instanceMeta env
+  Just (ImplClass, a, b) -> do
+    a' <- quoteTm' a
+    let m = TGen $ TApp (TVal lookupDictFun) a'
     insertH env $ pure (TApp e m, b)
   Just (Impl, _, b) -> do
     (m, vm) <- freshMeta' env
@@ -327,6 +328,10 @@ check_ env r ty = case r of
         (_, t) <- unlam n pb
         ta <- check env' a t
         f =<< tLam n ta
+      ImplClass -> do
+        (n, env') <- defineBound n pa env   -- TODO: add superclasses to the env
+        ta <- check env' a pb
+        f =<< tLam n ta
       _ -> undefined
   RLam n Hole a -> do
     (f, icit, pa, pb) <- matchPi True env Expl ty
@@ -344,6 +349,8 @@ check_ env r ty = case r of
     Just (Impl, _, pb) | not (isLHS env) -> do
       n' <- lamName "z" pb
       check env (RHLam n' Hole r) ty
+    Just (ImplClass, _, _) | not (isLHS env) -> do
+      check env (RHLam "c" Hole r) ty
     _ -> case r of
       RLet n t a b -> do
         (ta, vta) <- case t of
@@ -508,15 +515,16 @@ inferMethods env r = case r of
 
 inferMethodBodies :: Env -> Raw -> RefM ()
 inferMethodBodies env r = case r of
-  RRule a b c -> do
-      let ns = [n | n <- fvs a, Nothing <- [lookupName n env]]
-      env' <- foldM addName env ns
-      (ta, vta) <- infer (env' {isLHS = True}) a
-      tb <- check env' b vta
-      addRule (ruleHead a) (boundVars env') ta tb
-      inferMethodBodies env c
+  RRule a b c -> addRule' env a b >> inferMethodBodies env c
   REnd -> pure ()
   r -> error' $ ("can't infer method body :\n" <>) <$> print r
+
+addRule' env a b = do
+  let ns = [n | n <- fvs a, Nothing <- [lookupName n env]]
+  env' <- foldM addName env ns
+  (ta, vta) <- insertH env $ infer (env' {isLHS = True}) a
+  tb <- check env' b vta
+  addRule (ruleHead a) (boundVars env') ta tb
 
 addLookupDictRule :: ClassData -> [(Name, Val)] -> [Val] -> Val -> [Val] -> RefM ()
 addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ arg_ mns = do
@@ -596,11 +604,7 @@ infer_ env r = case r of
     t <- check env r ty
     pure (t, ty)
   RRule a b c | onTop env -> do
-    let ns = [n | n <- fvs a, Nothing <- [lookupName n env]]
-    env' <- foldM addName env ns
-    (ta, vta) <- infer (env' {isLHS = True}) a
-    tb <- check env' b vta
-    addRule (ruleHead a) (boundVars env') ta tb
+    addRule' env a b
     infer env c
   RLet n t a b -> do
     (ta, vta) <- case t of

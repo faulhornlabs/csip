@@ -560,7 +560,7 @@ addRule fn (fromListIS -> boundvars) lhs_ rhs_ = do
   (lhs, rhs) <- trRule boundvars (lhs_, rhs_)
   (r, ns) <- ruleName [] lhs
   old <- lookupRule r
-  new <- compileLHS (TVal old) ns lhs . TRet =<< {-metaToVarTm-} pure rhs
+  new <- compileLHS (TVal old) ns lhs . TRet =<< pure rhs
   updateRule fn r =<< evalClosed new
   pure ()
  where
@@ -818,7 +818,7 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
     pure (lhs', rhs')
  where
   getGens :: Bool -> Reader (IntSet Name) -> State (Map Tm Tm) -> Tm -> RefM Tm
-  getGens get rst st t = f get t
+  getGens get rst st tt = f get tt
    where
     eval' t = asks rst id >>= \bv -> eval (fromListIM [(n, vVar n) | n <- toListIS bv]) t
 
@@ -856,15 +856,17 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
                   num <- metaArgNum vns
                   ns <- mapM mkName $ replicate num "wD"
                   updateMeta (metaRef d) =<< vLams ns (vVar n)
-                _ -> metaToVar m vns >>= \t -> modify st $ insert t $ TVar n
+                _ -> do
+                  t <- metaToVar (("TODO (22):\n" <>) <$> print vns) m vns
+                  modify st $ insert t $ TVar n
             case vns of
               WApp f d | f == lookupDictFun -> addSuperClasses map (vVar n) d
               _ -> pure ()
             pure (TVar n)
           else do
             m <- gets st id
-            ns <- metaToVar m vns
-            gets st \m -> TGen $ fromMaybe (if rigidTm ns then ns else undefined) $ lookup ns m
+            ns <- metaToVar (pure "TODO (20)") m vns
+            pure $ TGen $ fromMaybe (if rigidTm ns then ns else undefined) $ lookup ns m
       t -> error' $ ("TODO(8): " <>) <$> print t
 
     addSuperClasses m v d = do
@@ -876,7 +878,7 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
                   modify st $ insert a' b'
                   addSuperClasses m vv a
 
-    quote = metaToVar mempty
+    quote = metaToVar (pure "TODO (21)") mempty
 
   getSelectors :: Val -> RefM [(Val, Val)]
   getSelectors v = forcedSpine v >>= \case
@@ -889,18 +891,18 @@ metaArgNum v_ = force v_ >>= \case
   WMetaApp a _ -> (+1) <$> metaArgNum a
   _ -> undefined
 
-metaToVar :: Map Tm Tm -> Val -> RefM Tm
-metaToVar m = f where
+metaToVar :: RefM Source -> Map Tm Tm -> Val -> RefM Tm
+metaToVar err m = f where
  f v_ = force v_ >>= \w -> case w of
   _ | closed w && rigid w -> pure $ TVal w
   WVar    -> pure $ TVar $ name w
-  WMeta{} -> maybe undefined pure $ lookup (TVal w) m
   WApp a b -> TApp <$> f a <*> f b
   WSup c vs | rigidCombinator c -> TSup c <$> mapM f vs
   WSup c vs -> do
           n <- varName c
           t <- evalCombinator c $ vs <> [vVar n]
           tLam n =<< f t
+  WMeta{} -> err >>= errorM
   w -> error' $ ("TODO(1): " <>) <$> print w
 
 -----------------------

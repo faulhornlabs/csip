@@ -29,10 +29,10 @@ class {m} -> Monad m => MonadFail m where
 stateType : (Type ~> Type) -> Type
 
 class {m} -> Monad m => MonadState m where
-  state : {m} -> MonadState m => {a} -> (s = stateType m; (s -> Tuple2 a s) -> m a)
+  state : {m} -> MonadState m => {a} -> (stateType m -> Tuple2 a (stateType m)) -> m a
 
-get : {m} -> MonadState m => Nat -> m (stateType m)
-get 0 = state \s -> T2 s s    // TODO: without 0
+get : {m} -> MonadState m => m (stateType m)
+get {_} /* TODO */ = state \s -> T2 s s
 
 put : {m} -> MonadState m => stateType m -> m Unit
 put s = state \_ -> T2 TT s
@@ -118,5 +118,5 @@ instance {m s} -> Monad m => MonadState (StateT s m) where
   state' f = MkStateT \s -> pure (f s)
 
 
-fmap'
+get
 
