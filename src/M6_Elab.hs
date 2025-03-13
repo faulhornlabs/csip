@@ -597,8 +597,8 @@ infer_ env r = case r of
   RLetTy n t b | onTop env -> do
     vta <- check env t CType >>= evalEnv' env (typeName n)
     let ff n = if isConName n then pure $ mkCon n $ Just vta else mkFun n
-    (_n, _, _, env') <- defineGlob n ff vta env
-    infer env' b
+    (_n, _, _, env) <- defineGlob n ff vta env
+    infer env b
   ROLet{} -> do
     (_, m) <- freshMeta' env
     ty <- vApp CCode m
@@ -607,6 +607,12 @@ infer_ env r = case r of
   RRule a b c | onTop env -> do
     addRule' env a b
     infer env c
+  RLet n t a b | isRuleTy t -> do
+    vta <- check env t CType >>= evalEnv' env (typeName n)
+    let ff n = if isConName n then undefined else mkFun n
+    (_n, _, _, env) <- defineGlob n ff vta env
+    addRule' env (RVar n) a
+    infer env b
   RLet n t a b -> do
     (ta, vta) <- case t of
       Hole -> infer env a
@@ -679,6 +685,12 @@ addName env n = do
   defineBound n m env <&> snd
 
 --------------------
+
+isRuleTy :: Raw -> Bool
+isRuleTy = \case
+  RHPi _ _ t -> isRuleTy t
+  RCPi{} -> True
+  _ -> False
 
 ruleHead :: Raw -> NameStr
 ruleHead = f where

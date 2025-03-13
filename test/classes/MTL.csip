@@ -32,7 +32,7 @@ class {m} -> Monad m => MonadState m where
   state : {m} -> MonadState m => {a} -> (stateType m -> Tuple2 a (stateType m)) -> m a
 
 get : {m} -> MonadState m => m (stateType m)
-get {_} /* TODO */ = state \s -> T2 s s
+get = state \s -> T2 s s
 
 put : {m} -> MonadState m => stateType m -> m Unit
 put s = state \_ -> T2 TT s
