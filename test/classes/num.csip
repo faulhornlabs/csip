@@ -12,12 +12,12 @@ instance Num Nat where
   add' a b = AddNat a b
 
 data Wrap : Type -> Type where
-  MkWrap : {a : Type} -> a -> Wrap a
+  MkWrap : a -> Wrap a
 
-instance {a} -> Num a => Num (Wrap a)  where
+instance Num a => Num (Wrap a)  where
   add' (MkWrap x) (MkWrap y) = MkWrap (x + y)
 
-double : {a} -> Num a => a -> a
+double : Num a => a -> a
 double x = x + x
 
 double (MkWrap 4)

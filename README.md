@@ -159,7 +159,6 @@ The following limitations and bugs are planned to be lifted:
 
 - staging feature: pattern matching compiled to object level constructs is not supported
 - staging feature: object level recursion compiled to object level constructs is not supported
-- parsing: foralls for functions and constructors should be explicitly given
 - parsing: class method names cannot be operators
 - errors: pattern matching should not be allowed on object language constructors
 - errors: the main expression should be Code in staging mode

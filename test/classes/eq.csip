@@ -16,7 +16,7 @@ class {a : Type} -> Eq a where
 
 (==) = eq
 
-(/=) : {a} -> Eq a => a -> a -> Bool
+(/=) : Eq a => a -> a -> Bool
 a /= b = not (a == b)
 
 
@@ -25,10 +25,10 @@ instance Eq Nat where
 
 
 data List : Type -> Type where
-  Nil  : {a} -> List a
-  (::) : {a} -> a -> List a -> List a
+  Nil  : List a
+  (::) : a -> List a -> List a
 
-instance {a} -> Eq a => Eq (List a)  where
+instance Eq a => Eq (List a)  where
   eq' Nil       Nil       = True
   eq' (x :: xs) (y :: ys) = eq x y && eq' xs ys    // TODO: eq xs ys
   eq' _         _         = False

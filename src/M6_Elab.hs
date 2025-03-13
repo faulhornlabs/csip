@@ -358,7 +358,7 @@ check_ env r ty = case r of
         (ta, vta) <- case t of
           Hole -> infer env a
           t -> do
-            vta <- check env t CType >>= evalEnv' env (typeName n)
+            vta <- check env (addForalls env t) CType >>= evalEnv' env (typeName n)
             ta <- check env a vta
             pure (ta, vta)
         va <- evalEnv' env n ta
@@ -366,7 +366,7 @@ check_ env r ty = case r of
         tb <- check env' b ty
         pure $ if onTop env then tb else TLet n ta tb
       ROLet n t a b | onTop env -> do
-        vta <- check env t CType >>= evalEnv' env (typeName n)
+        vta <- check env (addForalls env t) CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
         (_n, c, vta, env) <- defineGlob n (\n -> pure $ vCon n Nothing) vta env
         tb <- check env b ty
@@ -376,7 +376,7 @@ check_ env r ty = case r of
         ftb <- fb tb
         pure $ TApps "TopLet" [pa, pb, TVal c, fta, ftb]
       ROLet n t a b -> do
-        vta <- check env t CType >>= evalEnv' env (typeName n)
+        vta <- check env (addForalls env t) CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
         (n, env') <- defineBound n vta env
         tb <- check env' b ty
@@ -514,7 +514,7 @@ defineSuperclasses nclass vclass dict num supers = do
 inferMethods :: ((Env -> RefM Val) -> Env -> RefM Val) -> Env -> Raw -> RefM ([(Name, Val)], Env)
 inferMethods under env r = case r of
   RLetTy n t b -> do
-    vta <- under (\env -> check env t CType >>= evalEnv' env (typeName n)) env
+    vta <- under (\env -> check env (addForalls env t) CType >>= evalEnv' env (typeName n)) env
     let ff n = if isConName n then undefined else mkFun n
     (n, _, _, env) <- defineGlob n ff vta env
     inferMethods under env b <&> first ((n, vta):)
@@ -574,7 +574,7 @@ infer_ env r = case r of
     let n_ = getVarName $ appHead $ codomain a
     vta <- check env Hole CType >>= evalEnv' env (typeName n_)
     (n, tc, _, env, ct) <- defineGlob_ n_ (\n -> pure $ mkCon n $ Just vta) vta env
-       \env -> check env a CType >>= evalEnv env
+       \env -> check env (addForalls env a) CType >>= evalEnv env
     (is, _ss, cc) <- decomposeHead ct
     let under m = multIntro introType is $ introClass cc m
     (mts, env) <- inferMethods under env b
@@ -587,7 +587,7 @@ infer_ env r = case r of
     () <- defineSuperclasses n_ tc dn (1 + length supers + length mts) supers
     infer env e
   RInstance a b c | onTop env -> do
-    ct <- check env a CType >>= evalEnv env
+    ct <- check env (addForalls env a) CType >>= evalEnv env
     (ns, is, n, arg) <- analyzeInstanceHead ct
     case lookupClass n env of
       Nothing -> undefined
@@ -620,7 +620,7 @@ infer_ env r = case r of
   RVar n | Just (n, ty) <- lookupLocal  n env -> pure (TVar n, ty)
   RVar{} -> errorM "Not in scope"
   RLetTy n t b | onTop env -> do
-    vta <- check env t CType >>= evalEnv' env (typeName n)
+    vta <- check env (addForalls env t) CType >>= evalEnv' env (typeName n)
     let ff n = if isConName n then pure $ mkCon n $ Just vta else mkFun n
     (_n, _, _, env) <- defineGlob n ff vta env
     infer env b
@@ -633,7 +633,7 @@ infer_ env r = case r of
     addRule' env a b
     infer env c
   RLet n t a b | isRuleTy t -> do
-    vta <- check env t CType >>= evalEnv' env (typeName n)
+    vta <- check env (addForalls env t) CType >>= evalEnv' env (typeName n)
     let ff n = if isConName n then undefined else mkFun n
     (_n, _, _, env) <- defineGlob n ff vta env
     addRule' env (RVar n) a
@@ -642,7 +642,7 @@ infer_ env r = case r of
     (ta, vta) <- case t of
       Hole -> infer env a
       t -> do
-        vta <- check env t CType >>= evalEnv' env (typeName n)
+        vta <- check env (addForalls env t) CType >>= evalEnv' env (typeName n)
         ta <- check env a vta
         pure (ta, vta)
     va <- evalEnv' env n ta
@@ -768,5 +768,27 @@ fvs = nub . go where
     RString{} -> []
     x -> error' $ ("fvs: " <>) <$> print x
 
+addForalls :: Env -> Raw -> Raw
+addForalls env r = foldr (\n r -> RHPi n Hole r) r [n | n <- fvs' r, Nothing <- [lookupName n env]]
 
+fvs' :: Raw -> [NameStr]
+fvs' = nub . go where
+  go = \case
+    Hole -> []
+    RDot{} -> undefined
+    RView{} -> undefined
+    RGuard{} -> undefined
+    RRule{} -> undefined
+    RHPi n a b -> go a <> del n (go b)
+    RPi n a b -> go a <> del n (go b)
+    RLet n t a b -> go t <> go a <> del n (go b)
+    RCPi a b -> go a <> go b
+    RIPi a b -> go a <> go b
+    RHApp a b -> go a <> go b
+    RApp a b -> go a <> go b
+    RVar a -> [a]
+    RNat{} -> []
+    RString{} -> []
+    x -> error' $ ("fvs': " <>) <$> print x
 
+  del n = filter (/= n)

@@ -1,5 +1,5 @@
 
-Ap : {a b} -> (a ~> b) -> a -> b
+Ap : (a ~> b) -> a -> b
 
 data Bool : Type where
   True  : Bool
@@ -41,12 +41,12 @@ Prod      : Ty -> Ty -> Ty
 
 Code      : Ty -> Type
 Lam       : {a b : Ty} -> (a -> b) -> Arr a b
-App       : {a b} -> Arr a b -> a -> b
+App       : Arr a b -> a -> b
 Let       : {a b : Ty} -> a -> (a -> b) -> b
 TopLet    : {a b : Ty} -> a -> a -> b -> b
 Pair      : {a b : Ty} -> a -> b -> Prod a b
-Fst       : {a b} -> Prod a b -> a
-Snd       : {a b} -> Prod a b -> b
+Fst       : Prod a b -> a
+Snd       : Prod a b -> b
 
 lookupDict : (a : Type) -> a
 
