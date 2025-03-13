@@ -5,7 +5,8 @@ data Bool : Type where
   True  : Bool
   False : Bool
 
-Nat       : Type
+data Nat : Type where
+
 DecNat    : Nat -> Nat
 AddNat    : Nat -> Nat -> Nat
 MulNat    : Nat -> Nat -> Nat
@@ -14,39 +15,44 @@ DivNat    : Nat -> Nat -> Nat
 EqNat     : Nat -> Nat -> Bool
 
 Succ      : Nat -> Nat
-SuccView  : Type
-SuccOk    : Nat -> SuccView
-SuccFail  : SuccView
+
+data SuccView : Type where
+  SuccOk    : Nat -> SuccView
+  SuccFail  : SuccView
+
 succView  : Nat -> SuccView
 succView 0 = SuccFail
 succView n = SuccOk (DecNat n)
 
-String    : Type
+data String : Type where
+
 AppendStr : String -> String -> String
 EqStr     : String -> String -> Bool
 TakeStr   : Nat -> String -> String
 DropStr   : Nat -> String -> String
 
 Cons      : String -> String -> String
-ConsView  : Type
-ConsOk    : String -> String -> ConsView
-ConsFail  : ConsView
+
+data ConsView : Type where
+  ConsOk    : String -> String -> ConsView
+  ConsFail  : ConsView
+
 consView  : String -> ConsView
 consView "" = ConsFail
 consView n = ConsOk (TakeStr 1 n) (DropStr 1 n)
 
-Ty        : Type
-Arr       : Ty -> Ty -> Ty
-Prod      : Ty -> Ty -> Ty
+data Ty : Type where
+  Arr       : Ty -> Ty -> Ty
+  Prod      : Ty -> Ty -> Ty
 
-Code      : Ty -> Type
-Lam       : {a b : Ty} -> (a -> b) -> Arr a b
-App       : Arr a b -> a -> b
-Let       : {a b : Ty} -> a -> (a -> b) -> b
-TopLet    : {a b : Ty} -> a -> a -> b -> b
-Pair      : {a b : Ty} -> a -> b -> Prod a b
-Fst       : Prod a b -> a
-Snd       : Prod a b -> b
+data Code : Ty -> Type where
+  Lam       : {a b : Ty} -> (a -> b) -> Arr a b
+  App       : Arr a b -> a -> b
+  Let       : {a b : Ty} -> a -> (a -> b) -> b
+  TopLet    : {a b : Ty} -> a -> a -> b -> b
+  Pair      : {a b : Ty} -> a -> b -> Prod a b
+  Fst       : Prod a b -> a
+  Snd       : Prod a b -> b
 
 lookupDict : (a : Type) -> a
 
