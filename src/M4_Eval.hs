@@ -552,7 +552,7 @@ lookupRule r = readRef r
 
 updateRule :: NameStr -> RuleRef -> Val -> RefM ()
 updateRule fn r b
-  | not (rigid b) = error' $ (("rule body is not rigid:\n" <> showMixfix fn <> " = ") <>) <$> print b
+  | not (rigid b), fn /= "lookupDict" = error' $ (("rule body is not rigid:\n" <> showMixfix fn <> " = ") <>) <$> print b
   | otherwise = writeRef r b
 
 addRule :: NameStr -> [Name] -> Tm -> Tm -> RefM ()
@@ -834,8 +834,8 @@ trRule bv (lhs, rhs) = runReader bv \rst -> fst <$> runState mempty \st -> do
       TVal WString{} | get -> pure $ TView (TVal (mkCon "EqStr" Nothing) `TApp` t) $ TVal "True"
 
       TVal v_ -> deepForce v_ >>= \case
-        v | rigid v -> pure $ TVal v
-        _ -> undefined
+        v {- | rigid v -} -> pure $ TVal v
+--        _ -> undefined
       TVar{} -> pure t
       TApp a b -> TApp <$> f get a <*> f get b
       TLet n a b -> TLet n <$> f get a <*> local rst (insertIS n) (f get b)
@@ -895,6 +895,7 @@ metaToVar :: RefM Source -> Map Tm Tm -> Val -> RefM Tm
 metaToVar err m = f where
  f v_ = force v_ >>= \w -> case w of
   _ | closed w && rigid w -> pure $ TVal w
+  WFun{}  -> pure $ TVal w
   WVar    -> pure $ TVar $ name w
   WApp a b -> TApp <$> f a <*> f b
   WSup c vs | rigidCombinator c -> TSup c <$> mapM f vs
@@ -931,7 +932,9 @@ pattern CFail :: Val
 pattern CFail = "Fail"
 
 {-# noinline lookupDictFun #-}
-lookupDictFun = WFun_ "lookupDict" $ topRef CFail
+lookupDictFun = metaFun "lookupDict" $ topRef CFail
+
+metaFun i f = MkVal i False{-hack-} True (VFun f)
 
 {-# noinline superClassesFun #-}
 superClassesFun = WFun_ "superClasses" $ topRef CFail
@@ -970,6 +973,7 @@ deepForce v_ = do
       _ | rigid v  -> ret Nothing []
       WMeta{}      -> ret Nothing []
       WMetaApp{}   -> ret Nothing []
+      WFun{}       -> ret Nothing []   -- meta funs
       WLam c -> do
         u <- c
         b <- vApp v $ vVar u
@@ -988,6 +992,7 @@ deepForce v_ = do
       _ | rigid v -> pure v
       WMetaApp{}  -> pure v
       WMeta{}     -> pure v
+      WFun{}      -> pure v
       WLam{}  | Just n <- mn, [body] <- ts -> vLam n body
       WApp{}  | [a, b] <- ts -> vApp a b
 --      WTm a _ | [b] <- ts -> if rigidTm a then vTm (nameStr $ name v) a b else pure b

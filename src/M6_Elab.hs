@@ -112,7 +112,7 @@ defineGlob_ n_ fv t_ env elab = do
   env <- case () of
     _ | not (onTop env) -> pure $ addLocal False n v t env
       | not (rigid t)   -> print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
-      | not (rigid v)   -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
+      | not (rigid v), n_ /= "lookupDict"   -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
       | otherwise       -> pure env { globals = insertIM n (v, t) $ globals env }
   pure (n, v_, t, env, ct)
 
