@@ -19,8 +19,7 @@ class {m} -> Applicative m => Monad m where
 
 
 (>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
-// TODO: ma >>= f = join (f <$> ma)
-(>>=) {m} {a} {b} ma f = join (f <$> ma)
+ma >>= f = join (f <$> ma)
 
 
 class {m} -> Monad m => MonadFail m where
@@ -32,11 +31,11 @@ stateType : (Type ~> Type) -> Type
 class {m} -> Monad m => MonadState m where
   state : {m} -> MonadState m => {a} -> (s = stateType m; (s -> Tuple2 a s) -> m a)
 
-get : {m} -> MonadState m => m (stateType m)
-get {m} {d} = state {m} {d} \s -> T2 s s
+get : {m} -> MonadState m => Nat -> m (stateType m)
+get 0 = state \s -> T2 s s    // TODO: without 0
 
 put : {m} -> MonadState m => stateType m -> m Unit
-put {m} s = state \_ -> T2 TT s
+put s = state \_ -> T2 TT s
 
 
 class {t : (Type ~> Type) ~> Type ~> Type} -> MonadTrans t where
@@ -94,8 +93,7 @@ joinList (LCons x xs) = append x (joinList xs)
 instance Applicative List where
   pure' x = LCons x Nil
 
-  // TODO: app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
-  app' {a} {b} fs xs = joinList (fmap' (\f -> fmap f xs) fs)
+  app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
 
 instance Monad List where
   // TODO: join' = joinList
@@ -111,15 +109,14 @@ data StateT : Type -> (Type ~> Type) -> Type ~> Type where
   MkStateT : {s} -> {m : Type ~> Type} -> {a} -> (s -> m (Tuple2 a s)) -> StateT s m a
 
 instance {m s} -> Functor m => Functor (StateT s m) where
-  fmap' {m} {s} {d} {a} {b} f (MkStateT g) = MkStateT \x -> fmap {m} {d} (first f) (g x)
+  fmap' f (MkStateT g) = MkStateT \x -> fmap (first f) (g x)
 
 
 stateType (StateT s m) = s
 
 instance {m s} -> Monad m => MonadState (StateT s m) where
-  // TODO  state' f = MkStateT \s -> pure (f s)
-  state' {m} {s} {_} {a} f = MkStateT {s} {m} {a} \s -> pure {m} (f s)    // TODO: elim lookupDict
+  state' f = MkStateT \s -> pure (f s)
 
 
-state'
+fmap'
 

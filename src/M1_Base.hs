@@ -42,7 +42,7 @@ module M1_Base
 
   , mainException
   , tag
-  , impossible, undefined, error, error', errorM, assert
+  , impossible, undefined, error, error', errorM, assert, assertM
 
   , walk, downUp, topDown, bottomUp
 
@@ -55,9 +55,9 @@ module M1_Base
 
   , Void
   , HasId(getId)
-  , IntMap, readIM, insertIM, lookupIM, fromListIM, sizeIM, toListIM, singletonIM, assocsIM, unionWithIM
+  , IntMap, readIM, insertIM, lookupIM, fromListIM, sizeIM, toListIM, singletonIM, assocsIM, unionWithIM, nullIM
   , walkIM, downUpIM, topDownIM, bottomUpIM
-  , IntSet, singletonIS, memberIS, insertIS, deleteIS, fromListIS, toListIS
+  , IntSet, singletonIS, memberIS, insertIS, deleteIS, fromListIS, toListIS, nullIS
   , nubIS
   )
  where
@@ -677,6 +677,12 @@ assert False = error "assertion failed"
 #endif
 assert _ = id
 
+assertM :: HasCallStack => Bool -> RefM ()
+#ifdef DEBUG
+assertM False = errorM "assertion failed"
+#endif
+assertM _ = pure ()
+
 ------------------
 
 head :: HasCallStack => [a] -> a
@@ -894,6 +900,8 @@ assocsIM (MkIM m) = toList m
 
 singletonIM a b = MkIM $ IM.singleton (getId a) (a, b)
 
+nullIM (MkIM m) = IM.null m
+
 unionWithIM :: HasId a => (b -> b -> b) -> IntMap a b -> IntMap a b -> IntMap a b
 unionWithIM f (MkIM a) (MkIM b) = MkIM $ IM.unionWith (\(a, x) (_, y) -> (a, f x y)) a b
 
@@ -906,6 +914,8 @@ insertIS :: HasId k => k -> IntSet k -> IntSet k
 insertIS a (MkIS m) = MkIS $ IM.insert (getId a) a m
 
 singletonIS a = MkIS $ IM.singleton (getId a) a
+
+nullIS (MkIS m) = IM.null m
 
 memberIS :: HasId a => a -> IntSet a -> Bool
 memberIS a (MkIS m) = IM.member (getId a) m

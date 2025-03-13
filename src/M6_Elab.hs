@@ -103,37 +103,40 @@ addClass n d env = pure $ env { classes = insertIM n d $ classes env }
 lookupClass :: Name -> Env -> Maybe ClassData
 lookupClass n env = lookupIM n (classes env)
 
-define_ :: Maybe Bool -> NameStr -> (Name -> RefM Val) -> Val -> Env -> RefM (Name, Val, Val, Env)
-define_ bound n_ fv t env = do
-  n <- nameOf n_
-  v <- fv n
-  (v, t, env) <- define__ bound n v t (env {nameMap = insert n_ n $ nameMap env})
-  pure (n, v, t, env)
-
-define__ bound n v_ t_ env = do
+defineGlob_ :: NameStr -> (Name -> RefM Val) -> Val -> Env -> (Env -> RefM a) -> RefM (Name, Val, Val, Env, a)
+defineGlob_ n_ fv t_ env elab = do
+  (n, v_, env) <- addName' n_ fv env
+  ct <- elab env { globals = insertIM n (v_, t_) $ globals env }
   v <- deepForce v_
   t <- deepForce t_
-  let strict = fromMaybe False bound
-  env <- if isNothing bound || not (onTop env)
-    then pure
-    env { localTypes = insertIM n t $ localTypes env
+  env <- case () of
+    _ | not (onTop env) -> pure $ addLocal False n v t env
+      | not (rigid t)   -> print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
+      | not (rigid v)   -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
+      | otherwise       -> pure env { globals = insertIM n (v, t) $ globals env }
+  pure (n, v_, t, env, ct)
+
+addName' n_ fv env = do
+  n <- nameOf n_
+  v <- fv n
+  pure (n, v, env {nameMap = insert n_ n $ nameMap env})
+
+addLocal bound n v t env
+  = env { localTypes = insertIM n t $ localTypes env
         , localVals = insertIM n v $ localVals env
-        , boundVars = (if isNothing bound then (n:) else id) $ boundVars env
+        , boundVars = (if bound then (n:) else id) $ boundVars env
         }
-    else if strict && not (rigid t) then print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
-    else if strict && not (rigid v) then print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
-    else pure
-    env { globals = insertIM n (v, t) $ globals env
-        }
-  pure (v, t, env)
+
+defineBound :: NameStr -> Val -> Env -> RefM (Name, Env)
+defineBound n_ t env = do
+  (n, v, env) <- addName' n_ (\n -> pure $ vVar n) env
+  env <- pure $ addLocal True n v t env
+  pure (n, env)
+
+defineGlob n v t e = defineGlob_ n v t e (\_ -> pure ()) <&> \(a, b, c, d, _) -> (a, b, c, d)
 
 defineGlob' :: NameStr -> Val -> Val -> Env -> RefM (Name, Env)
 defineGlob' n v t env = defineGlob n (\_ -> pure v) t env <&> \(n, _, _, env) -> (n, env)
-
-defineGlob = defineGlob_ True
-defineGlob_ strict n v t e = define_ (Just strict) n v t e
-
-defineBound n t env = define_ Nothing n (\n -> pure $ vVar n) t env <&> \(n, _, _, env) -> (n, env)
 
 lookupName n env = lookup n $ nameMap env
 
@@ -491,7 +494,7 @@ defineSuperclasses nclass vclass dict num supers = do
     pure (TVal s `TApp` TVar m, TVal sf `TApp` TVar m)
   let rhs = foldr (\(a, b) t -> TApps (TVal "SuperClassCons") [c, a, b, t]) (TVal "SuperClassNil" `TApp` c) ss
   f <- mkFun "superClasses"
-  addRule [m] (TVal f `TApp` c) rhs
+  addRule "superClasses" [m] (TVal f `TApp` c) rhs
 
 inferMethods :: Env -> Raw -> RefM ([(Name, Val)], Env)
 inferMethods env r = case r of
@@ -510,7 +513,7 @@ inferMethodBodies env r = case r of
       env' <- foldM addName env ns
       (ta, vta) <- infer (env' {isLHS = True}) a
       tb <- check env' b vta
-      addRule (boundVars env') ta tb
+      addRule (ruleHead a) (boundVars env') ta tb
       inferMethodBodies env c
   REnd -> pure ()
   r -> error' $ ("can't infer method body :\n" <>) <$> print r
@@ -530,7 +533,7 @@ addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ ar
         ++ [ TApps (TVal mn) $ map TVar $ ns ++ ds
            | mn <- mns]
         )
-  addRule ns (lookup (TVal classVal `TApp` arg')) rhs
+  addRule "lookupDict" ns (lookup (TVal classVal `TApp` arg')) rhs
   pure ()
 
 infer_ :: Env -> Raw -> RefM (Tm, Val)
@@ -538,9 +541,8 @@ infer_ env r = case r of
   RClass a b e | onTop env -> do
     let n_ = getVarName $ appHead $ codomain a
     vta <- check env Hole CType >>= evalEnv' env (typeName n_)
-    (n, tc, vta, env) <- defineGlob_ False n_ (\n -> pure $ mkCon n $ Just vta) vta env
-    ct <- check env a CType >>= evalEnv env
-    (tc, _, env) <- define__ (Just True) n tc vta env
+    (n, tc, _, env, ct) <- defineGlob_ n_ (\n -> pure $ mkCon n $ Just vta) vta env
+       \env -> check env a CType >>= evalEnv env
     (mts, env) <- inferMethods env b
     (supers, dt) <- dictType ct $ map snd mts
     (dn, dv, _dt, env) <- defineGlob (dictName n_) (\n -> pure $ mkCon n $ Just dt) dt env
@@ -598,7 +600,7 @@ infer_ env r = case r of
     env' <- foldM addName env ns
     (ta, vta) <- infer (env' {isLHS = True}) a
     tb <- check env' b vta
-    addRule (boundVars env') ta tb
+    addRule (ruleHead a) (boundVars env') ta tb
     infer env c
   RLet n t a b -> do
     (ta, vta) <- case t of
@@ -673,18 +675,18 @@ addName env n = do
 
 --------------------
 
-ruleHead :: Raw -> Maybe NameStr
+ruleHead :: Raw -> NameStr
 ruleHead = f where
   f = \case
     RGuard a _ -> f a
     RApp a _ -> f a
-    RVar n -> Just n
-    _ -> Nothing
+    RVar n -> n
+    _ -> undefined
 
 reverseRules :: Raw -> Raw
 reverseRules = g where
   g = \case
-    RRule a c b | Just h <- ruleHead a -> f h [(a, c)] b
+    RRule a c b   -> f (ruleHead a) [(a, c)] b
     RLet  n t a b -> RLet  n t a (g b)
     ROLet n t a b -> ROLet n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
@@ -695,7 +697,7 @@ reverseRules = g where
     r -> r
 
   f h acc = \case
-    RRule a c b | Just h' <- ruleHead a, h' == h -> f h ((a, c): acc) b
+    RRule a c b | ruleHead a == h -> f h ((a, c): acc) b
     r -> foldr (\(a, c) b -> RRule a c b) (g r) acc
 
 inferTop :: Raw -> RefM (Tm, Val)

@@ -19,8 +19,7 @@ class {m} -> Applicative m => Monad m where
 
 
 (>>=) : {m a b} -> Monad m => m a -> (a -> m b) -> m b
-// TODO: ma >>= f = join (f <$> ma)
-(>>=) {m} {a} {b} ma f = join (f <$> ma)
+ma >>= f = join (f <$> ma)
 
 
 // Maybe monad
@@ -65,8 +64,7 @@ joinList (LCons x xs) = append x (joinList xs)
 instance Applicative List where
   pure' x = LCons x Nil
 
-  // TODO: app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
-  app' {a} {b} fs xs = joinList (fmap' (\f -> fmap f xs) fs)
+  app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
 
 instance Monad List where
   // TODO: join' = joinList

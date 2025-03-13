@@ -19,11 +19,6 @@ update v e = do
   traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
   updateMeta (metaRef v) e
 
-metaArgNum v_ = force v_ >>= \case
-  WMeta _     -> pure 0
-  WMetaApp a _ -> (+1) <$> metaArgNum a
-  _ -> undefined
-
 updateClosed a b = do
   traceShow "2" $ "update " <<>> showM a <<>> "\n := " <<>> showM b
   v <- closeTm b
@@ -57,45 +52,6 @@ pruneMeta m (toListIS -> is) = do
   t <- mk 0 is []
   v <- eval mempty t
   update m v
-
--------------------
-
-deepForce :: Val -> RefM Val
-deepForce v_ = do
-  v <- force_ v_
-  m <- go [v]
-  pure $ fromJust $ lookup v m
- where
-  go sv = downUp down up sv
-   where
-    down :: Val -> RefM (Maybe Name, [Val])
-    down v = case v of
-      _ | rigid v  -> ret Nothing []
-      WMeta{}      -> ret Nothing []
-      WMetaApp{}   -> ret Nothing []
-      WLam c -> do
-        u <- c
-        b <- vApp v $ vVar u
-        ret (Just u) [b]
-      WApp a b     -> ret Nothing [a, b]
-      WTm _ b      -> ret Nothing [b]
-      WSel{}       -> undefined
-      WMatch{}     -> undefined
-      WRet{}       -> undefined
-      _ -> impossible
-     where
-      ret mn es = (,) mn <$> mapM force_ es
-
-    up :: Val -> Maybe Name -> [(Val, Val)] -> RefM Val
-    up v mn (map snd -> ts) = case v of
-      _ | rigid v -> pure v
-      WMetaApp{}  -> pure v
-      WMeta{}     -> pure v
-      WLam{}  | Just n <- mn, [body] <- ts -> vLam n body
-      WApp{}  | [a, b] <- ts -> vApp a b
-      WTm a _ | [b] <- ts -> vTm (nameStr $ name v) a b
-      _ -> undefined
-
 
 -------------------
 
