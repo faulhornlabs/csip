@@ -16,7 +16,7 @@ module M8_IO
  where
 
 import Prelude as E
-  (IO, FilePath, readFile, writeFile, getChar, putChar)
+  (IO, FilePath, readFile, writeFile, getChar, putChar, (^))
 import System.Directory as E
   ( doesFileExist, doesDirectoryExist, getTemporaryDirectory
   , listDirectory, createDirectoryIfMissing, {- renameFile, -} removeDirectoryRecursive)
@@ -27,9 +27,6 @@ import System.Environment (getArgs)
 import System.IO (hReady, hFlush, hSetEcho, BufferMode(..), hSetBuffering, hIsTerminalDevice, stdin, stdout)
 import System.Exit (die)
 import Data.Char (digitToInt)
-import Crypto.Hash.MD5 (hash)
-import Data.ByteString.Char8 (pack, unpack)
-import Data.ByteString.Base64.URL (encode)
 import Data.Version (versionBranch)
 
 import Paths_csip (version)
@@ -38,7 +35,25 @@ import M1_Base
 -----------------------------------------------
 
 hashString :: String -> String
-hashString = unpack . encode . hash . pack
+hashString = map char . base 22 64 . hash
+ where
+  hash :: String -> Integer
+  hash = foldl (\h c -> m $ 33 * h + fromIntegral (ord c)) 5381   -- djb2
+
+  m :: Integer -> Integer
+  m i = i `mod` 2^(128 :: Int)
+
+  base :: Int -> Integer -> Integer -> [Int]
+  base 0 _ _ = []
+  base n b i = fromIntegral (mod i b): base (n-1) b (div i b)
+
+  char i
+    | i < 26 = chr $ i      + ord 'A'
+    | i < 52 = chr $ i - 26 + ord 'a'
+    | i < 62 = chr $ i - 52 + ord '0'
+    | i == 62 = '-'
+    | i == 63 = '_'
+    | otherwise = impossible
 
 -----------------------------------------------
 

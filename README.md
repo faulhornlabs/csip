@@ -159,7 +159,9 @@ The following limitations and bugs are planned to be lifted:
 
 - staging feature: pattern matching compiled to object level constructs is not supported
 - staging feature: object level recursion compiled to object level constructs is not supported
-- parsing: class method names cannot be operators
+- staging feature: no support for multiple object codes
+- feature: only builtin modules can be imported
+- feature: no deriving support
 - errors: pattern matching should not be allowed on object language constructors
 - errors: the main expression should be Code in staging mode
 - errors: constructors should be saturated in patterns
@@ -169,18 +171,15 @@ The following limitations and bugs are planned to be lifted:
 - missing documentation
 - feature: local definitions are not supported
 - feature: only simple guards are supported
-- feature: only builtin modules can be imported
-- infinite evaluation is not catched (by "gas", for example)
+- errors: infinite evaluation is not catched (by "gas", for example)
 - feature: closed data types and closed functions are not supported
 - printing: recursive definitions are not properly printed
 - printing: sharing between values are sometimes lost during printing
 - feautre: dot patterns (in dependent pattern matching) are not supported
 - feature: pattern synonyms are not supported
 - feature: multi parameter type classes are not supported
-- parsing: type class instance methods should be named as method_name ++ `'`
 - staging feature: there is no stage polymorphism
 - feature: `import` acts as an "include"
-- staging feature: no support for multiple object codes
 - printing: types are not shown in elaborated output
 - printing: implicit/explicit distinction of lambdas and applications are missing in elaborated output
 - parsing: `do` and `where` should be at the end of the line
@@ -202,7 +201,6 @@ Implemented performance improvements:
 Planned performance improvements:
 
 - optimize chained rewrite rules produced by pattern match compilation
-- fast head of spine access in terms and values
 - parsing and pretty printing should be near linear time operation
 - faster supercombinator evaluation using interpreted register machines
 - run staging on closed meta level values

@@ -10,13 +10,13 @@ module M3_Parse
   , ExpTree_
     ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
     , Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard
-    , RClass, RInstance, RData, RNat, RString, REnd)
+    , RClass, RInstance, RData, RNat, RString, REnd, RAnn)
   , PPrint (pprint)
   , showM
   , zVar
   , coerceExpTree
 
-  , Mixfix, addPrefix, addSuffix
+  , Mixfix, addPrefix, addSuffix, isGraphicMixfix
   , OpSeq', ExpTree', Raw_, Scoped_
   ) where
 
@@ -180,6 +180,11 @@ instance Semigroup (Token a) where
 precedence = \case
   MkToken _ p -> getCached p
   _ -> strPrecedence "a"
+
+isGraphicToken :: Token a -> Bool
+isGraphicToken t = isAtom t && case t of
+  MkToken (headCh -> c) _  -> isGraphic c
+  _ -> False
 
 isUpperToken :: Token a -> Bool
 isUpperToken t = isAtom t && case t of
@@ -887,6 +892,7 @@ pattern RClass    a b c = ZApps NLetClass    [a, b, c]
 pattern RInstance a b c = ZApps NLetInstance [a, b, c]
 pattern RData     a b c = ZApps NLetData     [a, b, c]
 pattern REnd            = ZApps NEnd []
+pattern RAnn e t        = ZApps NExpl [e, t]
 
 unGLam = \case
   _ :@@ _ -> Nothing
@@ -953,7 +959,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
     SApps l es | l `elem` [ NGuard, NDot, NHole, NLetImport, NLetClass, NLetInstance, NLetData, NLetTy, NTLet, NOTLet
-                          , NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NLetRule, NView]
+                          , NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NLetRule, NView, NExpl]
       -> Apps l $ map etr3 es
     SApps NLetArr [a, b, c] -> xApps ">>=" [etr3 b, xApps NTLam [etr3 a, RVar NHole, etr3 c]]
     SApps NSemi [b, c] -> xApps ">>=" [etr3 b, xApps NTLam [RVar NAny, RVar NHole, etr3 c]]
@@ -1041,7 +1047,7 @@ instance Print (ExpTree'_ b Desug) where
 unembed :: ExpTree_ a (Mixfix b) -> ExpTree_ a' (Mixfix b)
 unembed = f where
   f = \case
-    REmbed _ -> undefined -- !!! f $ pprint a
+    REmbed _ -> RVar "???"
     RNat_ a b -> RVar $ MkM [MkNat a b]
     RString_ a b -> RVar $ MkM [MkString a b]
     a :@ b -> f a :@ f b
@@ -1072,6 +1078,9 @@ instance IsMixfix Name where
 
 instance Arity Name where
   arity = arity . nameStr
+
+isGraphicMixfix (MkM [t]) = isGraphicToken t
+isGraphicMixfix _ = False
 
 isConName (nameStr -> MkM [t]) = isUpperToken t
 isConName _ = False
@@ -1120,7 +1129,7 @@ mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
 
 consts :: Set NameStr
 consts = fromListSet
-  [ "_", "View", "Guard"
+  [ "_", "View", "Guard", "Dot"
   , "Ap"
   , "lookupDict", "superClasses", "SuperClassList", "SuperClassNil", "SuperClassCons"
   , "Bool", "True", "False"

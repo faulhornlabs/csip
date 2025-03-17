@@ -8,21 +8,10 @@ import M3_Parse
 import M4_Eval
 
 ---------------------------
-{-
-updatable v _e = lookupMeta (metaRef v) >>= \case
-  Just{}  -> impossible
-  Nothing -> pure ()
--}
-update :: MetaDep -> Val -> RefM ()
-update v e = do
---  () <- updatable v e
-  traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
-  updateMeta (metaRef v) e
 
 updateClosed a b = do
   traceShow "2" $ "update " <<>> showM a <<>> "\n := " <<>> showM b
   v <- closeTm b
---  v' <- forceClosed v   -- TODO
   fe <- deepForce v
   case fe of
     WMeta r | a == r -> impossible
@@ -62,7 +51,7 @@ closeTm v_ = do
   m <- go [sv]
   () <- case fromJust $ lookup sv m of
     Just s -> forM_ (assocsIM s) \(v, s) -> pruneMeta v s
-    Nothing -> undefined
+    Nothing -> error' $ ("could not close meta solution:\n" <>) <$> print v
   pure v_
  where
   go sv = downUp down up sv
@@ -106,6 +95,7 @@ closeTm v_ = do
       WCon{}   -> pure $ Just mempty
       WFun{}   -> pure $ Just mempty
       _ -> undefined
+
 
 -------------
 

@@ -1,0 +1,8 @@
+
+data Eq : a -> a -> Type where
+  Refl : {a : Type} -> {x : a} -> Eq x x
+
+bad : (a : _)(x : a)(y : a) -> Eq x y
+bad a x _ = Refl
+
+

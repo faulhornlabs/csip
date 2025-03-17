@@ -1,0 +1,16 @@
+
+data Eq : a -> a -> Type where
+  Refl : {a : Type} -> {x : a} -> Eq x x
+
+(===) = Eq
+
+sym : {x y : a} -> Eq x y -> Eq y x
+sym Refl = Refl
+
+trans : {x y z : a} -> Eq x y -> Eq y z -> Eq x z
+trans Refl Refl = Refl
+
+uip : {x : a} -> (e : Eq x x) -> Eq e Refl
+uip Refl = Refl
+
+uip

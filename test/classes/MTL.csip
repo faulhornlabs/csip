@@ -4,15 +4,14 @@
 import Prelude
 
 class {m : Type ~> Type} -> Functor m  where
-  fmap : (a -> b) -> m a -> m b
+  (<$>) : (a -> b) -> m a -> m b
 
-(<$>) = fmap
+(<&>) : Functor m => m a -> (a -> b) -> m b
+m <&> f = f <$> m
 
 class Functor m => Applicative m  where
-  pure : a -> m a
-  app  : m (a -> b) -> m a -> m b
-
-(<*>) = app
+  pure  : a -> m a
+  (<*>) : m (a -> b) -> m a -> m b
 
 class Applicative m => Monad m where
   join : m (m a) -> m a
@@ -44,21 +43,21 @@ class {t : (Type ~> Type) ~> Type ~> Type} -> MonadTrans t where
 
 
 instance Functor Maybe where
-  fmap' f Nothing  = Nothing
-  fmap' f (Just a) = Just (f a)
+  f <$> Nothing  = Nothing
+  f <$> Just a   = Just (f a)
 
 instance Applicative Maybe where
-  pure' x = Just x
+  pure x = Just x
 
-  app' (Just f) (Just a) = Just (f a)
-  app' _        _        = Nothing
+  Just f <*> Just a = Just (f a)
+  _      <*> _      = Nothing
 
 instance Monad Maybe where
-  join' (Just a) = a
-  join' Nothing = Nothing
+  join (Just a) = a
+  join Nothing = Nothing
 
 instance MonadFail Maybe where
-  fail' s = Nothing
+  fail s = Nothing
 
 
 
@@ -70,20 +69,20 @@ runIdentity : Identity a -> a
 runIdentity (MkIdentity x) = x
 
 instance Functor Identity where
-  fmap' f (MkIdentity a) = MkIdentity (f a)
+  f <$> MkIdentity a = MkIdentity (f a)
 
 instance Applicative Identity where
-  pure' x = MkIdentity x
-  app' (MkIdentity f) (MkIdentity x) = MkIdentity (f x)
+  pure x = MkIdentity x
+  MkIdentity f <*> MkIdentity x = MkIdentity (f x)
 
 instance Monad Identity where
-  join' (MkIdentity a) = a
+  join (MkIdentity a) = a
 
 
 
 instance Functor List where
-  fmap' f Nil = Nil
-  fmap' f (LCons x xs) = LCons (f x) (fmap' f xs)
+  f <$> Nil = Nil
+  f <$> LCons x xs = LCons (f x) (f <$> xs)
 
 append : List a -> List a -> List a
 append Nil xs = xs
@@ -94,57 +93,54 @@ joinList Nil = Nil
 joinList (LCons x xs) = append x (joinList xs)
 
 instance Applicative List where
-  pure' x = LCons x Nil
+  pure x = LCons x Nil
 
-  app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
+  fs <*> xs = joinList (fs <&> \f -> f <$> xs)
 
 instance Monad List where
-  join' = joinList
+  join = joinList
 
 instance MonadFail List where
-  fail' s = Nil
+  fail s = Nil
 
 
 
 matchT2 : (a -> b -> c) -> Tuple2 a b -> c
 matchT2 f (T2 a b) = f a b
 
-(<&>) : Functor m => m a -> (a -> b) -> m b
-m <&> f = f <$> m
-
-data StateT : Type -> (Type ~> Type) ~> Type ~> Type where
+data StateT : Type ~> (Type ~> Type) ~> Type ~> Type where
   MkStateT : {m : Type ~> Type} -> (s -> m (Tuple2 a s)) -> StateT s m a
 
 runStateT : StateT s m a -> s -> m (Tuple2 a s)
 runStateT (MkStateT f) = f
 
 instance Functor m => Functor (StateT s m) where
-  fmap' f (MkStateT g) = MkStateT \x -> g x <&> matchT2 \y s -> T2 (f y) s
+  f <$> MkStateT g = MkStateT \x -> g x <&> matchT2 \y s -> T2 (f y) s
 
 instance Monad m => Applicative (StateT s m) where
-  pure' x = MkStateT \s -> pure (T2 x s)
-  app' (MkStateT f) (MkStateT a)
+  pure x = MkStateT \s -> pure (T2 x s)
+  MkStateT f <*> MkStateT a
     = MkStateT \s -> f s >>= matchT2 \g s -> a s <&> matchT2 \x s -> T2 (g x) s
 
 instance Monad m => Monad (StateT s m) where
-  join' (MkStateT m) = MkStateT \s -> m s >>= matchT2 runStateT
+  join (MkStateT m) = MkStateT \s -> m s >>= matchT2 runStateT
 
 // TODO:  stateType (StateT s m) = s
-stateType (Ap (StateT s) m) = s
+stateType (Ap (Ap StateT s) m) = s
 
 instance Monad m => MonadState (StateT s m) where
-  state' f = MkStateT \s -> pure (f s)
+  state f = MkStateT \s -> pure (f s)
 
 instance MonadFail m => MonadFail (StateT s m) where
-  fail' msg = MkStateT \s -> fail msg
+  fail msg = MkStateT \s -> fail msg
 
 instance MonadTrans (StateT s) where
-  lift' m = MkStateT \s -> m <&> \x -> T2 x s
+  lift m = MkStateT \s -> m <&> \x -> T2 x s
 
 
 
 newId : Monad m => StateT Nat m Nat
-// TODO:   newId {m} = state {StateT Nat m} \s -> T2 (1 + s) s
+// TODO:   newId {m} = state {StateT Nat m} \s -> T2 s (1 + s)
 // TODO:   newId = state \s -> T2 s (1 + s)
 newId = MkStateT \s -> pure (T2 s (1 + s))
 

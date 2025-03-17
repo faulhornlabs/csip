@@ -25,7 +25,7 @@ module M1_Base
 
   -- monad transformer alternatives
   , State,  runState,  evalState, gets, modify
-  , Reader, runReader, asks, local
+  , Reader, runReader, asks, local, topReader
   , Writer, runWriter, tell, listenAll
   , Except, runExcept, throwError, catchError
 
@@ -432,9 +432,12 @@ resetRef = topM $ newRef $ pure ()
 -- only on top level
 -- without ad-hoc polimorphysm
 topRef :: a -> Ref a
-topRef x = topM do
-  r <- newRef x
-  () <- modifyRef resetRef \m -> m >> writeRef r x
+topRef a = topRef_ (pure a)
+
+topRef_ :: RefM a -> Ref a
+topRef_ mx = topM do
+  r <- newRef =<< mx
+  () <- modifyRef resetRef \m -> m >> mx >>= writeRef r
   pure r
 
 reset :: RefM ()
@@ -528,6 +531,9 @@ newtype Reader a = MkReader (Ref a)
 
 newReader :: a -> RefM (Reader a)
 newReader a = MkReader <$> newRef a
+
+topReader :: RefM a -> Reader a
+topReader a = MkReader $ topRef_ a
 
 runReader :: a -> (Reader a -> RefM b) -> RefM b
 runReader a cont = newReader a >>= cont
@@ -839,7 +845,7 @@ precedenceTableString = unsafePerformIO do
   IO.readFile f
 
 traceShow :: String -> RefM String -> RefM ()
---traceShow s m | s `elem` ["1","2","3","4","5","6","7"] = m >>= \s -> traceM s
+--traceShow s m {- | s `elem` ["1","2","3","4","5","6","7"] -} = m >>= \s -> traceM s
 traceShow _ _ = pure ()
 
 a <<>> b = (<>) <$> a <*> b

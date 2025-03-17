@@ -1,7 +1,4 @@
-# source
 # elab
-
-the    : (A : _) -> A -> A = \_ x-> x
 
 Nat : Type
   = (N : Type) -> (N -> N) -> N -> N
@@ -19,5 +16,5 @@ refl : {A}{x : A} -> Eq x x
 sym : {A x y} -> Eq {A} x y -> Eq y x
   = \{A}{x}{y} p-> p (\y-> Eq y x) refl
 
-sym (the (Eq (mul five five) n25) refl)
+sym (refl : Eq (mul five five) n25)
 

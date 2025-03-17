@@ -3,9 +3,9 @@
 # eval
 # type
 
-N : Type
-Z : N
-S : N -> N
+data N : Type where
+  Z : N
+  S : N -> N
 
 add : N -> N -> N
 add Z     m = m

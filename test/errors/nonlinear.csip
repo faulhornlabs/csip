@@ -1,0 +1,3 @@
+
+f : Nat -> Nat -> Nat
+f x x = x

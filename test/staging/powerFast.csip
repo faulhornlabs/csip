@@ -8,7 +8,7 @@ data Int : Ty where
   Add : Int -> Int -> Int
 
 instance Num (Code Int) where
-  add' a b = Add a b
+  a + b = Add a b
 
 sqr = \a -> do
   b := a

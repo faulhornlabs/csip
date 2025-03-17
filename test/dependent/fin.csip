@@ -1,0 +1,45 @@
+
+data N : Type where
+  Z : N
+  S : N -> N
+
+(+) : N -> N -> N
+Z   + m = m
+S n + m = S (n + m)
+
+data Fin : (n : N) -> Type where
+  FZ : Fin (S k)
+  FS : Fin k -> Fin (S k)
+
+finToNat : Fin n -> N
+finToNat FZ = Z
+finToNat (FS k) = S (finToNat k)
+
+weaken : Fin n -> Fin (S n)
+weaken FZ     = FZ
+weaken (FS k) = FS (weaken k)
+
+shift : (m : N) -> Fin n -> Fin (m + n)
+shift Z f = f
+shift (S m) f = FS (shift m f)
+
+last : {n} -> Fin (S n)
+last {Z} = FZ
+last {S _} = FS last
+
+complement : {n} -> Fin n -> Fin n
+complement FZ = last
+complement (FS x) = weaken (complement x)
+
+data List : Type -> Type where
+  Nil : List a
+  (::) : a -> List a -> List a
+
+map : (a -> b) -> List a -> List b
+map f Nil = Nil
+map f (x :: xs) = f x :: map f xs
+
+allFins : (n : N) -> List (Fin n)
+allFins Z = Nil
+allFins (S n) = FZ :: map FS (allFins n)
+

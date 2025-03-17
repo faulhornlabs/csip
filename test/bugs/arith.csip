@@ -1,0 +1,33 @@
+# stage
+// # haskell_stage
+
+import Prelude
+/*
+A : Ty
+B : A -> A
+
+Lam \a -> B a
+
+*/
+// Backend primitives
+OString : Ty
+MkOString : String -> OString
+
+// obj lang primitive to support recursion
+Dec : {a b : Ty} -> (a -> b) -> b
+Def : {a b : Ty} -> a -> a -> b -> b
+
+// List
+
+OList      : Ty -> Ty
+OListCons  : {a : Ty} -> a -> OList a -> OList a
+OListNil   : {a : Ty} -> OList a
+
+compiled_parse_match4 : ((OList OString) -> (OList OString)) -> (OList OString) -> (OList OString)
+compiled_parse_match4 := \rec l -> OListNil
+
+compiled_parse : Code ((OList OString) -> (OList OString))
+compiled_parse := Dec \compiled_parse -> Def compiled_parse (compiled_parse_match4 compiled_parse : OList OString -> OList OString) compiled_parse
+
+compiled_parse
+

@@ -5,28 +5,23 @@ import Builtins
 appendStr = AppendStr
 
 class {a : Type} -> Eq a where
-  eq : a -> a -> Bool
-
-(==) = eq
+  (==) : a -> a -> Bool
 
 instance Eq Nat where
-  eq' a b = EqNat a b
+  a == b = EqNat a b
 
 instance Eq String where
-  eq' a b = EqStr a b
+  a == b = EqStr a b
 
 
 class {a : Type} -> Num a where
-  add     : a -> a -> a
-  mul     : a -> a -> a
+  (+)     : a -> a -> a
+  (*)     : a -> a -> a
   fromNat : Nat -> a
 
-(+) = add
-(*) = mul
-
 instance Num Nat where
-  add' a b = AddNat a b
-  mul' a b = MulNat a b
+  a + b = AddNat a b
+  a * b = MulNat a b
   fromNat n = n
 
 even : Nat -> Bool

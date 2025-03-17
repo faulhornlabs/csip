@@ -12,26 +12,33 @@ not True = False
 not False = True
 
 class {a : Type} -> Eq a where
-  eq : a -> a -> Bool
-
-(==) = eq
+  (==) : a -> a -> Bool
 
 (/=) : Eq a => a -> a -> Bool
 a /= b = not (a == b)
 
 
 instance Eq Nat where
-  eq' a b = EqNat a b
+  a == b = EqNat a b  // TODO: (==) = EqNat
 
 
 data List : Type -> Type where
   Nil  : List a
   (::) : a -> List a -> List a
 
+// TODO
+//instance Eq a => Eq (List a)  where
+//  Nil     == Nil      = True
+//  x :: xs == y :: ys) = x == y && xs == ys
+//  _       == _        = False
+
+eqList : Eq a => List a -> List a -> Bool
+eqList Nil       Nil       = True
+eqList (x :: xs) (y :: ys) = x == y && eqList xs ys
+eqList _         _         = False
+
 instance Eq a => Eq (List a)  where
-  eq' Nil       Nil       = True
-  eq' (x :: xs) (y :: ys) = eq x y && eq' xs ys    // TODO: eq xs ys
-  eq' _         _         = False
+  (==) = eqList
 
 
 main =

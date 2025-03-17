@@ -1,0 +1,25 @@
+# elab
+# stage
+
+import Builtins
+
+data OBool : Ty where
+  OTrue  : OBool
+  OFalse : OBool
+
+MatchOTrue  : {a : Ty} -> OBool -> a -> a -> a
+MatchOFalse : {a : Ty} -> OBool -> a -> a -> a
+
+f : Bool -> OBool -> OBool
+f False a = a
+f _     a = MatchOTrue a OFalse OTrue
+
+g : Bool -> Code (OBool -> OBool)
+App {OBool} {OBool} (g False) a = a
+//App {OBool} {OBool} (g _)     OTrue = OFalse
+App {OBool} {OBool} (g _)     _     = OTrue
+
+// \b -> f True (f False b)
+\b -> g True (g False b)
+
+

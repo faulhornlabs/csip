@@ -11,7 +11,8 @@ import M4_Eval hiding (name, TVar, TApp)
 stage_ :: Val -> RefM (Scoped, [(Name, Scoped)])
 stage_ t = do
   (r, m) <- quoteNF t
-  pure (unquote r, [(n, t) | (n, r) <- assocsIM m, Just t <- [unquoteTy r]])
+  r' <- unquote r
+  pure (r', [(n, t) | (n, r) <- assocsIM m, Just t <- [unquoteTy r]])
 
 stage :: Val -> RefM Scoped --, [(Name, Scoped)
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
@@ -33,32 +34,36 @@ unquoteTy = f where
     a :@ b -> (:@) <$> f a <*> f b
     _ -> Nothing
 
-unquote :: Scoped -> Scoped
+unquote :: Scoped -> RefM Scoped
 unquote = f mempty
  where
   f e = \case
-    RVar "Prod" :@ _ :@ _ :@ a :@ b -> "Prod" .@ f e a .@ f e b
-    RVar "Pair" :@ _ :@ _ :@ a :@ b -> "Pair" .@ f e a .@ f e b
-    RVar "Fst"  :@ _ :@ _ :@ a -> "Fst" .@ f e a
-    RVar "Snd"  :@ _ :@ _ :@ a -> "Snd" .@ f e a
+    RVar "Prod" :@ _ :@ _ :@ a :@ b -> pure "Prod" .@ f e a .@ f e b
+    RVar "Pair" :@ _ :@ _ :@ a :@ b -> pure "Pair" .@ f e a .@ f e b
+    RVar "Fst"  :@ _ :@ _ :@ a -> pure "Fst" .@ f e a
+    RVar "Snd"  :@ _ :@ _ :@ a -> pure "Snd" .@ f e a
     RVar "App" :@ _ :@ _ :@ a -> f e a
 --    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
-    RVar "Lam" :@ _ :@ _ :@ a -> f e a
+    RVar "Lam" :@ _ :@ _ :@ (E.Lam n a) -> E.Lam n <$> f e a
+    RVar "Lam" :@ _ :@ _ :@ a -> do
+      n <- mkName "v"
+      E.Lam n <$> f e a .@ pure (RVar n)
     RVar "TopLet" :@ _ :@ _ :@ RVar n :@ RVar a :@ b | isVarName a -> f (insert n a e) b
     RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a      :@ b -> rLet n (f e a) (f e b)
     RVar "Let"    :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
     RVar "Let"    :@ _ :@ _ :@      a :@ E.Lam n b -> rLet n (f e a) (f e b)
-    E.Lam n a -> E.Lam n $ f e a
+    E.Lam n a -> E.Lam n <$> f e a
     a :@ b -> f e a .@ f e b
-    RVar n -> RVar $ fromMaybe n $ lookup n e
-    r -> r
+    RVar n -> pure $ RVar $ fromMaybe n $ lookup n e
+    r -> pure $ r
 
-  rLet n (RLet m Hole a b) c = rLet m a (rLet n b c)
-  rLet n a b = RLet n Hole a b
+  rLet n a b = r n <$> a <*> b  where
+    r n (RLet m Hole a b) c = r m a (r n b c)
+    r n a b = RLet n Hole a b
 
 --  RLet m Hole b c .@ a = rLet m b (c .@ a)
 --  a .@ RLet m Hole b c = rLet m b (a .@ c)
-  a .@ b = a :@ b
+  a .@ b = (:@) <$> a <*> b
 
 --------------------------------- priting for backends in Haskell
 

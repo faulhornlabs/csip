@@ -3,8 +3,8 @@
 
 import Builtins
 
-N : Type
-Add : N -> N -> N
+N    : Type
+Add  : N -> N -> N
 Four : N
 
 Num : Type -> Type

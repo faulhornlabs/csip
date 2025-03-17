@@ -4,15 +4,11 @@
 import Prelude
 
 class {m : Type ~> Type} -> Functor m  where
-  fmap : (a -> b) -> m a -> m b
-
-(<$>) = fmap
+  (<$>) : (a -> b) -> m a -> m b
 
 class Functor m => Applicative m  where
-  pure : a -> m a
-  app  : m (a -> b) -> m a -> m b
-
-(<*>) = app
+  pure  : a -> m a
+  (<*>) : m (a -> b) -> m a -> m b
 
 class Applicative m => Monad m where
   join : m (m a) -> m a
@@ -29,18 +25,18 @@ data Maybe : Type ~> Type where
   Just    : a -> Maybe a
 
 instance Functor Maybe where
-  fmap' f Nothing  = Nothing
-  fmap' f (Just a) = Just (f a)
+  f <$> Nothing  = Nothing
+  f <$> Just a   = Just (f a)
 
 instance Applicative Maybe where
-  pure' x = Just x
+  pure x = Just x
 
-  app' (Just f) (Just a) = Just (f a)
-  app' _        _        = Nothing
+  Just f <*> Just a = Just (f a)
+  _      <*> _      = Nothing
 
 instance Monad Maybe where
-  join' (Just a) = a
-  join' Nothing = Nothing
+  join (Just a) = a
+  join Nothing = Nothing
 
 
 // List monad
@@ -50,8 +46,8 @@ data List : Type ~> Type where
   LCons  : a -> List a -> List a
 
 instance Functor List where
-  fmap' f Nil = Nil
-  fmap' f (LCons x xs) = LCons (f x) (fmap' f xs)
+  f <$> Nil = Nil
+  f <$> LCons x xs = LCons (f x) (f <$> xs)
 
 append : List a -> List a -> List a
 append Nil xs = xs
@@ -62,12 +58,12 @@ joinList Nil = Nil
 joinList (LCons x xs) = append x (joinList xs)
 
 instance Applicative List where
-  pure' x = LCons x Nil
+  pure x = LCons x Nil
 
-  app' fs xs = joinList (fmap' (\f -> fmap f xs) fs)
+  fs <*> xs = joinList ((\f -> f <$> xs) <$> fs)
 
 instance Monad List where
-  join' = joinList
+  join = joinList
 
 
 guard : Bool -> List Unit
