@@ -13,7 +13,7 @@ data Carry : Ty where
 data W64 : Ty where
   Zero64 : W64
 
-PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
+builtin PlusC  : Carry -> W64 -> W64 -> Prod Carry W64
 
 
 data N : Type where
@@ -35,14 +35,14 @@ addHelper (S n) c a b = do
   d := PlusC c (Snd a) (Snd b)
   e := addHelper n (Fst d) (Fst a) (Fst b)
   Pair (Fst e) (Pair (Snd e) (Snd d))
-/*
+{-
 addHelper (S n) c (as, a) (bs, b) = do
   (c' , d)  := PlusC c a b
   (c'', ds) := addHelper n c' as bs
   (c'', (ds, d))
-*/
+-}
 add : (n: N) -> vec n W64 -> vec n W64 -> vec n W64
   = \n a b -> Snd (addHelper n ClearCarry a b)
 
-// main
+-- main
 add (toN 3)

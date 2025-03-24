@@ -2,12 +2,12 @@
 # eval
 # type
 
-Bool  : Type
-True  : Bool
-False : Bool
+data Bool  : Type where
+  True  : Bool
+  False : Bool
 
-Sum : (A : Type) -> (A -> Type) -> Type
-MkSum : {A : Type}{B : A -> Type}(a : A)(b : B a) -> Sum A B
+data Sum : (A : Type) -> (A -> Type) -> Type where
+  MkSum : {A : Type}{B : A -> Type}(a : A)(b : B a) -> Sum A B
 
 ite : {a : Type} -> a -> a -> Bool -> a
 ite t f True  = t

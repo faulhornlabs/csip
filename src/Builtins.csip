@@ -1,5 +1,9 @@
 
-Ap : (a ~> b) -> a -> b
+-- (~>) is constructor application
+constructor Ap : (a ~> b) -> a -> b
+
+
+-- data types
 
 data Bool : Type where
   True  : Bool
@@ -7,58 +11,88 @@ data Bool : Type where
 
 data Nat : Type where
 
-DecNat    : Nat -> Nat
-AddNat    : Nat -> Nat -> Nat
-MulNat    : Nat -> Nat -> Nat
-ModNat    : Nat -> Nat -> Nat
-DivNat    : Nat -> Nat -> Nat
-EqNat     : Nat -> Nat -> Bool
-
-Succ      : Nat -> Nat
+builtin DecNat    : Nat -> Nat
+builtin AddNat    : Nat -> Nat -> Nat
+builtin MulNat    : Nat -> Nat -> Nat
+builtin ModNat    : Nat -> Nat -> Nat
+builtin DivNat    : Nat -> Nat -> Nat
+builtin EqNat     : Nat -> Nat -> Bool
 
 data SuccView : Type where
   SuccOk    : Nat -> SuccView
   SuccFail  : SuccView
 
-succView  : Nat -> SuccView
+succView : Nat -> SuccView
 succView 0 = SuccFail
 succView n = SuccOk (DecNat n)
 
+constructor Succ : Nat -> Nat
+
+-- pattern Succ n <- (succView --> SuccOk n)
+-- Succ = \n -> AddNat 1 n
+
+
 data String : Type where
 
-AppendStr : String -> String -> String
-EqStr     : String -> String -> Bool
-TakeStr   : Nat -> String -> String
-DropStr   : Nat -> String -> String
-
-Cons      : String -> String -> String
+builtin AppendStr : String -> String -> String
+builtin EqStr     : String -> String -> Bool
+builtin TakeStr   : Nat -> String -> String
+builtin DropStr   : Nat -> String -> String
 
 data ConsView : Type where
   ConsOk    : String -> String -> ConsView
   ConsFail  : ConsView
 
-consView  : String -> ConsView
+consView : String -> ConsView
 consView "" = ConsFail
 consView n = ConsOk (TakeStr 1 n) (DropStr 1 n)
 
-data Ty : Type where
-  Arr       : Ty -> Ty -> Ty
-  Prod      : Ty -> Ty -> Ty
+constructor Cons : String -> String -> String
 
-data Code : Ty -> Type where
-  Lam       : {a b : Ty} -> (a -> b) -> Arr a b
-  App       : Arr a b -> a -> b
-  Let       : {a b : Ty} -> a -> (a -> b) -> b
-  TopLet    : {a b : Ty} -> a -> a -> b -> b
-  Pair      : {a b : Ty} -> a -> b -> Prod a b
-  Fst       : Prod a b -> a
-  Snd       : Prod a b -> b
+-- pattern Cons a b <- (consView --> ConsOk a b)
+
+
+-- Object code
+
+data Ty : Type where              -- open data type
+
+data Code : Ty -> Type where      -- open data type
+
+data Arr : Ty -> Ty -> Ty where
+  Lam : {a b : Ty} -> (a -> b) -> Arr a b
+
+builtin App : Arr a b -> a -> b
+builtin Let : {a b : Ty} -> a -> (a -> b) -> b
+builtin TopLet : {a b : Ty} -> a -> a -> b -> b
+
+data Prod : Ty -> Ty -> Ty where
+  Pair : {a b : Ty} -> a -> b -> Prod a b
+
+builtin Fst : Prod a b -> a
+builtin Snd : Prod a b -> b
+
+data OBool : Ty where
+  OTrue  : OBool
+  OFalse : OBool
+
+data OString : Ty where
+  MkOString : String -> OString
+
+builtin OEqStr : OString -> OString -> OBool
+
+data ONat : Ty where
+  MkONat : Nat -> ONat
+
+builtin OEqNat : ONat -> ONat -> OBool
+
+
+-- Type classes
 
 lookupDict : (a : Type) -> a
 
-SuperClassList : (a : Type) -> Type
-SuperClassNil  : (a : Type) -> SuperClassList a
-SuperClassCons : (a : Type) -> (b : Type) -> (a -> b) -> SuperClassList a -> SuperClassList a
+data SuperClassList : (a : Type) -> Type where
+  SuperClassNil  : (a : Type) -> SuperClassList a
+  SuperClassCons : (a : Type) -> (b : Type) -> (a -> b) -> SuperClassList a -> SuperClassList a
 
 superClasses : (a : Type) -> SuperClassList a
 

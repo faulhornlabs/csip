@@ -3,7 +3,7 @@
 id : {A} -> A -> A
  = \x-> x
 
-// TODO: better show
-// id id id id id id id id id id id id id id id id id id id id Type
+-- TODO: better show
+-- id id id id id id id id id id id id id id id id id id id id Type
 id id id id id id id id id id Type
 

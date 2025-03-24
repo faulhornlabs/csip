@@ -1,5 +1,5 @@
      a_ )_ ]_ }_ !>_ whereEnd_
-    _a _( _[ _{ _<! _if _let _\ _import _class _instance _data
+    _a _( _[ _{ _<! _if _let _\ _import _builtin _constructor _class _instance _data
      @_
     _@
     _MAXPREC MAXPREC_
@@ -43,7 +43,7 @@
      ,_
     _#
      #_
-     import_
+     import_ builtin_ constructor_
     _;
      ;_
      class_ instance_ data_ _whereBegin whereBegin_ _whereEnd
@@ -54,11 +54,11 @@
      BEGIN_ _END
     _SPACE
      SPACE_
-    _/*
-     */_
-     /*_ _*/
-    _//
-     //_
+    _{-
+     -}_
+     {-_ _-}
+    _--
+     --_
     _NEWLINE
      NEWLINE_
     _"

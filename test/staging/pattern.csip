@@ -1,25 +1,41 @@
 # elab
+# eval
 # stage
 
 import Builtins
 
-data OBool : Ty where
-  OTrue  : OBool
-  OFalse : OBool
-
-MatchOTrue  : {a : Ty} -> OBool -> a -> a -> a
-MatchOFalse : {a : Ty} -> OBool -> a -> a -> a
-
-f : Bool -> OBool -> OBool
-f False a = a
-f _     a = MatchOTrue a OFalse OTrue
-
 g : Bool -> Code (OBool -> OBool)
-App {OBool} {OBool} (g False) a = a
-//App {OBool} {OBool} (g _)     OTrue = OFalse
-App {OBool} {OBool} (g _)     _     = OTrue
+g False a     = a
+g _     OTrue = OFalse
+g _     _     = OTrue
 
-// \b -> f True (f False b)
-\b -> g True (g False b)
+g1 := g False
+g2 := g True
 
+hh : OString -> Code (OBool -> OString)
+hh _ OTrue = MkOString "b"
+hh s _ = s
 
+h : OString -> OString
+h s = hh s (OEqStr (MkOString "a") s)
+
+h' := \s -> h s
+
+data Unit : Type where
+  TT : Unit
+
+t : Unit -> Code (OString -> OString)
+t _ "a" = "b"
+t _ "b" = "c"
+t _ s = s
+
+t' := t TT
+
+q : Code (ONat -> ONat)
+q 12 = 13
+q 10 = 12
+q s = s
+
+q' := q
+
+OTrue

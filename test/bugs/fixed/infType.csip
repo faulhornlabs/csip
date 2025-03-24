@@ -1,7 +1,7 @@
 # elab
 
-N : Type
-S : N -> N
+data N : Type where
+  S : N -> N
 
 t : N -> Type
 t (S n) = t n

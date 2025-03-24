@@ -67,6 +67,7 @@ closeTm v_ = do
       WSel{}   -> undefined
       WMatch{} -> undefined
       WRet{}   -> undefined
+      WNoRet{} -> undefined
       _            -> ret allowed []
      where
       ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force es

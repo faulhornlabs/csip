@@ -14,7 +14,7 @@ module M1_Base
   , isUpper, isLower, isDigit, isGraphic, isAlphaNum
 
   , Source (Cons, Nil)
-  , lengthCh, spanCh, splitAtCh, takeCh, dropCh, revSpanCh, revTakeCh, revDropCh, lastCh, headCh, readNat
+  , lengthCh, spanCh, groupCh, splitAtCh, takeCh, dropCh, revSpanCh, revTakeCh, revDropCh, lastCh, headCh, readNat
   , chars
   , Print (print)
   , Parse (parse)
@@ -232,6 +232,28 @@ takeCh n = fst . splitAtCh n
 dropCh n = snd . splitAtCh n
 revTakeCh n = fst . revSpanCh_ \i _ -> i < n
 revDropCh n = snd . revSpanCh_ \i _ -> i < n
+
+groupCh p = groupCh_ \_ -> p
+
+groupCh_ :: (Int -> Char -> Char -> Bool) -> Source -> (Source, Source)
+groupCh_ p (MkSource ss) | (as, bs) <- f' ss = (MkSource as, MkSource bs)
+ where
+  f' [] = ([], [])
+  f' (s@(i, j, c@(MkCtx _ v)): ss) = g (indexVec v i) (i+1)
+   where
+    g l x
+      | x == j, (as, bs) <- f (j - i) l ss = (s: as, bs)
+      | l' <- indexVec v x, p (x - i) l l' = g l' (x+1)
+      | otherwise = ([(i, x, c)], (x, j, c): ss)
+
+  f _ _ [] = ([], [])
+  f offs l (s@(i, j, c@(MkCtx _ v)): ss) = g l i
+   where
+    g l x
+      | x == j, (as, bs) <- f (offs + j - i) l ss = (s: as, bs)
+      | l' <- indexVec v x, p (offs + x - i) l l' = g l' (x+1)
+      | x == i    = ([], s: ss)
+      | otherwise = ([(i, x, c)], (x, j, c): ss)
 
 spanCh_ :: (Int -> Char -> Bool) -> Source -> (Source, Source)
 spanCh_ p (MkSource ss) | (as, bs) <- f 0 ss = (MkSource as, MkSource bs)

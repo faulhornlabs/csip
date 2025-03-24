@@ -7,7 +7,7 @@ Implementation
 
   (<>) : Parsed as -> Parsed bs -> Parsed (as ++ bs)
   p <> q =
-     ...   // merging of trees
+     ...   -- merging of trees
 
   parse :: (os : List Op) -> Parsed os
   parse Nil = mempty

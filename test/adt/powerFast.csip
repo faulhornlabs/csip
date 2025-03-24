@@ -1,13 +1,13 @@
 # elab
 # eval
 
-Bool : Type
-True  : Bool
-False : Bool
+data Bool : Type where
+  True  : Bool
+  False : Bool
 
-N : Type
-Z : N
-S : N -> N
+data N : Type where
+  Z : N
+  S : N -> N
 
 two  = S (S Z)
 five = S (S (S (S (S Z))))
@@ -23,8 +23,8 @@ mul (S n) m = add m (mul n m)
 sqr : N -> N
 sqr n = mul n n
 
-Half : Type
-MkHalf : Bool -> N -> Half
+data Half : Type where
+  MkHalf : Bool -> N -> Half
 
 incHalf : Half -> Half
 incHalf (MkHalf odd n) = MkHalf odd (S n)

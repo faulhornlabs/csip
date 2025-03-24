@@ -1,0 +1,16 @@
+
+data Id : a -> a -> Type where
+  Refl : {a : Type} -> {x : a} -> Id x x
+
+(===) = Id
+
+sym : {x y : a} -> Id x y -> Id y x
+sym Refl = Refl
+
+trans : {x y z : a} -> Id x y -> Id y z -> Id x z
+trans Refl Refl = Refl
+
+uip : {x : a} -> (e : Id x x) -> Id e Refl
+uip Refl = Refl
+
+uip

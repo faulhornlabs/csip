@@ -3,11 +3,11 @@
 
 import Builtins
 
-Int : Ty
+data Int : Ty where
 
-F : Code (Int -> Int) -> Code Int
+builtin F : Code (Int -> Int) -> Code Int
 
-G : Code Int -> Code Int
+builtin G : Code Int -> Code Int
 
-// F (Lam \x -> G x)
+-- F (Lam \x -> G x)
 F G

@@ -19,6 +19,8 @@ pattern CTy     = WCon 0 "Ty"
 pattern CArr    = WCon 2 "Arr"
 pattern CNat    = WCon 0 "Nat"
 pattern CString = WCon 0 "String"
+pattern CONat   = WCon 0 "ONat"
+pattern COString= WCon 0 "OString"
 pattern CAp     = WCon 2 "Ap"
 pattern CApp    = WCon 2 "App"
 pattern CLam    = WCon 2 "Lam"
@@ -144,7 +146,8 @@ defineGlob_ n_ fv t_ elab cont = nameOf n_ >>= \n -> addName_ n_ n do
   case () of
     _ | not top -> addLocal False n v t co
       | not (rigid t)   -> print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
-      | not (rigid v), n_ /= "lookupDict"   -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
+      | not (rigid v), n_ /= "lookupDict", n_ /= "superClasses"
+      -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
       | otherwise       -> addGlobal n v t co
 
 defineBound'_ :: NameStr -> Name -> Val -> RefM a -> RefM a
@@ -182,11 +185,16 @@ freshMeta_ = do
 freshMeta :: RefM Tm
 freshMeta = TGen <$> freshMeta_
 
+lookupDictF a = do
+  f <- mkFun "lookupDict"
+  pure $ TGen $ TApp (TVal f) a
+
 instanceMeta :: RefM (Tm, Val)
 instanceMeta = do
   m <- freshMeta_
   m' <- evalEnv m
-  pure (TGen $ TApp (TVal lookupDictFun) m, m')
+  f <- lookupDictF m
+  pure (f, m')
 
 freshMeta' :: RefM (Tm, Val)
 freshMeta' = do
@@ -217,6 +225,14 @@ conv_ a b = do
 
     (Just ("Ty", []), Just ("Type", [])) -> do
       pure $ Just \t -> pure $ TVal CCode `TApp` t
+
+    (Just ("String", []), Just ("Code", [m])) -> do
+      unify m COString
+      pure $ Just \t -> pure $ TVal CMkStr `TApp` t
+
+    (Just ("Nat", []), Just ("Code", [m])) -> do
+      unify m CONat
+      pure $ Just \t -> pure $ TVal CMkNat `TApp` t
 
     (Just ("IPi", [m1, m2]), Just ("Pi", [m3, m4])) -> do
 
@@ -307,7 +323,7 @@ insertH et = et >>= \(e, t) -> matchHPi t >>= \case
   Nothing -> pure (e, t)
   Just (ImplClass, a, b) -> do
     a' <- quoteTm' a
-    let m = TGen $ TApp (TVal lookupDictFun) a'
+    m <- lookupDictF a'
     insertH $ pure (TApp e m, b)
   Just (Impl, _, b) -> do
     (m, vm) <- freshMeta'
@@ -537,8 +553,7 @@ inferMethods :: (RefM Val -> RefM Val) -> Raw -> ([(Name, Val)] -> RefM a) -> Re
 inferMethods under r cont = case r of
   RLetTy n t b -> do
     vta <- under $ addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
-    let ff n = if isConName n then undefined else mkFun n
-    defineGlob n ff vta \n _ _ -> do
+    defineGlob n mkFun vta \n _ _ -> do
       inferMethods under b \mts -> cont $ (n, vta): mts
   REnd -> cont []
   _ -> errorM "can't infer method"
@@ -598,6 +613,17 @@ multIntro :: (a -> RefM Val -> RefM Val) -> [a] -> RefM Val -> RefM Val
 multIntro _ [] g = g
 multIntro f (a: as) g = f a $ multIntro f as g
 
+inferConstructors :: Raw -> RefM a -> RefM a
+inferConstructors r cont = case r of
+  RLetTy n t b -> do
+    vta <- addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
+    let ff n = do
+          ar <- conArity vta
+          pure $ mkCon ar n $ Just vta
+    defineGlob n ff vta \_ _ _ -> inferConstructors b cont
+  REnd -> cont
+  _ -> errorM "can't infer constructor"
+
 infer :: Raw -> RefM (Tm, Val)
 infer r = do
   traceShow "6" $ "infer " <<>> showM r
@@ -638,7 +664,13 @@ infer_ top r = case r of
           addLookupDictRule cd ns is arg mns
           inferMethodBodies b
         infer c
---  RData     _a _b c | top -> infer c
+  RData (RLetTy n t REnd) b c | top -> do
+    vta <- addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
+    let ff n = do
+          ar <- conArity vta
+          pure $ mkCon ar n $ Just vta
+    defineGlob n ff vta \_ _ _ -> do
+      inferConstructors b $ infer c
   REnd -> pure (TVal CType, CType)
   RLam n t a -> do
     vt <- check t CType >>= evalEnv' (typeName n)
@@ -663,14 +695,21 @@ infer_ top r = case r of
     _ -> asksEnv (lookupLocal n) >>= \case
       Just (n, ty) -> pure (TVar n, ty)
       _ -> errorM "Not in scope"
-  RLetTy n t b | top -> do
+  RConstructor n t b | top -> do
     vta <- addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
-    let ff n = if isConName n
-         then do
+    let ff n = do
           ar <- conArity vta
           pure $ mkCon ar n $ Just vta
-         else mkFun n
     defineGlob n ff vta \_ _ _ -> infer b
+  RBuiltin n t b | top -> do
+    vta <- addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
+    let ff n = do
+          ar <- conArity vta
+          pure $ mkBuiltin ar n $ Just vta
+    defineGlob n ff vta \_ _ _ -> infer b
+  RLetTy n t b | top -> do
+    vta <- addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
+    defineGlob n mkFun vta \_ _ _ -> infer b
   ROLet{} -> do
     (_, m) <- freshMeta'
     ty <- vApp CCode m
@@ -681,8 +720,7 @@ infer_ top r = case r of
     infer c
   RLet n t a b | isRuleTy t -> do
     vta <- addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
-    let ff n = if isConName n then undefined else mkFun n
-    defineGlob n ff vta \_ _ _ -> do
+    defineGlob n mkFun vta \_ _ _ -> do
       addRule' (RVar n) a
       infer b
   RLet n t a b -> do
@@ -774,6 +812,7 @@ ruleHead :: Raw -> NameStr
 ruleHead = f where
   f = \case
     RGuard a _ -> f a
+    RApp (RApp (RVar "App") a) _ -> f a
     RApp a _ -> f a
     RVar n -> n
     _ -> undefined
@@ -795,6 +834,8 @@ reverseRules = g where
     RLet  n t a b -> RLet  n t a (g b)
     ROLet n t a b -> ROLet n t a (g b)
     RLetTy  n t b -> RLetTy  n t (g b)
+    RConstructor n t b -> RConstructor n t (g b)
+    RBuiltin     n t b -> RBuiltin     n t (g b)
     RClass    a b c -> RClass    a b $ g c
     RInstance a b c -> RInstance a (g b) $ g c
     RData     a b c -> RData     a b $ g c
@@ -823,6 +864,7 @@ fvs = nub . go where
     RDot{} -> []
     RView _ b -> go b
     RGuard a _ -> go a
+    RAnn a _ -> go a
     RHApp a b -> go a <> go b
     RApp a b -> go a <> go b
     RVar a -> [a]
@@ -843,6 +885,7 @@ fvs' = nub . go where
     RView{} -> undefined
     RGuard{} -> undefined
     RRule{} -> undefined
+    RAnn a b -> go b <> go a
     RHPi n a b -> go a <> del n (go b)
     RPi n a b -> go a <> del n (go b)
     RLet n t a b -> go t <> go a <> del n (go b)

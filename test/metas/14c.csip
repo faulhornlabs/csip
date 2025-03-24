@@ -19,5 +19,5 @@ Pair : Type -> Type -> Type
 pair : {A B} -> A -> B -> Pair A B
   = \a b P p -> p a b
 
-// TODO: fail on unsolved meta
+-- TODO: fail on unsolved meta
 pair 12 id

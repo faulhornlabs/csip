@@ -3,12 +3,12 @@
 
 import Builtins
 
-N    : Type
-Add  : N -> N -> N
-Four : N
+data N : Type where
+  Add  : N -> N -> N
+  Four : N
 
-Num : Type -> Type
-MkNum : (a : Type) -> (a -> a -> a) -> Num a
+data Num : Type -> Type where
+  MkNum : (a : Type) -> (a -> a -> a) -> Num a
 
 superClasses (Num a) = SuperClassNil _
 

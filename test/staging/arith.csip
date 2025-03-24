@@ -1,0 +1,436 @@
+# stage
+# haskell_stage
+
+import Prelude
+
+natPlus : Nat -> Nat -> Nat
+natPlus a b = AddNat a b
+
+natMul : Nat -> Nat -> Nat
+natMul a b = MulNat a b
+
+-- obj lang primitive to support recursion
+builtin Dec : {a b : Ty} -> (a -> b) -> b
+builtin Def : {a b : Ty} -> a -> a -> b -> b
+
+builtin AddOp : ONat -> ONat -> ONat
+builtin MulOp : ONat -> ONat -> ONat
+builtin OAppendStr : OString -> OString -> OString
+
+-- TODO: view pattern
+builtin OCons : OString -> OString -> OString
+
+data Arg : Type where
+  Num : Nat    -> Arg
+  Var : String -> Arg
+
+data OArg : Ty where
+  ONum : ONat    -> OArg
+  OVar : OString -> OArg
+
+data Exp : Type where
+  Val : String -> Arg -> Exp
+  Add : String -> Arg -> Arg -> Exp
+  Mul : String -> Arg -> Arg -> Exp
+
+data OExp : Ty where
+  OVal : OString -> OArg -> OExp
+  OAdd : OString -> OArg -> OArg -> OExp
+  OMul : OString -> OArg -> OArg -> OExp
+
+data List : Type -> Type where
+  ListCons  : {a} -> a -> List a -> List a
+  ListNil   : {a} -> List a
+
+data OList : Ty -> Ty where
+  OListCons  : {a : Ty} -> a -> OList a -> OList a
+  OListNil   : {a : Ty} -> OList a
+
+data Env : Type -> Type where
+  EmptyEnv : {a} -> Env a
+  EntryEnv : {a} -> String -> a -> Env a -> Env a
+
+data OEnv : Ty -> Ty where
+  OEmptyEnv : {a} -> OEnv a
+  OEntryEnv : {a : Ty} -> OString -> a -> OEnv a -> OEnv a
+
+
+
+dbg : OString -> ONat -> ONat
+dbg := \_ n -> n
+
+
+-- TODO: remove (missing laziness)
+ite : {a} -> Bool -> a -> a -> a
+ite True  t e = t
+ite False t e = e
+
+-- TODO: remove (missing laziness)
+oite : {a : Ty} -> Code (OBool -> a -> a -> a)
+oite OTrue  t e = t
+oite OFalse t e = e
+
+
+map : {a b} -> (a -> b) -> List a -> List b
+map f ListNil = ListNil
+map f (ListCons e es) = ListCons (f e) (map f es)
+
+test_listMeta = ListCons "hello" (ListCons "world" ListNil)
+test_listObj  = ListCons (MkOString "hello") (ListCons (MkOString "world") ListNil)
+
+
+isNumberChar : String -> Bool
+isNumberChar "0" = True
+isNumberChar "1" = True
+isNumberChar "2" = True
+isNumberChar "3" = True
+isNumberChar "4" = True
+isNumberChar "5" = True
+isNumberChar "6" = True
+isNumberChar "7" = True
+isNumberChar "8" = True
+isNumberChar "9" = True
+isNumberChar  c  = False
+
+c_isNumberChar : Code (OString -> OBool)
+c_isNumberChar "0" = OTrue
+c_isNumberChar "1" = OTrue
+c_isNumberChar "2" = OTrue
+c_isNumberChar "3" = OTrue
+c_isNumberChar "4" = OTrue
+c_isNumberChar "5" = OTrue
+c_isNumberChar "6" = OTrue
+c_isNumberChar "7" = OTrue
+c_isNumberChar "8" = OTrue
+c_isNumberChar "9" = OTrue
+c_isNumberChar  c  = OFalse
+
+compiled_isNumberChar := c_isNumberChar
+
+and : Bool -> Bool -> Bool
+and True b = b
+and _    _ = False
+
+c_and : Code (OBool -> OBool -> OBool)
+c_and OTrue a = a
+c_and _ _ = OFalse
+
+compiled_and := c_and
+
+or : Bool -> Bool -> Bool
+or False b = b
+or _     _ = True
+
+
+allCharIs : (String -> Bool) -> String -> Bool
+allCharIs f "" = True
+allCharIs f (Cons c s) = and (f c) (allCharIs f s)
+
+isNumber : String -> Bool
+isNumber s = allCharIs isNumberChar s
+
+
+compiled_allCharIsF : ((OString -> OBool) -> OString -> OBool) -> (OString -> OBool) -> Code (OString -> OBool)
+compiled_allCharIsF rec f "" = OTrue
+compiled_allCharIsF rec f (OCons c s) = compiled_and (f c) (rec f s)
+
+compiled_allCharIs := Dec \rec -> Def rec (\f s -> compiled_allCharIsF rec f s) rec
+
+compiled_isNumber := compiled_allCharIs compiled_isNumberChar
+
+reverseString : String -> String
+reverseString "" = ""
+reverseString (Cons c s) = appendStr (reverseString s) c
+
+c_reverseString : (OString -> OString) -> Code (OString -> OString)
+c_reverseString rev "" = ""
+c_reverseString rev (OCons c s) = OAppendStr (rev s) c
+
+compiled_reverseString :=
+  Dec \rev ->
+  Def rev (c_reverseString rev)
+  rev
+
+words_collect : String -> String -> List String
+
+words_skip : String -> List String
+words_skip "" = ListNil
+words_skip (Cons " " cs) = words_skip cs
+words_skip (Cons c cs) = words_collect c cs
+
+words_collect w "" = ListCons w ListNil
+words_collect w (Cons " " cs) = ListCons w (words_skip cs)
+words_collect w (Cons c cs) = words_collect (appendStr w c) cs
+
+words : String -> List String
+words = words_skip
+
+c_words_skip : (OString -> OString -> OList OString) -> (OString -> OList OString) -> Code (OString -> OList OString)
+c_words_skip coll skip "" = OListNil
+c_words_skip coll skip (OCons " " cs) = skip cs
+c_words_skip coll skip (OCons c cs) = coll c cs
+
+c_words_collect : (OString -> OString -> OList OString) -> (OString -> OList OString) -> OString -> Code (OString -> OList OString)
+c_words_collect coll skip w "" = OListCons w OListNil
+c_words_collect coll skip w (OCons " " cs) = OListCons w (skip cs)
+c_words_collect coll skip w (OCons c cs) = coll (OAppendStr w c) cs
+
+compiled_words :=
+  Dec \coll ->
+  Dec \skip ->
+  Def skip (c_words_skip coll skip)
+ (Def coll (c_words_collect coll skip)
+  skip
+ )
+
+parseDigit : String -> Nat
+parseDigit "0" = 0
+parseDigit "1" = 1
+parseDigit "2" = 2
+parseDigit "3" = 3
+parseDigit "4" = 4
+parseDigit "5" = 5
+parseDigit "6" = 6
+parseDigit "7" = 7
+parseDigit "8" = 8
+parseDigit "9" = 9
+
+c_parseDigit : Code (OString -> ONat)
+c_parseDigit "0" = 0
+c_parseDigit "1" = 1
+c_parseDigit "2" = 2
+c_parseDigit "3" = 3
+c_parseDigit "4" = 4
+c_parseDigit "5" = 5
+c_parseDigit "6" = 6
+c_parseDigit "7" = 7
+c_parseDigit "8" = 8
+c_parseDigit "9" = 9
+
+compiled_parseDigit := c_parseDigit
+
+
+parseNat_go : String -> Nat -> Nat
+parseNat_go "" n = 0
+parseNat_go (Cons c s) n = natPlus (natMul n (parseDigit c)) (parseNat_go s (natMul n 10))
+
+c_parseNat_go : (OString -> ONat -> ONat) -> Code (OString -> ONat -> ONat)
+c_parseNat_go rec "" n = 0
+c_parseNat_go rec (OCons c s) n = AddOp (MulOp n (compiled_parseDigit c)) (rec s (MulOp n 10))
+
+compiled_parseNat_go := Dec \rec -> Def rec (c_parseNat_go rec) rec
+
+parseNat : String -> Nat
+parseNat s = parseNat_go (reverseString s) 1
+
+compiled_parseNat := \s -> compiled_parseNat_go (compiled_reverseString s) (MkONat 1)
+
+
+parseArg : String -> Bool -> Arg
+parseArg arg True   = Num (parseNat arg)
+parseArg arg False  = Var arg
+
+c_parseArg : OString -> Code (OBool -> OArg)
+c_parseArg arg OTrue   = ONum (compiled_parseNat arg)
+c_parseArg arg OFalse  = OVar arg
+
+compiled_parseArg := c_parseArg
+
+
+
+parse : List String -> List Exp
+parse (ListCons name
+      (ListCons "="
+      (ListCons arg
+      (ListCons ";"
+      s
+      )))) = ListCons (Val name (parseArg arg (isNumber arg))) (parse s)
+parse (ListCons name
+      (ListCons "="
+      (ListCons arg1
+      (ListCons "+"
+      (ListCons arg2
+      (ListCons ";"
+      s
+      )))))) = ListCons (Add name (parseArg arg1 (isNumber arg1)) (parseArg arg2 (isNumber arg2))) (parse s)
+parse (ListCons name
+      (ListCons "="
+      (ListCons arg1
+      (ListCons "*"
+      (ListCons arg2
+      (ListCons ";"
+      s
+      )))))) = ListCons (Mul name (parseArg arg1 (isNumber arg1)) (parseArg arg2 (isNumber arg2))) (parse s)
+parse x = ListNil
+
+
+c_parse : (OList OString -> OList OExp) -> Code (OList OString -> OList OExp)
+c_parse cparse
+      (OListCons name
+      (OListCons "="
+      (OListCons arg
+      (OListCons ";"
+      s
+      )))) = OListCons (OVal name (compiled_parseArg arg (compiled_isNumber arg))) (cparse s)
+c_parse cparse
+      (OListCons name
+      (OListCons "="
+      (OListCons arg1
+      (OListCons "+"
+      (OListCons arg2
+      (OListCons ";"
+      s
+      )))))) = OListCons (OAdd name (compiled_parseArg arg1 (compiled_isNumber arg1)) (compiled_parseArg arg2 (compiled_isNumber arg2))) (cparse s)
+c_parse cparse
+      (OListCons name
+      (OListCons "="
+      (OListCons arg1
+      (OListCons "*"
+      (OListCons arg2
+      (OListCons ";"
+      s
+      )))))) = OListCons (OMul name (compiled_parseArg arg1 (compiled_isNumber arg1)) (compiled_parseArg arg2 (compiled_isNumber arg2))) (cparse s)
+c_parse cparse x = OListNil
+
+compiled_parse :=
+  Dec \p ->
+  Def p (c_parse p)
+  p
+
+envLookup : {a} -> Env a -> String -> a
+envLookup (EntryEnv n v e) name = ite (n == name) v (envLookup e name)
+
+c_envLookup : {a : Ty} -> (OEnv a -> OString -> a) -> Code (OEnv a -> OString -> a)
+c_envLookup {a} rec (OEntryEnv n v e) name = oite (OEqStr n name) v (rec e name)
+
+compiled_envLookup : Code (OEnv ONat -> OString -> ONat)
+compiled_envLookup := Dec \rec -> Def rec (c_envLookup rec) rec
+
+envInsert : {a} -> Env a -> String -> a -> Env a
+envInsert e name value = EntryEnv name value e
+
+compiled_envInsert : (a = ONat; OEnv a -> OString -> a -> OEnv a)
+compiled_envInsert := \e name value -> OEntryEnv name value e
+
+evalArg : Arg -> Env Nat -> Nat
+evalArg (Var name) env = envLookup env name
+evalArg (Num n) env = n
+
+c_evalArg : Code (OArg -> OEnv ONat -> ONat)
+c_evalArg (OVar name) env = compiled_envLookup env name
+c_evalArg (ONum n) env = n
+
+compiled_evalArg := c_evalArg
+
+evalExp : Exp -> Env Nat -> Env Nat
+evalExp (Val name arg) env = envInsert env name (evalArg arg env)
+evalExp (Add name arg1 arg2) env = envInsert env name (natPlus (evalArg arg1 env) (evalArg arg2 env))
+evalExp (Mul name arg1 arg2) env = envInsert env name (natMul (evalArg arg1 env) (evalArg arg2 env))
+
+c_evalExp : Code (OExp -> OEnv ONat -> OEnv ONat)
+c_evalExp (OVal name arg) env = compiled_envInsert env name (compiled_evalArg arg env)
+c_evalExp (OAdd name arg1 arg2) env = compiled_envInsert env name (AddOp (compiled_evalArg arg1 env) (compiled_evalArg arg2 env))
+c_evalExp (OMul name arg1 arg2) env = compiled_envInsert env name (MulOp (compiled_evalArg arg1 env) (compiled_evalArg arg2 env))
+
+compiled_evalExp := c_evalExp
+
+
+eval : List Exp -> Env Nat -> Env Nat
+eval ListNil env = env
+eval (ListCons exp l) env = eval l (evalExp exp env)
+
+c_eval : (OList OExp -> OEnv ONat -> OEnv ONat) -> Code (OList OExp -> OEnv ONat -> OEnv ONat)
+c_eval rec OListNil env = env
+c_eval rec (OListCons exp l) env = rec l (compiled_evalExp exp env)
+
+compiled_eval := Dec \rec -> Def rec (c_eval rec) rec
+
+
+parseOArg : String -> Bool -> OArg
+parseOArg arg True   = ONum (MkONat (parseNat arg))
+parseOArg arg False  = OVar (MkOString arg)
+
+parseO : List String -> List (OExp)
+parseO (ListCons name
+      (ListCons "="
+      (ListCons arg
+      (ListCons ";"
+      s
+      )))) = ListCons (OVal (MkOString name) (parseOArg arg (isNumber arg))) (parseO s)
+parseO (ListCons name
+      (ListCons "="
+      (ListCons arg1
+      (ListCons "+"
+      (ListCons arg2
+      (ListCons ";"
+      s
+      )))))) = ListCons (OAdd (MkOString name) (parseOArg arg1 (isNumber arg1)) (parseOArg arg2 (isNumber arg2))) (parseO s)
+parseO (ListCons name
+      (ListCons "="
+      (ListCons arg1
+      (ListCons "*"
+      (ListCons arg2
+      (ListCons ";"
+      s
+      )))))) = ListCons (OMul (MkOString name) (parseOArg arg1 (isNumber arg1)) (parseOArg arg2 (isNumber arg2))) (parseO s)
+parseO x = ListNil
+
+
+compArg' : Arg -> Env ONat -> ONat
+compArg' (Var name) env = envLookup env name
+compArg' (Num n) env = MkONat n
+
+compExp' : Exp -> Env ONat -> Env ONat
+compExp' (Val name arg) env = envInsert env name (r := dbg (MkOString name) (compArg' arg env) ; r)
+compExp' (Add name arg1 arg2) env = envInsert env name (r := dbg (MkOString name) (AddOp (compArg' arg1 env) (compArg' arg2 env)) ; r)
+compExp' (Mul name arg1 arg2) env = envInsert env name (r := dbg (MkOString name) (MulOp (compArg' arg1 env) (compArg' arg2 env)) ; r)
+
+compile' : List Exp -> Env ONat -> Env ONat
+compile' ListNil env = env
+compile' (ListCons exp l) env = compile' l (compExp' exp env)
+
+compArg : Arg -> Env (ONat) -> ONat
+compArg (Var name) env = envLookup env name
+compArg (Num n) env = MkONat n
+
+compExp : Exp -> Env ONat -> (Env ONat -> ONat) -> ONat
+
+-- without copy propagation
+-- compExp (Val name arg) env cont = (r := dbg (MkOString name) (compArg arg env) ; cont (envInsert env name r))
+
+-- with copy propagation
+compExp (Val name (Var targetName)) env cont = (r  = dbg (MkOString name) (envLookup env targetName) ; cont (envInsert env name r))
+compExp (Val name (Num n)) env cont          = (r := dbg (MkOString name) (MkONat n) ; cont (envInsert env name r))
+
+-- arith ops
+compExp (Add name arg1 arg2) env cont = (r := dbg (MkOString name) (AddOp (compArg arg1 env) (compArg arg2 env)) ; cont (envInsert env name r))
+compExp (Mul name arg1 arg2) env cont = (r := dbg (MkOString name) (MulOp (compArg arg1 env) (compArg arg2 env)) ; cont (envInsert env name r))
+
+compile : List Exp -> Env (ONat) -> (Env (ONat) -> ONat) -> ONat
+compile ListNil env cont = cont env
+compile (ListCons exp l) env cont = compExp exp env (\env -> compile l env cont)
+
+
+src = "x = 2 ; v1 = x ; v2 = v1 ; v3 = v2 ; v4 = v3 ; b = v4 ; y = x + 2 ; a = 12 ; z = y * b ; w = 12 * z ; q = w * 2 ;"
+
+o0 = words " hello world! ; x = 1 "
+o1 = words src
+o2 = map isNumber o1
+
+data Tup2 : Type -> Type -> Type where
+  MkT2 : {a b} -> a -> b -> Tup2 a b
+
+data OTup2 : Ty -> Ty -> Ty where
+  OMkT2 : {a b : Ty} -> a -> b -> OTup2 a b
+
+lastEntry : {a} -> Env a -> a
+lastEntry (EntryEnv n v e) = v
+
+ast = parse (words src)
+result = MkT2 (MkT2 src ast) (eval ast EmptyEnv)
+
+v = compile ast EmptyEnv lastEntry
+--v = lastEntry (compile' ast EmptyEnv)
+--v
+
+compiled_eval (compiled_parse (compiled_words (MkOString src))) OEmptyEnv

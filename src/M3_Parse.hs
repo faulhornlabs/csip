@@ -8,7 +8,7 @@ module M3_Parse
   , showMixfix, showName
 
   , ExpTree_
-    ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy
+    ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, RConstructor, RBuiltin
     , Hole, RRule, RDot, RApp, RHApp, RView, REmbed, RGuard
     , RClass, RInstance, RData, RNat, RString, REnd, RAnn)
   , PPrint (pprint)
@@ -242,14 +242,14 @@ glueChars :: Char -> Char -> Bool
 glueChars c d
    = isAlphaNum c && isAlphaNum d
   || isGraphic  c && isGraphic  d
+  || c == '{' && d == '-'
+  || c == '-' && d == '}'
 
 lex :: ISource -> [Token Spaced]
 lex = map mkToken . f . unISource
  where
-  f (spanCh isAlphaNum -> (as, bs)) | as /= "" = as: f bs
-  f (spanCh isGraphic  -> (as, bs)) | as /= "" = as: f bs
-  f (Cons c s) = c: f s
   f Nil = []
+  f (groupCh glueChars -> (as, bs)) = as: f bs
 
 unlex :: [Token Spaced] -> ISource
 unlex = MkISource . mconcat . map showToken
@@ -312,7 +312,7 @@ instance Print ((OpSeq' Stringed)) where
 
 uncomment :: (OpSeq' Stringed) -> (OpSeq' Uncomment)
 uncomment = \case
-    Node2 (Node2 l "//" c) "\n" r -> coerce l <> comm c <> sing "\v" <> uncomment r
+    Node2 (Node2 l "--" c) "\n" r -> coerce l <> comm c <> sing "\v" <> uncomment r
     Node2 l                "\n" r -> coerce l <> sing "\v" <> uncomment r
     a -> coerce a
 
@@ -337,9 +337,9 @@ comm s = coerce (filterOpSeq (`elem` ["\t", "\r", "\v"]) s)
 
 uncomments :: (OpSeq' Uncomment) -> (OpSeq' Uncomments)
 uncomments = \case
-    Node3 l "/*" c "*/" r -> coerce l <> comm c <> uncomments r
-    Node2 _ s@"/*" _ -> error' $ print s <&> \r -> "Unterminated comment\n" <> r
-    Node2 _ s@"*/" _ -> error' $ print s <&> \r -> "Unterminated comment\n" <> r
+    Node3 l "{-" c "-}" r -> coerce l <> comm c <> uncomments r
+    Node2 _ s@"{-" _ -> error' $ print s <&> \r -> "Unterminated comment\n" <> r
+    Node2 _ s@"-}" _ -> error' $ print s <&> \r -> "Unterminated comment\n" <> r
     a -> coerce a
 
 comments :: (OpSeq' Uncomments) -> (OpSeq' Uncomment)
@@ -578,9 +578,15 @@ pattern NLetTy = MkM [":",";"]
 pattern NExpl  = MkM ["(",":",")"]
 pattern NImpl  = MkM ["{",":","}"]
 
-pattern NImport    = MkM ["import"]
-pattern NLetImport = MkM ["import",";"]
-pattern NLetArr    = MkM ["<-",";"]
+pattern NImport         = MkM ["import"]
+pattern NLetImport      = MkM ["import",";"]
+pattern NConstructor    = MkM ["constructor"]
+pattern NConstructorTy  = MkM ["constructor",":"]
+pattern NLetConstructor = MkM ["constructor",":",";"]
+pattern NBuiltin        = MkM ["builtin"]
+pattern NBuiltinTy      = MkM ["builtin",":"]
+pattern NLetBuiltin     = MkM ["builtin",":",";"]
+pattern NLetArr         = MkM ["<-",";"]
 
 pattern NClass       = MkM ["class","whereBegin","whereEnd"]
 pattern NLetClass    = MkM ["class","whereBegin","whereEnd",";"]
@@ -789,11 +795,15 @@ norm r = case r of
   _ | Just z <- gg NSemi     NTy        -> z
   _ | Just z <- gg NHArr     NTy        -> z
   _ | Just z <- gg NHLam     NTy        -> z
+  _ | Just z <- gg NConstructor NTy     -> z
+  _ | Just z <- gg NBuiltin     NTy     -> z
   _ | Just z <- gg NSemi     NEq        -> z
   _ | Just z <- gg NSemi     NTEq       -> z
   _ | Just z <- gg NSemi     NOEq       -> z
   _ | Just z <- gg NSemi     NOTEq      -> z
   _ | Just z <- gg NSemi     NImport    -> z
+  _ | Just z <- gg NSemi     NConstructorTy -> z
+  _ | Just z <- gg NSemi     NBuiltinTy -> z
   _ | Just z <- gg NSemi     NLeftArr   -> z
   _ | Just z <- gg NSemi     NClass     -> z
   _ | Just z <- gg NSemi     NInstance  -> z
@@ -832,7 +842,7 @@ defEnd = addEnd . \case
   t -> t
  where
   addEnd = \case
-    e@(SApps l _) | l `elem` [NTy, NEq, NTEq, NOEq, NOTEq, NImport, NClass, NInstance, NData] -> xApps NSemi [e, REnd]
+    e@(SApps l _) | l `elem` [NTy, NEq, NTEq, NOEq, NOTEq, NImport, NConstructorTy, NBuiltinTy, NClass, NInstance, NData] -> xApps NSemi [e, REnd]
     e -> e
 
 instance Print (ExpTree' POp) where
@@ -883,11 +893,13 @@ pattern RIPi     t   e = ZApps NIArr  [        t,    e]
 pattern RLet   n t d e = ZApps NTLet  [RVar n, t, d, e]
 pattern ROLet  n t d e = ZApps NOTLet [RVar n, t, d, e]
 pattern RLetTy n t   e = ZApps NLetTy [RVar n, t,    e]
+pattern RConstructor n t e = ZApps NLetConstructor [RVar n, t, e]
+pattern RBuiltin     n t e = ZApps NLetBuiltin     [RVar n, t, e]
 pattern RRule  a b   e = ZApps NLetRule [a, b, e]
 pattern RDot   a       = ZApps NDot   [a]       -- .a   (in lhs)
 pattern RView  a b     = ZApps NView  [a, b]
 pattern RGuard a b     = ZApps NGuard [a, b]
-pattern RImport n e    = ZApps NLetImport [RVar n, e]
+pattern RImport     n e = ZApps NLetImport      [RVar n, e]
 pattern RClass    a b c = ZApps NLetClass    [a, b, c]
 pattern RInstance a b c = ZApps NLetInstance [a, b, c]
 pattern RData     a b c = ZApps NLetData     [a, b, c]
@@ -896,7 +908,7 @@ pattern RAnn e t        = ZApps NExpl [e, t]
 
 unGLam = \case
   _ :@@ _ -> Nothing
-  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NTLet, NOTLet] -> Just (ZVar a: es, n, e)
+  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NLetConstructor, NLetBuiltin, NTLet, NOTLet] -> Just (ZVar a: es, n, e)
   _ -> Nothing
 
 pattern GLam :: (Arity a, IsMixfix a) => [ExpTree_ b a] -> a -> ExpTree_ b a -> ExpTree_ b a
@@ -958,7 +970,7 @@ desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
 
   etr3 :: ExpTree' POp -> ExpTree' POp
   etr3 = \case
-    SApps l es | l `elem` [ NGuard, NDot, NHole, NLetImport, NLetClass, NLetInstance, NLetData, NLetTy, NTLet, NOTLet
+    SApps l es | l `elem` [ NGuard, NDot, NHole, NLetImport, NLetClass, NLetInstance, NLetData, NLetTy, NLetConstructor, NLetBuiltin, NTLet, NOTLet
                           , NPi, NHPi, NCPi, NIArr, NTLam, NTHLam, NBraces, NLetRule, NView, NExpl]
       -> Apps l $ map etr3 es
     SApps NLetArr [a, b, c] -> xApps ">>=" [etr3 b, xApps NTLam [etr3 a, RVar NHole, etr3 c]]
@@ -1024,7 +1036,6 @@ instance Parse (ExpTree'_ b Desug) where
 preprocess   :: ExpTree' Desug -> RefM (Raw_ a)
 preprocess t = coerceExpTree <$> f t  where
     f = \case
-      RData a b c -> f $ include a $ include b c
       RImport (MkM [m]) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
       RVar n -> pure $ RVar n
       a :@ b -> (:@) <$> f a <*> f b
@@ -1129,7 +1140,7 @@ mkName' s = newId <&> \i -> MkName (addSuffix s $ show i) i
 
 consts :: Set NameStr
 consts = fromListSet
-  [ "_", "View", "Guard", "Dot"
+  [ "_", "View", "Guard", "Dot", "Fail", "noreturn"
   , "Ap"
   , "lookupDict", "superClasses", "SuperClassList", "SuperClassNil", "SuperClassCons"
   , "Bool", "True", "False"
@@ -1137,6 +1148,7 @@ consts = fromListSet
   , "String", "ProdStr", "PairStr", "Cons", "ConsOk", "consView", "AppendStr", "EqStr", "TakeStr", "DropStr"
   , "Ty", "Arr", "Prod"
   , "Code", "Lam", "App", "Let", "Pair", "Fst", "Snd"
+  , "Match", "OBool", "OTrue", "OFalse", "OString", "MkOString", "OEqStr", "ONat", "MkONat", "OEqNat"
   , ">>="
   ]
 
@@ -1166,6 +1178,8 @@ include t s = f t
       RRule   a b c -> RRule   a b $ f c
       ROLet n t a b -> ROLet n t a $ f b
       RLetTy  n a b -> RLetTy  n a $ f b
+      RConstructor n a b -> RConstructor n a $ f b
+      RBuiltin     n a b -> RBuiltin     n a $ f b
       RImport   a b -> RImport   a $ f b
       RClass    a b c -> RClass    a b $ f c
       RInstance a b c -> RInstance a b $ f c

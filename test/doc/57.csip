@@ -6,9 +6,9 @@ The traditional comment behaviour cannot be fully
 achieved. In the closest setting, these lines can
 be commented out by a multiline comment:
 
-          "abc*/def"
+          "abc-}def"
 
-         // abc*/def
+         -- abc-}def
 
 The tradeoff is that strings should be well-formed
 in comments too.

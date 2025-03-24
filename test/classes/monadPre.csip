@@ -18,7 +18,7 @@ class Applicative m => Monad m where
 ma >>= f = join (f <$> ma)
 
 
-// Maybe monad
+-- Maybe monad
 
 data Maybe : Type ~> Type where
   Nothing : Maybe a
@@ -39,7 +39,7 @@ instance Monad Maybe where
   join Nothing = Nothing
 
 
-// List monad
+-- List monad
 
 data List : Type ~> Type where
   Nil    : List a
@@ -82,8 +82,8 @@ pita n = do
   guard (m*m == k*k + l*l)
   pure (T3 m k l)
 
-// join (Just (Just 1))
-// the (Maybe Nat) (join (Just Nothing))
-// the (Maybe Nat) (join Nothing)
+-- join (Just (Just 1))
+-- the (Maybe Nat) (join (Just Nothing))
+-- the (Maybe Nat) (join Nothing)
 
 pita 20

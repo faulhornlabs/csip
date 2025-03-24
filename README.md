@@ -157,7 +157,6 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- staging feature: pattern matching compiled to object level constructs is not supported
 - staging feature: object level recursion compiled to object level constructs is not supported
 - staging feature: no support for multiple object codes
 - feature: only builtin modules can be imported

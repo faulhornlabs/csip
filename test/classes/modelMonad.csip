@@ -1,13 +1,13 @@
 # elab
 
-// builtin
+-- builtin
 lookup : (a : Type) -> a
 
 
-// class Functor m  where
-//   fmap : (a -> b) -> m a -> m b
-Functor : (Type -> Type) -> Type
-MkFunctor
+-- class Functor m  where
+--   fmap : (a -> b) -> m a -> m b
+data Functor : (Type -> Type) -> Type where
+ MkFunctor
   :  {m}
   -> ({a b} -> (a -> b) -> m a -> m b)
   -> Functor m
@@ -16,11 +16,11 @@ fmap : {m} -> Functor m -> {a b} -> (a -> b) -> m a -> m b
 fmap {m} (MkFunctor f) = f
 
 
-// class Functor m => Applicative m  where
-//   pure  : a -> m a
-//   (<*>) : m (a -> b) -> m a -> m b
-Applicative : (Type -> Type) -> Type
-MkApplicative
+-- class Functor m => Applicative m  where
+--   pure  : a -> m a
+--   (<*>) : m (a -> b) -> m a -> m b
+data Applicative : (Type -> Type) -> Type where
+ MkApplicative
   :  {m}
   -> Functor m
   -> ({a : Type} -> a -> m a)
@@ -34,10 +34,10 @@ app : {m : Type -> Type} -> Applicative m -> {a b} -> m (a -> b) -> m a -> m b
 app {m} (MkApplicative _ _ f) = f
 
 
-// class Applicative m => Monad m where
-//   join : m (m a) -> m a
-Monad : (Type -> Type) -> Type
-MkMonad
+-- class Applicative m => Monad m where
+--   join : m (m a) -> m a
+data Monad : (Type -> Type) -> Type where
+ MkMonad
   : {m}
   -> Applicative m
   -> ({a} -> m (m a) -> m a)
@@ -51,9 +51,9 @@ data Maybe : Type -> Type where
   Nothing : {a : Type} -> Maybe a
   Just : {a : Type} -> a -> Maybe a
 
-// instance Functor (Maybe a) where
-//   fmap f Nothing = Nothing
-//   fmap f (Just a) = Just (f a)
+-- instance Functor (Maybe a) where
+--   fmap f Nothing = Nothing
+--   fmap f (Just a) = Just (f a)
 
 fmapMaybe : {a b} -> (a -> b) -> Maybe a -> Maybe b
 fmapMaybe f Nothing = Nothing
@@ -61,10 +61,10 @@ fmapMaybe f (Just x) = Just (f x)
 
 lookup (Functor Maybe) = MkFunctor fmapMaybe
 
-// instance Applicative (Maybe a) where
-//   pure = Just
-//   Just f <*> Just a = Just (f a)
-//   _ <*> _ = Nothing
+-- instance Applicative (Maybe a) where
+--   pure = Just
+--   Just f <*> Just a = Just (f a)
+--   _ <*> _ = Nothing
 
 pureMaybe : {a} -> a -> Maybe a
 pureMaybe x = Just x
@@ -76,9 +76,9 @@ appMaybe _ _ = Nothing
 lookup (Applicative Maybe) = MkApplicative (lookup (Functor Maybe)) pureMaybe appMaybe
 
 
-// instance Monad (Maybe a) where
-//   join (Just a) = a
-//   join Nothing = Nothing
+-- instance Monad (Maybe a) where
+--   join (Just a) = a
+--   join Nothing = Nothing
 
 joinMaybe : {a} -> Maybe (Maybe a) -> Maybe a
 joinMaybe (Just x) = x
@@ -88,9 +88,9 @@ lookup (Monad Maybe) = MkMonad (lookup (Applicative Maybe)) joinMaybe
 
 
 
-// fmap2 : Monad m => (a -> b) -> m a -> m b
-// fmap2 {d}    // lookup (Monad m) = d; lookup (Applicative m) = d.applDict; lookup (Functor m) = d.applDict.functDict
-//    = fmap {lookup _}
+-- fmap2 : Monad m => (a -> b) -> m a -> m b
+-- fmap2 {d}    -- lookup (Monad m) = d; lookup (Applicative m) = d.applDict; lookup (Functor m) = d.applDict.functDict
+--    = fmap {lookup _}
 
 
 Type

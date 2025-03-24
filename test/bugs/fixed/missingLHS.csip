@@ -3,8 +3,8 @@
 
 import Builtins
 
-A : Ty
-B : A
+data A : Ty where
+  B : A
 
 a := B
 B

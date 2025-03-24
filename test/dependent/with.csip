@@ -1,0 +1,25 @@
+
+data N : Type where
+  Z : N
+  S : N -> N
+
+(+) : N -> N -> N
+Z   + m = m
+S n + m = S (n + m)
+
+data Ordering : N -> N -> Type where
+  Less    : (m k : N) -> Ordering m (S (m + k))
+  Equal   : (m : N)   -> Ordering m m
+  Greater : (m k : N) -> Ordering (S (m + k)) m
+
+compare : (m n : N) -> Ordering m n
+compare Z     Z    = Equal   Z
+compare (S m) Z    = Greater Z m
+compare Z    (S n) = Less    Z n
+-- TODO
+-- compare (S m) (compare m --> Less m' k) = Less (S m') k
+{-  TODO
+compare (S m) (S n) | Less m k    <- compare m n = Less (S m) k
+compare (S m) (S n) | Equal m     <- compare m n = Equal (S m)
+compare (S m) (S n) | Greater n k <- compare m n = Greater (S n) k
+-}

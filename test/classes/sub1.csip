@@ -1,12 +1,22 @@
 # elab
 # eval
 
-import Builtins
+data Nat : Type where
+
+builtin AddNat : Nat -> Nat -> Nat
+
+lookupDict : (a : Type) -> a
+
+data SuperClassList : (a : Type) -> Type where
+  SuperClassNil  : (a : Type) -> SuperClassList a
+  SuperClassCons : (a : Type) -> (b : Type) -> (a -> b) -> SuperClassList a -> SuperClassList a
+
+supers : (a : Type) -> SuperClassList a
 
 data Num : Type -> Type where
   MkNum : {a} -> (a -> a) -> Num a
 
-superClasses (Num a) = SuperClassNil _
+supers (Num a) = SuperClassNil _
 
 double : {a} -> Num a => a -> a
 double {a} {MkNum f} x = f x
@@ -16,7 +26,7 @@ data Num2 : Type -> Type where
 
 selNum2Num : {a} -> Num2 a -> Num a
 selNum2Num (MkNum2 d) = d
-superClasses (Num2 a) = SuperClassCons _ _ selNum2Num (SuperClassNil _)
+supers (Num2 a) = SuperClassCons _ _ selNum2Num (SuperClassNil _)
 
 numDict = MkNum \n -> AddNat n n
 lookupDict (Num Nat) = numDict
@@ -37,7 +47,7 @@ sel Z (SuperClassCons _ _ f _) = f
 sel (S i) (SuperClassCons _ _ _ l) = sel i l
 
 double2 : {a} -> Num2 a => a -> a
-double2 {a} {d} x = double {a} {sel Z (superClasses (Num2 a)) d} x
+double2 {a} {d} x = double {a} {sel Z (supers (Num2 a)) d} x
 
 \{a} {b} c -> double2 {a} {b} c
-//double2 4
+--double2 4

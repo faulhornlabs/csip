@@ -4,7 +4,7 @@ import Builtins
 
 appendStr = AppendStr
 
-class {a : Type} -> Eq a where
+class Eq (a : Type) where
   (==) : a -> a -> Bool
 
 instance Eq Nat where
@@ -14,7 +14,7 @@ instance Eq String where
   a == b = EqStr a b
 
 
-class {a : Type} -> Num a where
+class Num (a : Type) where
   (+)     : a -> a -> a
   (*)     : a -> a -> a
   fromNat : Nat -> a

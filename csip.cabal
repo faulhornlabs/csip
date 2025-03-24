@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          csip
-version:       0.1.1.0
+version:       0.2.0.0
 
 category:      Compiler
 synopsis:      compiler for writing efficient programs with high-level abstractions
@@ -36,8 +36,8 @@ executable csip
   build-depends:
       base                  >= 4.0  && < 5.0
     , array                 >= 0.5  && < 0.6
-    , containers            >= 0.6  && < 1.0
     , directory             >= 1.3  && < 1.4
+    , containers            >= 0.6  && < 1.0
 
   hs-source-dirs: src
   autogen-modules:

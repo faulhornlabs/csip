@@ -38,5 +38,5 @@ addHelper (S n) c a b pair = do
 add : (n: N) -> vec n W64 -> vec n W64 -> vec n W64
   = \n a b -> addHelper n ClearCarry a b \e1 e2 -> e2
 
-// main
+-- main
 add (toN 3)

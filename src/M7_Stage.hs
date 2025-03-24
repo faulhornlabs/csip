@@ -17,9 +17,18 @@ stage_ t = do
 stage :: Val -> RefM Scoped --, [(Name, Scoped)
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
 
+
+pShow = f 10 . show  where
+  f :: Int -> String -> String
+  f n = g n  where
+    g 0 (' ': cs) = '\n': g n cs
+    g i (c@' ': cs) = c: g (i-1) cs
+    g i (c: cs) = c: g i cs
+    g _ [] = []
+
 stageHaskell v = do
   (r, ts) <- stage_ v
-  pure $ (fromString :: String -> Source) $ show ({- map data2 $ -} groupData $ map (name *** convertTy) ts, convert r)
+  pure $ (fromString :: String -> Source) $ pShow ({- map data2 $ -} groupData $ map (name *** convertTy) ts, convert r)
 
 unquoteTy :: Scoped -> Maybe Scoped
 unquoteTy = f where
@@ -37,33 +46,45 @@ unquoteTy = f where
 unquote :: Scoped -> RefM Scoped
 unquote = f mempty
  where
+  f :: IntMap Name Name -> Scoped -> RefM Scoped
   f e = \case
     RVar "Prod" :@ _ :@ _ :@ a :@ b -> pure "Prod" .@ f e a .@ f e b
     RVar "Pair" :@ _ :@ _ :@ a :@ b -> pure "Pair" .@ f e a .@ f e b
     RVar "Fst"  :@ _ :@ _ :@ a -> pure "Fst" .@ f e a
     RVar "Snd"  :@ _ :@ _ :@ a -> pure "Snd" .@ f e a
+    RVar "App" :@ _ :@ _ :@ (RVar "Lam" :@ _ :@ _ :@ b) :@ a -> getLam b >>= \(n, b) -> rLet' n a b
     RVar "App" :@ _ :@ _ :@ a -> f e a
 --    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
-    RVar "Lam" :@ _ :@ _ :@ (E.Lam n a) -> E.Lam n <$> f e a
-    RVar "Lam" :@ _ :@ _ :@ a -> do
-      n <- mkName "v"
-      E.Lam n <$> f e a .@ pure (RVar n)
-    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ RVar a :@ b | isVarName a -> f (insert n a e) b
-    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a      :@ b -> rLet n (f e a) (f e b)
-    RVar "Let"    :@ _ :@ _ :@ RVar a :@ E.Lam n b | isVarName a -> f (insert n a e) b
-    RVar "Let"    :@ _ :@ _ :@      a :@ E.Lam n b -> rLet n (f e a) (f e b)
+    RVar "Lam" :@ _ :@ _ :@ a -> getLam a >>= \(n, a) -> E.Lam n <$> f e a
+    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a :@ b -> rLet' n a b
+    RVar "Let"    :@ _ :@ _           :@ a :@ b -> getLam b >>= \(n, b) -> rLet' n a b
+    RVar "noreturn" :@ _ -> pure $ RVar "Fail"
     E.Lam n a -> E.Lam n <$> f e a
     a :@ b -> f e a .@ f e b
-    RVar n -> pure $ RVar $ fromMaybe n $ lookup n e
+    RVar n -> pure $ RVar $ fromMaybe n $ lookupIM n e
     r -> pure $ r
+   where
+    rLet' :: Name -> Scoped -> Scoped -> RefM Scoped
+    rLet' n a b = f e a >>= \case
+      RVar a | isVarName a -> f (insertIM n a e) b
+      a -> rLet n (pure a) (f e b)
 
+  getLam (E.Lam n a) = pure (n, a)
+  getLam a = do
+    n <- mkName "v"
+    pure (n, a `app` RVar n)
+
+  rLet :: Name -> RefM Scoped -> RefM Scoped -> RefM Scoped
   rLet n a b = r n <$> a <*> b  where
     r n (RLet m Hole a b) c = r m a (r n b c)
     r n a b = RLet n Hole a b
 
 --  RLet m Hole b c .@ a = rLet m b (c .@ a)
 --  a .@ RLet m Hole b c = rLet m b (a .@ c)
-  a .@ b = (:@) <$> a <*> b
+  a .@ b = app <$> a <*> b
+
+  app a@(RVar "Fail") _ = a
+  app a b = a :@ b
 
 --------------------------------- priting for backends in Haskell
 

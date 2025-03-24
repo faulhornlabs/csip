@@ -1,7 +1,7 @@
 # elab
 
-Env : Type -> Type
-EntryEnv : Nat -> (a : Type) -> a -> Env a
+data Env : Type -> Type where
+  EntryEnv : Nat -> (a : Type) -> a -> Env a
 
 ite : (a : Type) -> a -> a -> a
 

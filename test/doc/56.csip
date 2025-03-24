@@ -1,5 +1,5 @@
 # source
 # structure quote
 # comments quote
-a//x
-b/*x*/c
+a--x
+b{-x-}c

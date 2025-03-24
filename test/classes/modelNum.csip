@@ -1,52 +1,52 @@
 # elab
 # eval
 
-// builtin
+-- builtin
 lookup : (a : Type) -> a
 
 
-// class Num a  where
-//   add : a -> a -> a
-Num : Type -> Type
-MkNum : {a : Type} -> (a -> a -> a) -> Num a
+-- class Num a  where
+--   add : a -> a -> a
+data Num : Type -> Type where
+  MkNum : {a : Type} -> (a -> a -> a) -> Num a
 
 add : {a : Type} {_ : Num a} -> a -> a -> a
 add {_} {MkNum f} = f
 
 
 
-N : Type
-Z : N
-S : N -> N
+data N : Type where
+  Z : N
+  S : N -> N
 
 addN : N -> N -> N
 addN Z n = n
 addN (S n) m = S (addN n m)
 
-// instance Num N  where
-//   add = addN
+-- instance Num N  where
+--   add = addN
 numN : Num N
 numN = MkNum addN
 
 lookup (Num N) = numN
 
 
-N2 : Type
-Z2 : N2
-AddN2 : N2 -> N2 -> N2
+data N2 : Type where
+  Z2 : N2
+  AddN2 : N2 -> N2 -> N2
 
-// instance Num N2 where add = addN2
+-- instance Num N2 where add = addN2
 numN2 : Num N2
 numN2 = MkNum AddN2
 
 lookup (Num N2) = numN2
 
 
-Wrap : Type -> Type
-MkWrap : {a : Type} -> a -> Wrap a
+data Wrap : Type -> Type where
+  MkWrap : {a : Type} -> a -> Wrap a
 
-// instance Num a => Num (Wrap a)  where
-//    add (MkWrap x) (MkWrap y) = MkWrap (x + y)
+-- instance Num a => Num (Wrap a)  where
+--    add (MkWrap x) (MkWrap y) = MkWrap (x + y)
 addWrap : {a : Type} -> (a -> a -> a) -> Wrap a -> Wrap a -> Wrap a
 addWrap f (MkWrap x) (MkWrap y) = MkWrap (f x y)
 
@@ -56,9 +56,9 @@ numWrap (MkNum f) = MkNum (addWrap f)
 lookup (Num (Wrap a)) = numWrap (lookup (Num a))
 
 
-// double : Num a => a -> a
+-- double : Num a => a -> a
 double : {a : Type} -> {_ : Num a} -> a -> a
 double {_} {d} x = add {_} {d} x x
 
 double {_} {lookup _} (MkWrap (MkWrap Z2))
-// double (MkWrap (MkWrap Z2))
+-- double (MkWrap (MkWrap Z2))

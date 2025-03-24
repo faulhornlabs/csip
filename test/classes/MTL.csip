@@ -3,7 +3,7 @@
 
 import Prelude
 
-class {m : Type ~> Type} -> Functor m  where
+class Functor (m : Type ~> Type)  where
   (<$>) : (a -> b) -> m a -> m b
 
 (<&>) : Functor m => m a -> (a -> b) -> m b
@@ -37,7 +37,7 @@ put : MonadState m => stateType m -> m Unit
 put s = state \_ -> T2 TT s
 
 
-class {t : (Type ~> Type) ~> Type ~> Type} -> MonadTrans t where
+class MonadTrans (t : (Type ~> Type) ~> Type ~> Type) where
   lift : Monad m => {a} -> m a -> t m a
 
 
@@ -125,7 +125,7 @@ instance Monad m => Applicative (StateT s m) where
 instance Monad m => Monad (StateT s m) where
   join (MkStateT m) = MkStateT \s -> m s >>= matchT2 runStateT
 
-// TODO:  stateType (StateT s m) = s
+-- TODO:  stateType (StateT s m) = s
 stateType (Ap (Ap StateT s) m) = s
 
 instance Monad m => MonadState (StateT s m) where
@@ -140,8 +140,8 @@ instance MonadTrans (StateT s) where
 
 
 newId : Monad m => StateT Nat m Nat
-// TODO:   newId {m} = state {StateT Nat m} \s -> T2 s (1 + s)
-// TODO:   newId = state \s -> T2 s (1 + s)
+-- TODO:   newId {m} = state {StateT Nat m} \s -> T2 s (1 + s)
+-- TODO:   newId = state \s -> T2 s (1 + s)
 newId = MkStateT \s -> pure (T2 s (1 + s))
 
 sum : Num a => List a -> a
