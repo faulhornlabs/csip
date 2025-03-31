@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          csip
-version:       0.2.0.0
+version:       0.3.0.0
 
 category:      Compiler
 synopsis:      compiler for writing efficient programs with high-level abstractions
@@ -34,17 +34,18 @@ source-repository head
 
 executable csip
   build-depends:
-      base                  >= 4.0  && < 5.0
-    , array                 >= 0.5  && < 0.6
-    , directory             >= 1.3  && < 1.4
-    , containers            >= 0.6  && < 1.0
+      base       >= 4.0  && < 5.0
+    , array      >= 0.5  && < 0.6
+    , directory  >= 1.3  && < 1.4
 
   hs-source-dirs: src
   autogen-modules:
       Paths_csip
   other-modules:
       Paths_csip
-    , M0_Prelude
+    , A_Builtins
+    , M0_Map
+    , M0_IntMap
     , M1_Base
     , M2_OpSeq
     , M3_Parse
@@ -57,23 +58,23 @@ executable csip
       M9_Main.hs
 
   default-language:
-      Haskell2010
+      Haskell98
   default-extensions:
-      NoImplicitPrelude
+      RebindableSyntax
+    , OverloadedStrings
     , BlockArguments
     , LambdaCase
     , Strict
+    , PatternGuards
     , ViewPatterns
     , PatternSynonyms
     , NoMonomorphismRestriction
+    , EmptyDataDecls
     , DataKinds
     , KindSignatures
-    , OverloadedStrings
     , FlexibleInstances
     , FlexibleContexts
     , GeneralizedNewtypeDeriving
-  other-extensions:
-      CPP
 
   ghc-options:
     -fobject-code

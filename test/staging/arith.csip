@@ -17,7 +17,7 @@ builtin AddOp : ONat -> ONat -> ONat
 builtin MulOp : ONat -> ONat -> ONat
 builtin OAppendStr : OString -> OString -> OString
 
--- TODO: view pattern
+-- TODO: pattern synonym
 builtin OCons : OString -> OString -> OString
 
 data Arg : Type where
@@ -113,7 +113,7 @@ and _    _ = False
 
 c_and : Code (OBool -> OBool -> OBool)
 c_and OTrue a = a
-c_and _ _ = OFalse
+c_and _     _ = OFalse
 
 compiled_and := c_and
 
@@ -130,7 +130,9 @@ isNumber : String -> Bool
 isNumber s = allCharIs isNumberChar s
 
 
-compiled_allCharIsF : ((OString -> OBool) -> OString -> OBool) -> (OString -> OBool) -> Code (OString -> OBool)
+compiled_allCharIsF
+   : ((OString -> OBool) ->       OString -> OBool)
+   -> (OString -> OBool) -> Code (OString -> OBool)
 compiled_allCharIsF rec f "" = OTrue
 compiled_allCharIsF rec f (OCons c s) = compiled_and (f c) (rec f s)
 
@@ -263,7 +265,6 @@ parse (ListCons name
       )))))) = ListCons (Mul name (parseArg arg1 (isNumber arg1)) (parseArg arg2 (isNumber arg2))) (parse s)
 parse x = ListNil
 
-
 c_parse : (OList OString -> OList OExp) -> Code (OList OString -> OList OExp)
 c_parse cparse
       (OListCons name
@@ -389,7 +390,7 @@ compile' : List Exp -> Env ONat -> Env ONat
 compile' ListNil env = env
 compile' (ListCons exp l) env = compile' l (compExp' exp env)
 
-compArg : Arg -> Env (ONat) -> ONat
+compArg : Arg -> Env ONat -> ONat
 compArg (Var name) env = envLookup env name
 compArg (Num n) env = MkONat n
 

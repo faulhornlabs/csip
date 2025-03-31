@@ -74,7 +74,7 @@ conArity v = spine' v >>= \case
   _ -> pure 0
  where
   f g = do
-    n <- mkName "r"
+    n <- mkName "r#"
     conArity =<< vApp g (vVar n)
 
 matchHPi v = spine' v <&> \case
@@ -102,7 +102,7 @@ localEnv = local envR
 asksEnv = asks envR
 
 memptyEnv :: RefM Env
-memptyEnv = foldM def (MkEnv mempty mempty mempty mempty mempty mempty False)
+memptyEnv = foldM def (MkEnv mempty mempty mempty mempty mempty emptyMap False)
   [("Nat", CNat), ("String", CString), ("Type", CType)]
  where
   def env (n_, v) = do
@@ -148,7 +148,7 @@ defineGlob_ n_ fv t_ elab cont = nameOf n_ >>= \n -> addName_ n_ n do
       | not (rigid t)   -> print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
       | not (rigid v), n_ /= "lookupDict", n_ /= "superClasses"
       -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
-      | otherwise       -> addGlobal n v t co
+      | True            -> addGlobal n v t co
 
 defineBound'_ :: NameStr -> Name -> Val -> RefM a -> RefM a
 defineBound'_ n_ n t cont = addName_ n_ n $ addLocal True n (vVar n) t cont
@@ -163,7 +163,7 @@ defineGlob' :: NameStr -> Val -> Val -> (Name -> RefM a) -> RefM a
 defineGlob' n v t cont = do
   defineGlob n (\_ -> pure v) t \n _ _ -> cont n
 
-lookupName env = \n -> lookup n $ nameMap env
+lookupName env = \n -> lookupMap n $ nameMap env
 
 lookupLocal :: NameStr -> Env -> Maybe (Name, Val)
 lookupLocal v env = lookupName env v >>= \v -> lookupIM v (localTypes env) <&> (,) v
@@ -180,7 +180,7 @@ freshMeta_ :: RefM Tm
 freshMeta_ = do
   m <- tMeta
   bv <- asksEnv boundVars
-  pure $ TApps m $ reverse $ TVar <$> bv
+  pure $ TApps m $ reverse $ map TVar bv
 
 freshMeta :: RefM Tm
 freshMeta = TGen <$> freshMeta_
@@ -201,7 +201,7 @@ freshMeta' = do
   m <- freshMeta
   (,) m <$> evalEnv m
 
-typeName n = addSuffix n "_t"
+typeName n = addSuffix n "_t#"
 
 ---------
 
@@ -223,14 +223,14 @@ conv_ a b = do
   sb <- spine' b
   case (sa, sb) of
 
-    (Just ("Ty", []), Just ("Type", [])) -> do
+    (Just ("Ty", Nil), Just ("Type", Nil)) -> do
       pure $ Just \t -> pure $ TVal CCode `TApp` t
 
-    (Just ("String", []), Just ("Code", [m])) -> do
+    (Just ("String", Nil), Just ("Code", [m])) -> do
       unify m COString
       pure $ Just \t -> pure $ TVal CMkStr `TApp` t
 
-    (Just ("Nat", []), Just ("Code", [m])) -> do
+    (Just ("Nat", Nil), Just ("Code", [m])) -> do
       unify m CONat
       pure $ Just \t -> pure $ TVal CMkNat `TApp` t
 
@@ -238,7 +238,7 @@ conv_ a b = do
 
       q <- conv_ m3 m1
 
-      v <- lamName "v" m4
+      v <- lamName "v#" m4
       defineBound' v m3 \v -> do
         let vv = vVar v
 
@@ -256,7 +256,7 @@ conv_ a b = do
 
       q <- conv_ m3 m1
 
-      v <- lamName "v" m2
+      v <- lamName "v#" m2
       defineBound' v m3 \v -> do
         let vv = vVar v
 
@@ -276,7 +276,7 @@ conv_ a b = do
       c1 <- vApp CCode m1'
       q <- conv_ m3{- m3 -} c1{- Code m1 -}
 
-      v <- lamName "v" m4
+      v <- lamName "v#" m4
       defineBound' v c1 \v -> do
         let vv = vVar v
 
@@ -297,7 +297,7 @@ conv_ a b = do
       c1 <- vApp CCode m1'
       q <- conv_ c1{- Code m1 -} m3
 
-      v <- lamName "v" m4
+      v <- lamName "v#" m4
       defineBound' v c1 \v -> do
         let vv = vVar v
 
@@ -386,15 +386,15 @@ check_ top lhs r ty = case r of
           ta <- check a t
           f =<< tLam n ta
       Impl -> do
-        n' <- lamName "z" pb
+        n' <- lamName "z#" pb
         f =<< check (RHLam n' Hole r) ty
       _ -> undefined
   _ -> matchHPi ty >>= \case
     Just (Impl, _, pb) | not lhs -> do
-      n' <- lamName "z" pb
+      n' <- lamName "z#" pb
       check (RHLam n' Hole r) ty
     Just (ImplClass, _, _) | not lhs -> do
-      check (RHLam "c" Hole r) ty
+      check (RHLam "c#" Hole r) ty
     _ -> case r of
       RLet n t a b -> do
         (ta, vta) <- case t of
@@ -459,7 +459,7 @@ getHPi :: Val -> RefM (Maybe ((Name, Val), Val))
 getHPi v = getHPi__ v >>= \case
   Nothing -> pure Nothing
   Just (a, b) -> do
-    n <- lamName "m" b >>= mkName
+    n <- lamName "m#" b >>= mkName
     b <- vApp b $ vVar n
     pure $ Just ((n, a), b)
 
@@ -475,7 +475,7 @@ getConName v = force v <&> \case
 
 getMult f v = f v >>= \case
     Just (c, v) -> getMult f v <&> first (c:)
-    Nothing -> pure ([], v)
+    Nothing -> pure (Nil, v)
 
 getSuper :: Val -> RefM (Maybe (Val, Val))
 getSuper v = matchCon' "CPi" v <&> \case
@@ -508,7 +508,7 @@ dictType classTy methodTys = do
   pure (supers', t)
 
 ff :: (a -> (b -> RefM c) -> RefM c) -> [a] -> ([b] -> RefM c) -> RefM c
-ff _ [] cont = cont []
+ff _ Nil cont = cont Nil
 ff f (a: as) cont = f a \b -> ff f as \bs -> cont (b: bs)
 
 addMethodType :: [(Name, Val)] -> [Val] -> Val -> (Name, Val) -> (Val -> RefM a) -> RefM a
@@ -538,10 +538,10 @@ analyzeInstanceHead t = do
 
 defineSuperclasses :: NameStr -> Val -> Name -> Int -> [Val] -> RefM ()
 defineSuperclasses nclass vclass dict num supers = do
-  m <- mkName "m"
+  m <- mkName "m#"
   let c = TVal vclass `TApp` TVar m
-  ss <- forM (zip [0..] supers) \(i, s) -> do
-    sn <- mkName $ addSuffix (addPrefix "sel" nclass) (show i)
+  ss <- forM (numberWith (,) 0 supers) \(i, s) -> do
+    sn <- mkName $ addSuffix (addPrefix "sel" nclass) (mkIntToken $ intToInteger i)
     sf <- mkFun sn
     addDictSelector sf dict num $ i + 1
     pure (TVal s `TApp` TVar m, TVal sf `TApp` TVar m)
@@ -555,7 +555,7 @@ inferMethods under r cont = case r of
     vta <- under $ addForalls t >>= \t -> check t CType >>= evalEnv' (typeName n)
     defineGlob n mkFun vta \n _ _ -> do
       inferMethods under b \mts -> cont $ (n, vta): mts
-  REnd -> cont []
+  REnd -> cont Nil
   _ -> errorM "can't infer method"
 
 inferMethodBodies :: Raw -> RefM ()
@@ -571,7 +571,7 @@ addRule' a b = do
   flip (foldr addName) ns $ do
     (lhs, vta) <- insertH $ localEnv (\env -> env {isLHS = True}) $ infer a
     bv <- asksEnv boundVars <&> fromListIS
-    (lhs', (st', vs)) <- runState mempty \st -> getGens (Left st) bv lhs
+    (lhs', (st', vs)) <- runState (emptyMap, Nil) \st -> getGens (Left st) bv lhs
     flip (foldr addName') (reverse vs) $ do
       rhs <- check b vta
       bv <- asksEnv boundVars <&> fromListIS
@@ -586,7 +586,7 @@ addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ ar
   arg <- quoteTm' arg_
   arg' <- quoteTm_ False False False arg_
   is <- mapM quoteTm' is_
-  ds <- forM is \_ -> mkName "d"
+  ds <- forM is \_ -> mkName "d#"
   let rhs
         = tLets (zip ds $ map lookup is)
         $ TApps (TVal dictVal)
@@ -610,7 +610,7 @@ introType (n, t) f = do
   vApps CHPi [t, f]
 
 multIntro :: (a -> RefM Val -> RefM Val) -> [a] -> RefM Val -> RefM Val
-multIntro _ [] g = g
+multIntro _ Nil g = g
 multIntro f (a: as) g = f a $ multIntro f as g
 
 inferConstructors :: Raw -> RefM a -> RefM a
@@ -649,7 +649,7 @@ infer_ top r = case r of
       defineGlob (dictName n_) (\n -> pure $ mkCon ar n $ Just dt) dt \dn dv _dt -> do
        addClass n (MkClassData tc dv supers mts) do
         gl <- asksEnv globals
-        forM_ (zip [0..] mts) \(i, (mname, _)) -> case lookupIM mname gl of
+        forM_ (numberWith (,) 0 mts) \(i, (mname, _)) -> case lookupIM mname gl of
          Just (vf, _) -> addDictSelector vf dn (1 + length supers + length mts) (1 + length supers + i)
          _ -> impossible
         defineSuperclasses n_ tc dn (1 + length supers + length mts) supers
@@ -755,7 +755,7 @@ infer_ top r = case r of
   RView a b -> do
     (ta, ty) <- infer a
     (f, Expl, pa, pb) <- matchPi True Expl ty
-    n <- lamName "t" pb
+    n <- lamName "t#" pb
     defineBound' n pa \n -> do
       (_, vb) <- unlam n pb
       tb <- check b vb
@@ -781,7 +781,7 @@ infer_ top r = case r of
         pure (TApp fav tb, pb)
        | icit == i -> do
         tb <- check b pa
-        n <- lamName "t" pb
+        n <- lamName "t#" pb
         v <- evalEnv' n tb
         b <- vApp pb v
         pure (TApp fav tb, b)
@@ -790,7 +790,7 @@ infer_ top r = case r of
        | icit == ImplClass -> do
         (m, m') <- instanceMeta
         infer $ RApp (RHApp (REmbed $ MkEmbedded av ty) $ REmbed $ MkEmbedded m m') b
-       | otherwise -> error "baj"
+       | True      -> error "baj"
 
 addName' :: Name -> RefM a -> RefM a
 addName' n cont = do
@@ -860,16 +860,16 @@ instance Parse Tm where
 fvs :: Raw -> [NameStr]
 fvs = nub . go where
   go = \case
-    Hole -> []
-    RDot{} -> []
+    Hole -> Nil
+    RDot{} -> Nil
     RView _ b -> go b
     RGuard a _ -> go a
     RAnn a _ -> go a
     RHApp a b -> go a <> go b
     RApp a b -> go a <> go b
     RVar a -> [a]
-    RNat{} -> []
-    RString{} -> []
+    RNat{} -> Nil
+    RString{} -> Nil
     x -> error' $ ("fvs: " <>) <$> print x
 
 addForalls :: Raw -> RefM Raw
@@ -880,7 +880,7 @@ addForalls r = do
 fvs' :: Raw -> [NameStr]
 fvs' = nub . go where
   go = \case
-    Hole -> []
+    Hole -> Nil
     RDot{} -> undefined
     RView{} -> undefined
     RGuard{} -> undefined
@@ -894,8 +894,8 @@ fvs' = nub . go where
     RHApp a b -> go a <> go b
     RApp a b -> go a <> go b
     RVar a -> [a]
-    RNat{} -> []
-    RString{} -> []
+    RNat{} -> Nil
+    RString{} -> Nil
     x -> error' $ ("fvs': " <>) <$> print x
 
   del n = filter (/= n)

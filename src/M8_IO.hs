@@ -1,6 +1,5 @@
 module M8_IO
-  ( module E
-  , getTerminalSize
+  ( getTerminalSize
   , getKey
   , askYN
   , presentationMode
@@ -12,24 +11,13 @@ module M8_IO
   , CLI (Dir, Pure), command, runCLI
   , hashString
   , versionString
+  , IO, FilePath, readFile, writeFile, getChar, putChar
+  , doesFileExist, doesDirectoryExist, getTemporaryDirectory
+  , listDirectory, createDirectoryIfMissing, removeDirectoryRecursive
   )
  where
 
-import Prelude as E
-  (IO, FilePath, readFile, writeFile, getChar, putChar, (^))
-import System.Directory as E
-  ( doesFileExist, doesDirectoryExist, getTemporaryDirectory
-  , listDirectory, createDirectoryIfMissing, {- renameFile, -} removeDirectoryRecursive)
-
-import Control.Exception (finally)
---import qualified System.Console.Terminal.Size as Terminal
-import System.Environment (getArgs)
-import System.IO (hReady, hFlush, hSetEcho, BufferMode(..), hSetBuffering, hIsTerminalDevice, stdin, stdout)
-import System.Exit (die)
-import Data.Char (digitToInt)
-import Data.Version (versionBranch)
-
-import Paths_csip (version)
+import A_Builtins
 import M1_Base
 
 -----------------------------------------------
@@ -38,14 +26,14 @@ hashString :: String -> String
 hashString = map char . base 22 64 . hash
  where
   hash :: String -> Integer
-  hash = foldl (\h c -> m $ 33 * h + fromIntegral (ord c)) 5381   -- djb2
+  hash = foldl (\h c -> m $ 33 * h + intToInteger (ord c)) 5381   -- djb2
 
   m :: Integer -> Integer
-  m i = i `mod` 2^(128 :: Int)
+  m i = i `mod` shiftL 1 128
 
   base :: Int -> Integer -> Integer -> [Int]
-  base 0 _ _ = []
-  base n b i = fromIntegral (mod i b): base (n-1) b (div i b)
+  base 0 _ _ = Nil
+  base n b i = integerToInt (mod i b): base (n-1) b (div i b)
 
   char i
     | i < 26 = chr $ i      + ord 'A'
@@ -53,7 +41,7 @@ hashString = map char . base 22 64 . hash
     | i < 62 = chr $ i - 52 + ord '0'
     | i == 62 = '-'
     | i == 63 = '_'
-    | otherwise = impossible
+    | True      = impossible
 
 -----------------------------------------------
 
@@ -138,7 +126,7 @@ getTerminalSize = fromMaybe defaultTerminalSize <$> do
       _ <- getChar
       clearStdin
 
-  skip [] = pure ()
+  skip Nil = pure ()
   skip (c: cs) = getChar >>= \c' -> if c' == c then skip cs else undefined
 
   getInt acc end = getChar >>= \c -> case c of
@@ -165,7 +153,7 @@ getKey = getChar >>= \case
     _ -> pure "Esc"
   c -> pure [c]
  where
-  getArgs = first (reverse . map reverse) <$> f "" []
+  getArgs = first (reverse . map reverse) <$> f "" Nil
   f i is = getChar >>= \case
     ';' -> f "" (i: is)
     c | isDigit c -> f (c: i) is
@@ -192,23 +180,23 @@ instance Semigroup CLI where
   a <> _ = a
 
 runCLI :: String -> CLI -> IO ()
-runCLI progname x = runIO $ getArgs >>= eval [] x
+runCLI progname x = runIO $ getArgs >>= eval Nil x
  where
   eval hs x (s: _) | s == "-h" || s == "--help" = printHelp hs $ usage x
   eval hs (Commands ps _) (s: ss)
     | Just (h, x) <- lookupList s [(a, (h, c)) | (a, h, c) <- ps] = eval (h: hs) x ss
   eval hs (Commands _ p) ss = eval hs p ss
   eval _ (Dir io) [s] = io s
-  eval _ (Pure io) [] = io
+  eval _ (Pure io) Nil = io
   eval _ _ _ = putStr $ unlines $ ["Usage:", ""] ++ ["  " ++ progname ++ h | h <- usage x]
 
   usage = \case
     Dir _ -> [" FILE|DIR"]
     Pure _ -> [""]
     Commands ps p -> [" " <> a <> r | (a, _b, c) <- ps, r <- usage c] ++ usage p
-    CEmpty -> []
+    CEmpty -> Nil
 
   printHelp a hs = putStr $ unlines $ a ++ case hs of
-    hs | all null hs -> []
+    hs | all null hs -> Nil
     _  -> ["", "Options:"] ++ hs
 

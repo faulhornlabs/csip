@@ -16,21 +16,21 @@ getTmpDir = do
 
 getCmd :: Source -> RefM ([[Source]], Source)
 getCmd = \case
-  Cons "#" (Cons " " (spanCh (/= '\n') -> (cmd, Cons "\n" s))) -> do
+  Cons' '#' (Cons' ' ' (spanCh (/= '\n') -> (cmd, Cons' '\n' s))) -> do
     cmd <- parse cmd >>= f
     (cmds, s) <- getCmd s
     pure (cmd: cmds, s)
-  s -> pure ([], s)
+  s -> pure (Nil, s)
  where
   f :: Raw -> RefM [Source]
   f (a :@ b) = print b >>= \b -> f a <&> \as -> as <> [b]
-  f n = print n <&> (:[])
+  f n = print n <&> (:Nil)
 
 getSource f = parseFile' "" f >>= \case
   Nothing -> pure Nothing
   Just s -> Just . first maybeElab <$> getCmd s
  where
-  maybeElab [] = [["elab"]]
+  maybeElab Nil = [["elab"]]
   maybeElab cmds = cmds
 
 
@@ -40,15 +40,18 @@ showCmd = concat . intersperse " " . map chars
 doCmds :: [Source] -> Source -> RefM String
 doCmds cmd s = do
  () <- reset
- catchError mainException (\e -> show <$> print e) $ case cmd of
+ catchError mainException (\e -> show <$> print e) (doCmds_ cmd s)
+
+doCmds_ :: [Source] -> Source -> RefM String
+doCmds_ cmd s = case cmd of
   [cmd]                       -> doCmd False cmd s <&> chars
-  [cmd, "highlight"]          -> doCmd False cmd s <&> show
-  [cmd, "quote"]              -> doCmd True  cmd s <&> chars
-  [cmd, "quote", "highlight"] -> doCmd True  cmd s <&> show
+  [cmd, chars -> "highlight"]          -> doCmd False cmd s <&> show
+  [cmd, chars -> "quote"]              -> doCmd True  cmd s <&> chars
+  [cmd, chars -> "quote", chars -> "highlight"] -> doCmd True  cmd s <&> show
   cmds ->  error $ "Unknown commands: " <> mconcat (intersperse " " cmds)
  where
   doCmd :: Bool -> Source -> Source -> RefM Source
-  doCmd quote cmd s = case cmd of
+  doCmd quote cmd s = case chars cmd of
     "source"    -> sh =<< (parse s :: RefM Source)
     "indent"    -> sh =<< (parse s :: RefM ISource)
     "lex"       -> sh =<< (parse s :: RefM [Token Spaced])
@@ -119,7 +122,7 @@ testFiles accept dir odir = do
  fs <- testNames dir
  forM_ fs \fn -> do
   Just (cmds, s) <- getSource fn
-  forM_ (zip [0 :: Int ..] cmds) \(i, cmd) -> do
+  forM_ (numberWith (,) 0 cmds) \(i, cmd) -> do
     if accept then do
       r <- getResult' odir fn s cmd i (length cmds)
       putStr
@@ -137,9 +140,13 @@ testFiles accept dir odir = do
           <> r <> "\n"
           <> maybe "" (\r' -> if lines r' /= lines r then
                invert (foreground red $ "    first diff    ")
-            <> ["\n" <> a <> "\n" <> b <> "\n" | (a, b) <- zip (lines r' ++ repeat "") (lines r ++ repeat ""), a /= b] !! 0
+            <> ["\n" <> a <> "\n" <> b <> "\n" | (a, b) <- repNl (lines r') (lines r), a /= b] !! 0
             else "") r2
         askYN "accept" >>= \b -> if b then printres r else pure ()
+
+repNl as bs = zip (as ++ replicate (c-a) "") (bs ++ replicate (c-b) "")
+ where
+  a = length as; b = length bs; c = a + b
 
 present dir odir beg = do
   fs <- testNames dir
@@ -152,7 +159,7 @@ present dir odir beg = do
      Nothing -> reload
      Just (cmds, s) -> do
 
-      rs <- forM (zip [0 :: Int ..] cmds) \(j, cmd) -> do
+      rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
           r <- getResult' odir fn s cmd j (length cmds)
           pure (showCmd cmd <> " " <> fn, r)
       let
@@ -170,7 +177,7 @@ present dir odir beg = do
               "Esc"       -> end
               "q"         -> end
               "r"         -> [reload]
-              _           -> []
+              _           -> Nil
 
           (w, h) <- getTerminalSize
           disp h (mkScreen True (w, h) cyan rs) wait
@@ -183,7 +190,7 @@ export dir odir = do
   fs <- testNames dir
   rs <- forM fs \fn -> do
     Just (cmds, s) <- getSource fn
-    rs <- forM (zip [0 :: Int ..] cmds) \(j, cmd) -> do
+    rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
       r <- getResult' odir fn s cmd j (length cmds)
       pure (showCmd cmd <> " " <> fn, r)
     pure $ mkScreen False (w, h) cyan rs
@@ -191,7 +198,7 @@ export dir odir = do
 
 distribute :: Int -> Int -> [Int]
 distribute parts i = zipWith (-) is (0:is) where
-  is = [(j * i - 1) `div` parts + 1 | j <- [1..parts]]
+  is = [(j * i - 1) `div` parts + 1 | j <- enumFromTo 1 parts]
 
 mkScreen :: Bool -> (Int, Int) -> Int -> [(String, String)] -> [String]
 mkScreen rich (w, h) color ts
@@ -224,7 +231,7 @@ disp h ls' cont = wait 0
     wait z = do
       putStr
         $  clearScreen
-        <> mconcat [setCursorPosition i 0 <> l | (i, l) <- zip [0..h-1] $ drop z ls']
+        <> mconcat [setCursorPosition i 0 <> l | (i, l) <- zip (enumFromTo 0 (h-1)) $ drop z ls']
       getKey >>= \case
         "Up"       | z > 0  -> wait (z-1)
         "Down"     | z < mz -> wait (z+1)

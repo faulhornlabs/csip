@@ -31,14 +31,14 @@ pruneMeta :: MetaDep -> Indices -> RefM ()
 pruneMeta m (toListIS -> is) = do
   m' <- tMeta
   let
-    mk _ [] vs = pure $ TApps m' $ reverse vs
+    mk _ Nil vs = pure $ TApps m' $ reverse vs
     mk n (i: is) vs | n == i = do
       v <- mkName "_"
       tLam v =<< mk (n+1) is vs
     mk n (i: is) vs = do
-      v <- mkName "v"{-TODO: better name-}
+      v <- mkName "v#"{-TODO: better name-}
       tLam v =<< mk (n+1) (i: is) (TVar v: vs)
-  t <- mk 0 is []
+  t <- mk 0 is Nil
   v <- eval mempty t
   update m v
 
@@ -49,7 +49,7 @@ closeTm v_ = do
   v <- force v_
   let sv = (v, mempty)
   m <- go [sv]
-  () <- case fromJust $ lookup sv m of
+  () <- case fromJust $ lookupMap sv m of
     Just s -> forM_ (assocsIM s) \(v, s) -> pruneMeta v s
     Nothing -> error' $ ("could not close meta solution:\n" <>) <$> print v
   pure v_
@@ -58,8 +58,8 @@ closeTm v_ = do
    where
     down :: SVal -> RefM ((), [SVal])
     down (v, allowed) = case v of
-      _ | closed v -> ret allowed []
-      WLam c -> do
+      _ | closed v -> ret allowed Nil
+      WLam _ c -> do
         u <- c
         b <- vApp v $ vVar u
         ret (insertIS u allowed) [b]
@@ -68,7 +68,7 @@ closeTm v_ = do
       WMatch{} -> undefined
       WRet{}   -> undefined
       WNoRet{} -> undefined
-      _            -> ret allowed []
+      _            -> ret allowed Nil
      where
       ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force es
 
@@ -79,8 +79,8 @@ closeTm v_ = do
         Nothing -> pure Nothing
         Just [sa] -> pure $ Just sa
         _ -> impossible
-      WVar | name v `memberIS` allowed -> pure $ Just mempty
-           | otherwise               -> pure Nothing
+      WVar n | n `memberIS` allowed -> pure $ Just mempty
+             | True                    -> pure Nothing
       WMetaApp_ _ _ _ dep -> case map snd ts of
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
@@ -109,7 +109,7 @@ unify aa{-actual-} bb{-expected-} = do
  where
  ff v@(WMetaApp _ b) = do
    b <- force b
-   pure (v, case b of WVar -> Just $ name b; _ -> Nothing)
+   pure (v, case b of WVar n -> Just n; _ -> Nothing)
  ff v = pure (v, Nothing)
 
  go :: Val -> Val -> RefM ()
@@ -128,12 +128,12 @@ unify aa{-actual-} bb{-expected-} = do
      (_, WMetaApp a _) | Just u <- argb -> vLam u fa >>= \x -> go x a
      (WMetaApp a _, _) -> vConst fb >>= \x -> go a x
      (_, WMetaApp a _) -> vConst fa >>= \x -> go x a
-     (WLam c, _) -> do
+     (WLam _ c, _) -> do
        v <- c <&> vVar
        va' <- vApp fa v
        vb' <- vApp fb v
        go va' vb'
-     (_, WLam c) -> do
+     (_, WLam _ c) -> do
        v <- c <&> vVar
        va' <- vApp fa v
        vb' <- vApp fb v

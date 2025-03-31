@@ -6,7 +6,7 @@ module M7_Stage
 import M1_Base
 import M3_Parse hiding (Lam)
 import qualified M3_Parse as E
-import M4_Eval hiding (name, TVar, TApp)
+import M4_Eval hiding (TVar, TApp)
 
 stage_ :: Val -> RefM (Scoped, [(Name, Scoped)])
 stage_ t = do
@@ -24,7 +24,7 @@ pShow = f 10 . show  where
     g 0 (' ': cs) = '\n': g n cs
     g i (c@' ': cs) = c: g (i-1) cs
     g i (c: cs) = c: g i cs
-    g _ [] = []
+    g _ Nil = Nil
 
 stageHaskell v = do
   (r, ts) <- stage_ v
@@ -71,7 +71,7 @@ unquote = f mempty
 
   getLam (E.Lam n a) = pure (n, a)
   getLam a = do
-    n <- mkName "v"
+    n <- mkName "v#"
     pure (n, a `app` RVar n)
 
   rLet :: Name -> RefM Scoped -> RefM Scoped -> RefM Scoped
@@ -126,7 +126,7 @@ instance IsString Ty    where fromString = TCon . fromString
 name :: Name -> HName
 name n = case nameId n of
     i | i < 0     -> Builtin s
-      | otherwise -> UserName s i
+      | True      -> UserName s i
    where
     s = chars $ showMixfix $ nameStr n
 

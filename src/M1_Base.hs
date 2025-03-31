@@ -1,6 +1,60 @@
-{-# language CPP #-}
 module M1_Base
-  ( module M0_Prelude
+  ( on, ($), (.), const, flip, id
+
+  , String
+  , Int, Integer, intToInteger, integerToInt
+  , Bool (True, False), (&&), (||), not, ifThenElse
+  , fst, snd, uncurry
+  , enumFromTo
+
+  , Char, ord, chr, digitToInt
+
+  , List, pattern Nil
+  , nub, init, last, (!!), (++), drop, dropWhile, take, takeWhile, filter
+  , map, replicate, reverse, sort, span, splitAt, zip, zipWith, unzip, groupBy
+  , intersperse, stripPrefix
+
+  , Maybe (Just, Nothing), maybe, fromMaybe, maybeToList, listToMaybe
+
+  , Either (Left, Right), either
+
+  , IsString, fromString, unlines, lines, words
+
+  , Map, insert, fromList, emptyMap
+
+  , Eq ((==)), (/=)
+  , Ordering (LT, EQ, GT)
+  , Ord, compare, (<=), (>=), (<), (>), max, min
+  , (+), (-), (*), negate, fromInteger
+  , div, mod
+  , Show (show)
+
+  , Semigroup ((<>))
+  , Monoid (mempty), mconcat
+
+  , Functor (fmap), (<$>), (<&>)
+
+  , pure, (<*>)
+
+  , Tup0, pattern T0, Tup2, pattern T2, Tup3, pattern T3, Tup4, pattern T4
+  , (***), first, second
+
+  , (>>=), (>>), join, (>=>), (<=<), (=<<), forM, forM_, foldM, when
+  , fail
+
+  , foldMap, foldl, foldr, foldl1, null, length, elem, maximum, minimum, sum, and, or, all, any
+  , concat, concatMap, mapM_
+  , sequence, mapM
+
+  , coerce
+
+
+  , lookupList, lookupMap
+  , assocs
+
+  , stripSuffix
+  , firstJust
+
 
   , Sum (MkSum, getSum)
   , Interval (MkInterval), mkInterval
@@ -13,7 +67,7 @@ module M1_Base
   , head, tail, fromJust
   , isUpper, isLower, isDigit, isGraphic, isAlphaNum
 
-  , Source (Cons, Nil)
+  , Source (Cons, Cons', NilCh)
   , lengthCh, spanCh, groupCh, splitAtCh, takeCh, dropCh, revSpanCh, revTakeCh, revDropCh, lastCh, headCh, readNat
   , chars
   , Print (print)
@@ -24,7 +78,7 @@ module M1_Base
   , topM, topRef, reset
 
   -- monad transformer alternatives
-  , State,  runState,  evalState, gets, modify
+  , State,  runState,  evalState, gets, modify, topState
   , Reader, runReader, asks, local, topReader
   , Writer, runWriter, tell, listenAll
   , Except, runExcept, throwError, catchError
@@ -55,34 +109,38 @@ module M1_Base
 
   , Void
   , HasId(getId)
-  , IntMap, readIM, insertIM, lookupIM, fromListIM, sizeIM, toListIM, singletonIM, assocsIM, unionWithIM, nullIM
+  , IntMap, readIM, insertIM, lookupIM, fromListIM, toListIM, singletonIM, assocsIM, unionWithIM, nullIM
   , walkIM, downUpIM, topDownIM, bottomUpIM
   , IntSet, singletonIS, memberIS, insertIS, deleteIS, fromListIS, toListIS, nullIS
   , nubIS
+  , StringMap, lookupSM, insertSM, topStringMap
+
+  , numberWith
   )
  where
 
 -----------------------------------------------
 
-import Prelude (IO, FilePath)
-import Prelude as IO (readFile)
+import A_Builtins
+import M0_Map hiding (lookup, toList)
+import qualified M0_Map as Map
+import qualified M0_IntMap as IM
 
-import Data.Char (digitToInt)
-import qualified Data.IntMap.Strict as IM
-import qualified Data.IntSet as IS
-import qualified Data.Array.IArray as Arr
-import qualified Data.Array.Unboxed as Arr
-import qualified Data.Array.Base as Arr
+-----------------------------------------------
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
-import Data.Typeable (Typeable, Proxy)
-import qualified Control.Exception as Excpetion (Exception, catch, throwIO)
-import GHC.TypeLits (KnownNat, Nat, SomeNat (SomeNat), someNatVal)
-import System.IO.Unsafe (unsafePerformIO)
-import GHC.Stack (HasCallStack, callStack, getCallStack, SrcLoc(..))
+sort = map fst . Map.toList . Map.fromList . map (\a -> (a, ()))
 
-import Paths_csip
-import M0_Prelude
+lookupList = lookup
+lookupMap = Map.lookup
+emptyMap = Map.empty
+
+assocs = Map.toList
+
+stripSuffix a b = fmap reverse (stripPrefix (reverse a) (reverse b))
+
+firstJust :: Maybe a -> Maybe a -> Maybe a
+firstJust Nothing x = x
+firstJust x _ = x
 
 -----------------------------------------------
 
@@ -149,7 +207,7 @@ instance Ord Handler where compare = compare `on` fileId
 mkHandler :: FilePath -> RefM Handler
 mkHandler s = do
   i <- newId
-  pure $ MkHandler i s
+  pure (MkHandler i s)
 
 
 class Parse a where
@@ -165,19 +223,19 @@ instance Parse String where
 source :: (Parse a) => String -> String -> RefM a
 source n s = do
   p <- mkHandler n
-  parse $ source_ (Just p) s  
+  parse (source_ (Just p) s)
 
-type Vec = Arr.UArray Int Char
+type Vec = UArray Int Char
 
 vecFromList :: String -> Vec
-vecFromList s = Arr.listArray (0, length s - 1) s
+vecFromList s = listArray (0, length s - 1) s
 
 lengthVec :: Vec -> Int
-lengthVec = Arr.numElements
+lengthVec = numElements
 
 {-# inline indexVec #-}
 indexVec :: Vec -> Int -> Char
-indexVec = Arr.unsafeAt
+indexVec = unsafeAt
 
 
 data CharCtx = MkCtx (Maybe Handler) Vec
@@ -187,38 +245,34 @@ newtype Source = MkSource [(Int, Int, CharCtx)]
 
 {-# INLINE chars #-}
 chars :: Source -> [Char]
-chars (MkSource s) = [indexVec v k | (i, j, MkCtx _ v) <- s, k <- [i..j-1]]
+chars (MkSource s) = [indexVec v k | (i, j, MkCtx _ v) <- s, k <- enumFromTo i (j-1)]
 
-instance Eq  Source  where
-  {-# INLINE (==) #-}
---  (==) = (==) `on` chars       -- GHC can not optimize this?
-  MkSource sa == MkSource sb = go sa sb  where
-    go [] [] = True
-    go ((ia, ja, MkCtx _ va): as) ((ib, jb, MkCtx _ vb): bs) = go' ia ja va as ib jb vb bs
-    go _ _ = False
-
-    go' ia ja va as ib jb vb bs
-      | ja == ia, (ia, ja, MkCtx _ va): as <- as  = go' ia ja va as ib jb vb bs
-      | ja == ia, [] <- as, jb == ib, [] <- bs  = True
-      | ja == ia, [] <- as  = False
-      | jb == ib, (ib, jb, MkCtx _ vb): bs <- bs  = go' ia ja va as ib jb vb bs
-      | jb == ib, [] <- bs  = False
-      | otherwise = indexVec va ia == indexVec vb ib && go' (ia+1) ja va as (ib+1) jb vb bs
-
-instance Ord Source where compare = compare `on` chars
+indexCtx (MkCtx _ v) i = indexVec v i
 
 pattern Cons :: Source -> Source -> Source
 pattern Cons c s <- (getCons -> Just (c, s))
 
-pattern Nil :: Source
-pattern Nil = ""
+pattern Cons' :: Char -> Source -> Source
+pattern Cons' c s <- (getCons' -> Just (c, s))
 
-{-# COMPLETE Cons, Nil #-}
+pattern NilCh :: Source
+pattern NilCh <- (getNil -> True)
+
+{-# COMPLETE Cons, NilCh #-}
+{-# COMPLETE Cons', NilCh #-}
+
+getNil (MkSource Nil) = True
+getNil _ = False
 
 getCons (MkSource ((i, j, ctx): ss))
   | j == i + 1 = Just (MkSource [(i, j, ctx)], MkSource ss)
-  | otherwise  = Just (MkSource [(i, i+1, ctx)], MkSource $ (i+1, j, ctx): ss)
+  | True  = Just (MkSource [(i, i+1, ctx)], MkSource ((i+1, j, ctx): ss))
 getCons _ = Nothing
+
+getCons' (MkSource ((i, j, ctx): ss))
+  | j == i + 1 = Just (indexCtx ctx i, MkSource ss)
+  | True  = Just (indexCtx ctx i, MkSource ((i+1, j, ctx): ss))
+getCons' _ = Nothing
 
 spanCh, revSpanCh :: (Char -> Bool) -> Source -> (Source, Source)
 spanCh p = spanCh_ \_ -> p
@@ -238,46 +292,46 @@ groupCh p = groupCh_ \_ -> p
 groupCh_ :: (Int -> Char -> Char -> Bool) -> Source -> (Source, Source)
 groupCh_ p (MkSource ss) | (as, bs) <- f' ss = (MkSource as, MkSource bs)
  where
-  f' [] = ([], [])
+  f' Nil = (Nil, Nil)
   f' (s@(i, j, c@(MkCtx _ v)): ss) = g (indexVec v i) (i+1)
    where
     g l x
       | x == j, (as, bs) <- f (j - i) l ss = (s: as, bs)
       | l' <- indexVec v x, p (x - i) l l' = g l' (x+1)
-      | otherwise = ([(i, x, c)], (x, j, c): ss)
+      | True = ([(i, x, c)], (x, j, c): ss)
 
-  f _ _ [] = ([], [])
+  f _ _ Nil = (Nil, Nil)
   f offs l (s@(i, j, c@(MkCtx _ v)): ss) = g l i
    where
     g l x
       | x == j, (as, bs) <- f (offs + j - i) l ss = (s: as, bs)
       | l' <- indexVec v x, p (offs + x - i) l l' = g l' (x+1)
-      | x == i    = ([], s: ss)
-      | otherwise = ([(i, x, c)], (x, j, c): ss)
+      | x == i    = (Nil, s: ss)
+      | True = ([(i, x, c)], (x, j, c): ss)
 
 spanCh_ :: (Int -> Char -> Bool) -> Source -> (Source, Source)
 spanCh_ p (MkSource ss) | (as, bs) <- f 0 ss = (MkSource as, MkSource bs)
  where
-  f _ [] = ([], [])
+  f _ Nil = (Nil, Nil)
   f offs (s@(i, j, c@(MkCtx _ v)): ss) = g i
    where
     g x
       | x == j, (as, bs) <- f (offs + j - i) ss = (s: as, bs)
       | p (offs + x - i) (indexVec v x) = g (x+1)
-      | x == i    = ([], s: ss)
-      | otherwise = ([(i, x, c)], (x, j, c): ss)
+      | x == i    = (Nil, s: ss)
+      | True = ([(i, x, c)], (x, j, c): ss)
 
 revSpanCh_ :: (Int -> Char -> Bool) -> Source -> (Source, Source)
-revSpanCh_ p (MkSource ss) | (as, bs) <- f 0 $ reverse ss = (MkSource $ reverse as, MkSource $ reverse bs)
+revSpanCh_ p (MkSource ss) | (as, bs) <- f 0 (reverse ss) = (MkSource (reverse as), MkSource (reverse bs))
  where
-  f _ [] = ([], [])
+  f _ Nil = (Nil, Nil)
   f offs (s@(j, i, c@(MkCtx _ v)): ss) = g i
    where
     g x
       | x == j, (as, bs) <- f (offs + i - j) ss = (s: as, bs)
       | p (offs + i - x) (indexVec v (x-1)) = g (x-1)
-      | x == i    = ([], s: ss)
-      | otherwise = ([(x, i, c)], (j, x, c): ss)
+      | x == i    = (Nil, s: ss)
+      | True = ([(x, i, c)], (j, x, c): ss)
 
 --lengthCh = length . chars
 lengthCh (MkSource as) = sum [j - i | (i, j, _) <- as]
@@ -285,12 +339,12 @@ lengthCh (MkSource as) = sum [j - i | (i, j, _) <- as]
 lastCh   = last   . chars
 headCh   = head   . chars
 
-mreplicate n a = mconcat $ replicate n a
+mreplicate n a = mconcat (replicate n a)
 
 readNat :: Source -> Maybe Integer
 readNat (chars -> cs)
-  | all isDigit cs = Just $ foldl (\i c -> 10*i + fromIntegral (digitToInt c)) 0 cs
-  | otherwise = Nothing
+  | all isDigit cs = Just (foldl (\i c -> 10*i + intToInteger (digitToInt c)) 0 cs)
+  | True = Nothing
 
 instance Show Source where
   show s = chars s <> "\n" <> showLoc s
@@ -299,7 +353,7 @@ instance IsString Source where
   fromString = source_ Nothing
 
 source_ :: Maybe Handler -> String -> Source
-source_ _ [] = MkSource []
+source_ _ Nil = MkSource Nil
 source_ n s = MkSource [(0, lengthVec v, MkCtx n v)]
     where v = vecFromList s
 
@@ -308,17 +362,17 @@ showLoc_ :: Source -> [(String, String)]
 showLoc_ (MkSource cs)
   = [f p v [(i, j) | (i, j, MkCtx (Just p') _) <- cs, p' == p] | (p, v) <- ps]
  where
-  ps = assocs $ mconcat [singleton p v | (_, _, MkCtx (Just p) v) <- cs]
+  ps = assocs (Map.fromList [(p, v) | (_, _, MkCtx (Just p) v) <- cs])
 
-  f hand v is = (fileName hand, h [(i `IS.member` s, indexVec v i) | i <- [0.. lengthVec v - 1]])
+  f hand v is = (fileName hand, h [(i `IM.member` s, indexVec v i) | i <- enumFromTo 0 (lengthVec v - 1)])
    where
-    s = mconcat [IS.singleton k | (i, j) <- is, k <- [i..j-1]]
+    s = mconcat [IM.singleton k () | (i, j) <- is, k <- enumFromTo i (j-1)]
 
   lines :: [(a, Char)] -> [[(a, Char)]]
-  lines [] = []
+  lines Nil = Nil
   lines (span ((/= '\n') . snd) -> (as, bs)) = as: case bs of
-    [] -> []
-    [_] -> []: []
+    Nil -> Nil
+    [_] -> Nil: Nil
     _: bs -> lines bs
 
   groupOn :: Eq b => [(b, c)] -> [(b, [c])]
@@ -329,26 +383,26 @@ showLoc_ (MkSource cs)
     . lines
 
   hh :: [[(Bool, String)]] -> String
-  hh ss = intercalate "\n" $ map h2 $ groupOn $ zip (widen 1 mask) s2
+  hh ss = (intercalate "\n" . map h2 . groupOn . zip (widen 1 mask)) s2
    where
-    s2 = map gb $ zip [1 :: Int ..] ss
+    s2 = numberWith gb 1 ss
     mask = map ga ss
 
-  widen i bs = take (length bs) $ map (or . take (2*i + 1)) $ tails $ replicate i False <> bs
+  widen i bs = (take (length bs) . map (or . take (2*i + 1)) . tails) (replicate i False <> bs)
 
   h2 (True, s) = intercalate "\n" s
   h2 (False, _) = foreground green "..."
 
-  ga [] = False
+  ga Nil = False
   ga [(False, _)] = False
   ga _ = True
 
-  gb (n, s) = foreground green (show n <> " | ") <> concat (map g s)  where
+  gb n s = foreground green (show n <> " | ") <> concat (map g s)  where
     g (True, s) = background blue s
     g (_, s) = s
 
 showLoc :: Source -> String
-showLoc s = concat $ intersperse "\n" [invert (foreground green $ " " <> f <> " ") <> "\n" <> x | (f, x) <- showLoc_ s]
+showLoc s = concat (intersperse "\n" [invert (foreground green $ " " <> f <> " ") <> "\n" <> x | (f, x) <- showLoc_ s])
 
 -----------------------------
 
@@ -358,7 +412,7 @@ stripANSI = f
   f = \case
     '\ESC': '[': cs -> f (skip cs)
     c: cs -> c: f cs
-    [] -> []
+    Nil -> Nil
 
   skip = drop 1 . dropWhile (\c -> isDigit c || c `elem` [';','?'])
 
@@ -366,7 +420,7 @@ lengthANSI :: String -> Int
 lengthANSI = length . stripANSI
 
 csi :: (IsString a, Monoid a) => [Int] -> a -> a
-csi args code = "\ESC[" <> mconcat (intersperse ";" $ map (fromString . show) args) <> code
+csi args code = "\ESC[" <> mconcat (intersperse ";" (map (fromString . show) args)) <> code
 
 clearScreen = csi [2] "J"
 setCursorHPosition n = csi [n + 1] "G"
@@ -376,8 +430,8 @@ cursorDown    n = csi [n] "B"
 cursorForward n = csi [n] "C"
 cursorBack    n = csi [n] "D"
 
-hideCursor = csi [] "?25l"
-showCursor = csi [] "?25h"
+hideCursor = csi Nil "?25l"
+showCursor = csi Nil "?25h"
 
 sgr args = csi args "m"
 background_ n = sgr [n + 40]
@@ -399,26 +453,26 @@ white = 7
 pattern SGR is s = CSI is 'm' s
 
 fixANSI = f [0] [0] where
-  f (_: a: as) bs (SGR [39] cs) = SGR [a] $ f (a: as) bs cs
-  f as (_: b: bs) (SGR [49] cs) = SGR [b] $ f as (b: bs) cs
+  f (_: a: as) bs (SGR [39] cs) = SGR [a] (f (a: as) bs cs)
+  f as (_: b: bs) (SGR [49] cs) = SGR [b] (f as (b: bs) cs)
   f as bs (SGR [i] cs)
-    | 30 <= i, i <= 37 = SGR [i] $ f (i: as) bs cs
-    | 40 <= i, i <= 47 = SGR [i] $ f as (i: bs) cs
+    | 30 <= i, i <= 37 = SGR [i] (f (i: as) bs cs)
+    | 40 <= i, i <= 47 = SGR [i] (f as (i: bs) cs)
   f as bs (c: cs) = c: f as bs cs
-  f _  _  [] = []
+  f _  _  Nil = Nil
 
-getCSI ('\ESC': '[': cs) = f "" [] cs
+getCSI ('\ESC': '[': cs) = f "" Nil cs
  where
   f i is (c: cs) = case c of
     ';'           -> f "" (i: is) cs
     c | isDigit c -> f (c: i) is cs
-    c             -> Just (reverse $ map (read . reverse) $ i: is, c, cs)
+    c             -> Just (reverse (map (readInt . reverse) (i: is)), c, cs)
   f _ _ _ = Nothing
 getCSI _ = Nothing
 
 pattern CSI :: [Int] -> Char -> String -> String
 pattern CSI is c cs <- (getCSI -> Just (is, c, cs))
-  where CSI is c cs =  "\ESC[" ++ mconcat (intersperse ";" $ map show is) ++ c: cs
+  where CSI is c cs =  "\ESC[" ++ mconcat (intersperse ";" (map show is)) ++ c: cs
 
 
 ------------------------------
@@ -448,7 +502,7 @@ topM = unsafePerformIO
 
 {-# noinline resetRef #-}
 resetRef :: Ref (RefM ())
-resetRef = topM $ newRef $ pure ()
+resetRef = topM (newRef (pure ()))
 
 -- use with {-# noinline #-}
 -- only on top level
@@ -457,13 +511,18 @@ topRef :: a -> Ref a
 topRef a = topRef_ (pure a)
 
 topRef_ :: RefM a -> Ref a
-topRef_ mx = topM do
+topRef_ mx = top_ do
   r <- newRef =<< mx
-  () <- modifyRef resetRef \m -> m >> mx >>= writeRef r
+  pure (r, mx >>= writeRef r)
+
+top_ :: RefM (a, RefM ()) -> a
+top_ mx = topM do
+  (r, reset) <- mx
+  () <- modifyRef resetRef \m -> m >> reset
   pure r
 
 reset :: RefM ()
-reset = join $ readRef resetRef
+reset = join (readRef resetRef)
 
 
 
@@ -483,10 +542,14 @@ writeRef :: Ref a -> a -> RefM ()
 writeRef (MkRef r) a = writeIORef r a
 
 modifyRef :: Ref a -> (a -> a) -> RefM ()
-modifyRef (MkRef r) f = modifyIORef' r f
+modifyRef r f = readRef r >>= writeRef r . f
 
 stateRef :: Ref a -> (a -> (a, b)) -> RefM b
-stateRef (MkRef r) f = atomicModifyIORef' r f
+stateRef r f = do
+  a_ <- readRef r
+  let (a, b) = f a_
+  writeRef r a
+  pure b
 
 -------------------------------------------------- efficient linear maps
 
@@ -500,13 +563,13 @@ newtype LMap a = MkLMap (Ref (IM.IntMap a))
 
 newtype Key a = MkKey Int
 
-emptyL = withRef mempty $ pure . MkLMap
+emptyL = withRef mempty (pure . MkLMap)
 
 newKey (MkLMap r) a = stateRef r \m ->
   let i = maybe 0 ((+1) . fst . fst) (IM.maxViewWithKey m)
   in (IM.insert i a m, MkKey i)
 
-insertL (MkLMap r) (MkKey i) a = modifyRef r $ IM.insert i a
+insertL (MkLMap r) (MkKey i) a = modifyRef r (IM.insert i a)
 
 lookupL (MkLMap r) (MkKey j) = stateRef r \m -> (m, m IM.! j)
 -}
@@ -515,7 +578,7 @@ newtype LMap a = MkLMap ()
 
 newtype Key a = MkKey (Ref a)
 
-emptyL = pure $ MkLMap ()
+emptyL = pure (MkLMap ())
 
 newKey _ a = MkKey <$> newRef a
 
@@ -530,6 +593,9 @@ newtype State a = MkState (Ref a)
 
 newState :: a -> RefM (State a)
 newState a = MkState <$> newRef a
+
+topState :: RefM a -> State a
+topState a = MkState (topRef_ a)
 
 runState :: a -> (State a -> RefM b) -> RefM (b, a)
 runState a cont = do
@@ -555,7 +621,7 @@ newReader :: a -> RefM (Reader a)
 newReader a = MkReader <$> newRef a
 
 topReader :: RefM a -> Reader a
-topReader a = MkReader $ topRef_ a
+topReader a = MkReader (topRef_ a)
 
 runReader :: a -> (Reader a -> RefM b) -> RefM b
 runReader a cont = newReader a >>= cont
@@ -566,7 +632,7 @@ asks (MkReader r) f = readRef r <&> f
 local :: Reader r -> (r -> r) -> RefM a -> RefM a
 local (MkReader st) f m = do
   r <- readRef st
-  writeRef st $! f r
+  writeRef st (f r)
   a <- m
   writeRef st r
   pure a
@@ -597,7 +663,7 @@ listenAll (MkWriter st) m = do
 runWriter :: (Monoid w) => (Writer w -> RefM a) -> RefM (a, w)
 runWriter cont = do
   w <- newWriter
-  listenAll w $ cont w
+  listenAll w (cont w)
 
 tell :: (Semigroup w) => Writer w -> w -> RefM ()
 tell (MkWriter st) x = modify (MkState st) (x <>)
@@ -609,28 +675,28 @@ data Except e = {- Typeable e => -} MkExcept SomeNat
 
 {-# noinline exceptCounter #-}
 exceptCounter :: Ref Int
-exceptCounter = topM $ newRef 0    -- TODO: reset for local newExcept calls
+exceptCounter = topM (newRef 0)    -- TODO: reset for local newExcept calls
 
 newExcept :: Typeable e => RefM (Except e)
 newExcept = do
   i <- stateRef exceptCounter \i -> (i+1, i)
-  pure $ MkExcept $ fromJust $ someNatVal $ fromIntegral i
+  (pure . MkExcept . someNatVal) i
 
 throwError :: (HasCallStack, Typeable e, Print e) => Except e -> e -> RefM a
 throwError (MkExcept (SomeNat p)) e
-  = print e >>= \s -> Excpetion.throwIO (mk p e s)
+  = print e >>= \s -> throwIO (mk p e s)
  where
   mk :: Proxy i -> e -> Source -> GException e i
   mk _ e s = MkGException e s
 
 catchError :: Typeable e => Except e -> (e -> RefM a) -> RefM a -> RefM a
 catchError (MkExcept (SomeNat p)) f g
-  = Excpetion.catch (g >>= \a -> a `seq` pure a) (fun p f)
+  = catch (g >>= \a -> a `seq` pure a) (fun p f)
  where
   fun :: Proxy i -> (e -> RefM a) -> GException e i -> RefM a
   fun _ f (MkGException x _) = f x
 
-runExcept :: (Typeable e) => (Except e -> RefM a) -> RefM (Either e a)
+runExcept :: Typeable e => (Except e -> RefM a) -> RefM (Either e a)
 runExcept f = do
   e <- newExcept
   catchError e (pure . Left) (Right <$> f e)
@@ -643,7 +709,7 @@ data GException e (i :: Nat)
 instance Show (GException e i) where
   show (MkGException _ s) = "\n" <> show s
 
-instance (KnownNat i, Typeable e) => Excpetion.Exception (GException e i)
+instance (KnownNat i, Typeable e) => Exception (GException e i)
 
 
 ---------------------------------------------
@@ -669,7 +735,7 @@ instance Print MainException where
     MkTag s r -> s >>= \s -> print r <&> \r -> fromString (show r) <> fromString (showLoc s)
 
 instance Show MainException where
-  show r = unsafePerformIO $ print r <&> show
+  show r = unsafePerformIO (print r <&> show)
 
 {-# noinline mainException #-}
 mainException :: Except MainException
@@ -681,34 +747,30 @@ printCallStack cs@(_:_) | (name, loc) <- last cs
 printCallStack _ = "<empty callstack>"
 
 errorM_ :: HasCallStack => Bool -> Source -> RefM a
-errorM_ cs s = throwError mainException $ MkMainException
-  $ if cs then s <> "\n" <> fromString (printCallStack $ getCallStack callStack) else s
+errorM_ cs s = throwError mainException (MkMainException
+  (if cs then s <> "\n" <> fromString (printCallStack $ getCallStack callStack) else s))
 
 errorM :: HasCallStack => Source -> RefM a
 errorM = errorM_ False
 
 error' :: HasCallStack => IO Source -> a
-error' s = unsafePerformIO $ s >>= errorM_ False
+error' s = unsafePerformIO (s >>= errorM_ False)
 
 error :: HasCallStack => Source -> a
-error s = error' $ pure s
+error s = error' (pure s)
 
 undefined :: HasCallStack => a
-undefined = unsafePerformIO $ errorM_ True "TODO"
+undefined = unsafePerformIO (errorM_ True "TODO")
 
 impossible :: HasCallStack => a
-impossible = unsafePerformIO $ errorM_ True "impossible"
+impossible = unsafePerformIO (errorM_ True "impossible")
 
 assert :: HasCallStack => Bool -> a -> a
-#ifdef DEBUG
-assert False = error "assertion failed"
-#endif
+-- assert False = error "assertion failed"
 assert _ = id
 
 assertM :: HasCallStack => Bool -> RefM ()
-#ifdef DEBUG
-assertM False = errorM "assertion failed"
-#endif
+-- assertM False = errorM "assertion failed"
 assertM _ = pure ()
 
 ------------------
@@ -740,23 +802,23 @@ walk
   -> (a -> b -> [(a, b)] -> RefM b)
   -> [a]
   -> RefM (Map a b)
-walk children  down up xs = fmap snd $ runState mempty go where
-  go st = walk (Left <$> xs)  where
-    walk [] = pure ()
-    walk (Left v: ts) = gets st (lookup v) >>= \case
+walk children  down up xs = fmap snd (runState emptyMap go) where
+  go st = walk (map Left xs)  where
+    walk Nil = pure ()
+    walk (Left v: ts) = gets st (lookupMap v) >>= \case
       Nothing -> do
         (r, ch) <- children v
-        modify st $ insert v r
-        walk $ map Left ch ++ Right (v, ch): ts
+        modify st (insert v r)
+        walk (map Left ch ++ Right (v, ch): ts)
       Just r -> do
         r' <- down v r
-        modify st $ insert v r'
+        modify st (insert v r')
         walk ts
     walk (Right (e, ch): ts) = do
-      m <- gets st (fromJust . lookup e)
-      ms <- forM ch \v -> gets st (fromJust . lookup v)
-      r <- up e m $ zip ch ms
-      modify st $ insert e r
+      m <- gets st (fromJust . lookupMap e)
+      ms <- forM ch \v -> gets st (fromJust . lookupMap v)
+      r <- up e m (zip ch ms)
+      modify st (insert e r)
       walk ts
 
 downUp
@@ -768,7 +830,7 @@ downUp
 downUp down up as = walk down' (\_ -> pure) up' as <&> fmap g
  where
   down' a = down a <&> first Left
-  up' a (Left b) cs = fmap Right $ up a b $ map (second g) cs
+  up' a (Left b) cs = fmap Right (up a b (map (second g) cs))
   up' _ _ _ = impossible
   g (Right c) = c
   g _ = impossible
@@ -801,23 +863,23 @@ walkIM
   -> (a -> b -> [(a, b)] -> RefM b)
   -> [a]
   -> RefM (IntMap a b)
-walkIM children  down up xs = fmap snd $ runState mempty go where
-  go st = walk (Left <$> xs)  where
-    walk [] = pure ()
+walkIM children  down up xs = fmap snd (runState mempty go) where
+  go st = walk (map Left xs)  where
+    walk Nil = pure ()
     walk (Left v: ts) = gets st (lookupIM v) >>= \case
       Nothing -> do
         (r, ch) <- children v
-        modify st $ insertIM v r
-        walk $ map Left ch ++ Right (v, ch): ts
+        modify st (insertIM v r)
+        walk (map Left ch ++ Right (v, ch): ts)
       Just r -> do
         r' <- down v r
-        modify st $ insertIM v r'
+        modify st (insertIM v r')
         walk ts
     walk (Right (e, ch): ts) = do
       m <- gets st (readIM e)
       ms <- forM ch \v -> gets st (readIM v)
-      r <- up e m $ zip ch ms
-      modify st $ insertIM e r
+      r <- up e m (zip ch ms)
+      modify st (insertIM e r)
       walk ts
 
 downUpIM
@@ -829,7 +891,7 @@ downUpIM
 downUpIM down up as = walkIM down' (\_ -> pure) up' as <&> fmap g
  where
   down' a = down a <&> first Left
-  up' a (Left b) cs = fmap Right $ up a b $ map (second g) cs
+  up' a (Left b) cs = fmap Right (up a b (map (second g) cs))
   up' _ _ _ = impossible
   g (Right c) = c
   g _ = impossible
@@ -858,13 +920,13 @@ bottomUpIM init children up x
 importFile :: Parse a => Source -> RefM a
 importFile f = do
   d <- getDataDir
-  s <- IO.readFile $ d <> "/" <> chars f <> ".csip"
+  s <- readFile (d <> "/" <> chars f <> ".csip")
   source (chars f) s
 
 precedenceTableString :: String
 precedenceTableString = unsafePerformIO do
   f <- getDataFileName "precedences"
-  IO.readFile f
+  readFile f
 
 traceShow :: String -> RefM String -> RefM ()
 --traceShow s m {- | s `elem` ["1","2","3","4","5","6","7"] -} = m >>= \s -> traceM s
@@ -873,15 +935,21 @@ traceShow _ _ = pure ()
 a <<>> b = (<>) <$> a <*> b
 
 instance IsString a => IsString (RefM a) where
-  fromString s = pure $ fromString s
+  fromString s = pure (fromString s)
 
 
 class IntHash a where
   intHash :: a -> Int  -- always negative
 
-instance IntHash String where
-  intHash
-    = foldl (\h c -> 33*h + ord c) 5381   -- djb2
+instance IntHash Int where
+  intHash x = x
+
+instance IntHash Char where
+  intHash = ord
+
+instance IntHash a => IntHash [a] where
+  intHash xs
+    = foldl (\h c -> 33*h + c) 5381 (map intHash xs)   -- djb2
 
 instance IntHash Source where
   intHash = intHash . chars
@@ -906,7 +974,7 @@ newtype IntMap k a = MkIM (IM.IntMap (k, a))
   deriving (Semigroup, Monoid)
 
 instance HasId k => Functor (IntMap k) where
-  fmap f (MkIM m) = MkIM $ fmap (second f) m
+  fmap f (MkIM m) = MkIM (fmap (second f) m)
 
 readIM :: (HasCallStack, HasId k) => k -> IntMap a b -> b
 readIM a (MkIM m) = snd $ fromMaybe (error "elem not in map") $ IM.lookup (getId a) m
@@ -914,17 +982,16 @@ readIM a (MkIM m) = snd $ fromMaybe (error "elem not in map") $ IM.lookup (getId
 insertIM :: HasId k => k -> a -> IntMap k a -> IntMap k a
 insertIM a b (MkIM m) = MkIM $ IM.insert (getId a) (a, b) m
 
+lookupIM :: HasId k => k -> IntMap k a -> Maybe a
 lookupIM a (MkIM m) = fmap snd $ IM.lookup (getId a) m
-
-sizeIM (MkIM m) = IM.size m
 
 fromListIM xs = MkIM $ IM.fromList [(getId a, p) | p@(a, _) <- xs]
 
 toListIM :: IntMap a b -> [b]
-toListIM (MkIM m) = map snd $ toList m
+toListIM (MkIM m) = map snd $ IM.elems m
 
 assocsIM :: IntMap a b -> [(a, b)]
-assocsIM (MkIM m) = toList m
+assocsIM (MkIM m) = IM.elems m
 
 singletonIM a b = MkIM $ IM.singleton (getId a) (a, b)
 
@@ -953,13 +1020,105 @@ deleteIS a (MkIS m) = MkIS $ IM.delete (getId a) m
 fromListIS xs = MkIS $ IM.fromList [(getId a, a) | a <- xs]
 
 toListIS :: IntSet a -> [a]
-toListIS (MkIS m) = toList m
+toListIS (MkIS m) = IM.elems m
 
 nubIS :: HasId a => [a] -> [a]
 nubIS = f mempty  where
-  f _ [] = []
+  f _ Nil = Nil
   f s (x: xs)
     | memberIS x s = f s xs
-    | otherwise    = x: f (insertIS x s) xs
+    | True    = x: f (insertIS x s) xs
 
+------------------------------------------------------ String maps
+{-
+newtype StringMap a = MkSM (Map String a)
+  deriving (Semigroup, Monoid)
+
+insertSM a b (MkSM m) = MkSM $ insert a b m
+lookupSM a (MkSM m) = lookup a m
+-}
+
+itemsMask = 127
+
+hashString (c: _cs) = ord c .&. itemsMask
+hashString _ = 0
+
+data HItem a
+  = NilHM
+  | YesHM a
+  | ConsHM Char (HItem a) (HItem a)
+
+consHM _ NilHM b = b
+consHM c a b = ConsHM c a b
+
+newtype StringMap a = MkSM (IOArray Int (HItem a))
+
+newStringMap :: RefM (StringMap a)
+newStringMap = MkSM <$> unsafeNewArray_ (0, itemsMask)
+
+resetStringMap (MkSM m) = do
+  forM_ (enumFromTo 0 itemsMask) \i -> unsafeWrite m i NilHM
+
+topStringMap :: (StringMap a -> RefM ()) -> StringMap a
+topStringMap init = top_ do
+  m@(MkSM hm) <- newStringMap
+  resetStringMap m
+  init m
+  elems <- forM (enumFromTo 0 itemsMask) \i -> unsafeRead hm i
+  let reset = forM_ (zip (enumFromTo 0 itemsMask) elems) \(i, e) -> unsafeWrite hm i e
+  pure (m, reset)
+
+lookupSM_ :: String -> StringMap a -> RefM (HItem a)
+lookupSM_ s (MkSM hm) | h <- hashString s = unsafeRead hm h <&> f s
+   where
+    f Nil = \case
+      ConsHM _ _ t -> f Nil t
+      z -> z
+    f (c: cs) = \case
+      ConsHM c' a b
+        | c' == c   -> f cs a
+        | True -> f (c: cs) b
+      _ -> NilHM
+
+lookupSM :: String -> StringMap a -> RefM (Maybe a)
+lookupSM s sm = lookupSM_ s sm <&> \case
+  YesHM a -> Just a
+  NilHM   -> Nothing
+  _ -> impossible
+
+updateSM :: String -> HItem a -> StringMap a -> RefM ()
+updateSM s x (MkSM hm) | h <- hashString s = do
+    t <- unsafeRead hm h
+    unsafeWrite hm h $ ins s t
+   where
+    ins Nil = \case
+      ConsHM c a b -> ConsHM c a (ins Nil b)
+      _ -> x
+    ins (c: cs) = \case
+      ConsHM c' a b
+        | c' == c   -> consHM c' (ins cs a) b
+        | True -> ConsHM c' a (ins (c:cs) b)
+      z -> ConsHM c (ins cs NilHM) z
+
+insertSM :: String -> a -> StringMap a -> RefM ()
+insertSM s a sm = updateSM s (YesHM a) sm
+
+{-
+runStringMap :: (StringMap a -> RefM b) -> RefM b
+runStringMap cont = newStringMap >>= cont
+
+localInsert :: StringMap a -> String -> a -> RefM b -> RefM b
+localInsert sm s a m = do
+  x <- lookupSM sm s
+  updateSM s (YesHM a) sm
+  b <- m
+  updateSM s x sm
+  pure b
+-}
+
+-----------------------
+
+numberWith :: (Int -> a -> b) -> Int -> [a] -> [b]
+numberWith _ _ Nil = Nil
+numberWith f i (~x : ~xs) = f i x : numberWith f (i+1) xs
 

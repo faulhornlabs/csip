@@ -16,76 +16,67 @@ import M1_Base
 
 ----------------------------------------
 
-newtype SeqPrec a = MkPrec [(a, Int)]
-  deriving (Eq, Show)
+type Precedence = Int
 
-instance Ord a => Ord (SeqPrec a) where
-  _              <= MkPrec [] = True
-  MkPrec []      <= _         = False
-  MkPrec (a: as) <= MkPrec (b: bs)
-    = a < b || a == b && MkPrec as <= MkPrec bs
+data SeqPrec
+  = ConsP Precedence Int SeqPrec
+  | NilP
+  deriving (Eq, Ord)
 
-singPrec :: a -> SeqPrec a
-singPrec p = MkPrec [(p, -1)]
+singPrec :: Precedence -> SeqPrec
+singPrec p = ConsP p (-1) NilP
 
-minPrec :: Ord a => a -> SeqPrec a -> SeqPrec a
-minPrec a (MkPrec []) = singPrec a
-minPrec a (MkPrec (b: bs)) = case compare a (fst b) of
+minPrec :: Precedence -> SeqPrec -> SeqPrec
+minPrec a NilP = singPrec a
+minPrec a (ConsP b b' bs) = case compare a b of
   LT -> singPrec a
-  EQ -> MkPrec [(a, snd b - 1)]
-  GT | MkPrec bs' <- minPrec a (MkPrec bs) -> MkPrec (b: bs')
+  EQ -> ConsP a (b' - 1) NilP
+  GT -> ConsP b b' (minPrec a bs)
 
 ----------------------------------------
 
-data OpSeq a b
+data OpSeq b
   = Empty
-  | Node_ ~(Cached (SeqPrec a))
-          (OpSeq a b)
-          a
+  | Node_ ~(Cached SeqPrec)
+          (OpSeq b)
+          Precedence
           b
-          (Enclosed a b)
-          a
-          (OpSeq a b)
-          ~(Cached (SeqPrec a))
+          (Enclosed b)
+          Precedence
+          (OpSeq b)
+          ~(Cached SeqPrec)
   deriving (Eq)
 
-data Mid a b = MkMid !a !(OpSeq a b) !a !b
+data Mid b = MkMid Precedence (OpSeq b) Precedence b
   deriving (Eq)
 
-type Enclosed a b = [Mid a b]
+type Enclosed b = [Mid b]
 
 ----------------------------------------
 
-leftPrecSeq Empty = MkPrec []
+leftPrecSeq Empty = NilP
 leftPrecSeq (Node_ a _ _ _ _ _ _ ~_) = getCached a
 
-rightPrecSeq Empty = MkPrec []
+rightPrecSeq Empty = NilP
 rightPrecSeq (Node_ ~_ _ _ _ _ _ _ a) = getCached a
 
 -- not a proper Ord instance!
-instance (Ord a, Eq b) => Ord (OpSeq a b) where
+instance (Eq b) => Ord (OpSeq b) where
   compare a b = compare (rightPrecSeq a) (leftPrecSeq b)
 
-  a < b = compare a b == LT
-  a > b = compare a b == GT
-  a <= b = not $ a > b
-  a >= b = not $ a < b
-  max = undefined
-  min = undefined
-
-pattern Node :: OpSeq a b -> a -> b -> Enclosed a b -> a -> OpSeq a b -> OpSeq a b
+pattern Node :: OpSeq b -> Precedence -> b -> Enclosed b -> Precedence -> OpSeq b -> OpSeq b
 pattern Node a b c d e f <- Node_ ~_ a b c d e f ~_
 
 {-# COMPLETE Node, Empty #-}
 
-mkNode :: Ord a => OpSeq a b -> a -> b -> Enclosed a b -> a -> OpSeq a b -> OpSeq a b
+mkNode :: OpSeq b -> Precedence -> b -> Enclosed b -> Precedence -> OpSeq b -> OpSeq b
 mkNode a b c d e f
   = Node_ (MkCached (b `minPrec` leftPrecSeq a)) a b c d e f (MkCached (e `minPrec` rightPrecSeq f))
 
-singOpSeq :: Ord a => (a, b, a) -> OpSeq a b
-singOpSeq (a, b, c) = mkNode Empty a b [] c Empty
+singOpSeq :: (Precedence, b, Precedence) -> OpSeq b
+singOpSeq (a, b, c) = mkNode Empty a b Nil c Empty
 
-instance (Ord a) => Semigroup (OpSeq a b) where
+instance Semigroup (OpSeq b) where
   Empty <> a = a
   a <> Empty = a
   x <> y = case compare (rightPrecSeq x) (leftPrecSeq y) of
@@ -95,7 +86,7 @@ instance (Ord a) => Semigroup (OpSeq a b) where
        , Node g h i j k l <- y
       -> mkNode a b c (d <> [MkMid e (f <> g) h i] <> j) k l
 
-instance (Ord a) => Monoid (OpSeq a b) where
+instance Monoid (OpSeq b) where
   mempty = Empty
 
 
@@ -106,31 +97,31 @@ infixr 2 :<, :=, :>
 getLeft (Node a b c d e f) = Just (a, mkNode Empty b c d e f)
 getLeft _ = Nothing
 
-pattern (:<) :: Ord a => OpSeq a b -> OpSeq a b -> OpSeq a b
+pattern (:<) :: OpSeq b -> OpSeq b -> OpSeq b
 pattern a :< b <- (getLeft -> Just (a, b))
 
-getRight (Node Empty _ a [] _ b) = Just (a, b)
+getRight (Node Empty _ a Nil _ b) = Just (a, b)
 getRight _ = Nothing
 
-pattern (:>) :: b -> OpSeq a b -> OpSeq a b
+pattern (:>) :: b -> OpSeq b -> OpSeq b
 pattern a :> b <- (getRight -> Just (a, b))
 
 getMid (Node Empty _ a (MkMid _ b c d: e) f g) = Just (a, mkNode b c d e f g)
 getMid _ = Nothing
 
-pattern (:=) :: Ord a => b -> OpSeq a b -> OpSeq a b
+pattern (:=) :: b -> OpSeq b -> OpSeq b
 pattern a := b <- (getMid -> Just (a, b))
 
 {-# COMPLETE Empty, (:<) #-}
 
-pattern Node2 a b c <- Node a _ b [] _ c
+pattern Node2 a b c <- Node a _ b Nil _ c
 pattern Node3 a b c d e <- Node a _ b [MkMid _ c _ d] _ e
 
-toOpSeq :: (Ord a) => [(a, b, a)] -> OpSeq a b
+toOpSeq :: [(Precedence, b, Precedence)] -> OpSeq b
 toOpSeq = foldMap singOpSeq
 
-fromOpSeq :: Ord a => OpSeq a b -> [b]
-fromOpSeq t = f1 t []
+fromOpSeq :: OpSeq b -> [b]
+fromOpSeq t = f1 t Nil
  where
   f1 = \case
     Empty  -> id
@@ -145,8 +136,8 @@ mapOpSeq f = comm where
       a :< b -> comm a <> comm b
       Empty -> mempty
 
-topOp :: Ord a => OpSeq a b -> ([b], OpSeq a b, [OpSeq a b], OpSeq a b)
+topOp :: OpSeq b -> ([b], OpSeq b, [OpSeq b], OpSeq b)
 topOp = \case
-  Empty -> ([], Empty, [], Empty)
+  Empty -> (Nil, Empty, Nil, Empty)
   Node a _ c d _ f -> (c : [x | MkMid _ _ _ x <- d], a, [x | MkMid _ x _ _ <- d], f)
 
