@@ -20,7 +20,7 @@ updateClosed a b = do
 
 type SVal = (Val, IntSet Name)
 
-type Indices = IntSet Int
+type Indices = IntSet Word
 type PruneSet_ = IntMap MetaDep Indices
 type PruneSet = Maybe PruneSet_
 
@@ -32,12 +32,12 @@ pruneMeta m (toListIS -> is) = do
   m' <- tMeta
   let
     mk _ Nil vs = pure $ TApps m' $ reverse vs
-    mk n (i: is) vs | n == i = do
+    mk n (i:. is) vs | n == i = do
       v <- mkName "_"
       tLam v =<< mk (n+1) is vs
-    mk n (i: is) vs = do
+    mk n (i:. is) vs = do
       v <- mkName "v#"{-TODO: better name-}
-      tLam v =<< mk (n+1) (i: is) (TVar v: vs)
+      tLam v =<< mk (n+1) (i:. is) (TVar v:. vs)
   t <- mk 0 is Nil
   v <- eval mempty t
   update m v
@@ -56,7 +56,7 @@ closeTm v_ = do
  where
   go sv = downUp down up sv
    where
-    down :: SVal -> RefM ((), [SVal])
+    down :: SVal -> RefM ((), List SVal)
     down (v, allowed) = case v of
       _ | closed v -> ret allowed Nil
       WLam _ c -> do
@@ -72,7 +72,7 @@ closeTm v_ = do
      where
       ret allowed es = (,) () . map (\v -> (v, allowed)) <$> mapM force es
 
-    up :: SVal -> () -> [(SVal, PruneSet)] -> RefM PruneSet
+    up :: SVal -> () -> List (SVal, PruneSet) -> RefM PruneSet
     up (v, allowed) _ ts = case v of
       _ | closed v  -> pure $ Just mempty
       WLam{} -> case sequence (map snd ts) of
@@ -85,7 +85,7 @@ closeTm v_ = do
         [Nothing, _] -> pure Nothing
         [Just sa, Nothing] -> do
            n <- metaArgNum v
-           pure $ Just $ sa <.> singletonIM dep (singletonIS $ n - 1)
+           pure $ Just $ sa <.> singletonIM dep (singletonIS $ intToWord $ n - 1)
         [Just sa, Just sb] -> pure $ Just (sa <.> sb)
         _ -> impossible
       WApp{} -> case sequence (map snd ts) of
@@ -142,4 +142,4 @@ unify aa{-actual-} bb{-expected-} = do
      _ -> do
       sa <- print =<< force_ aa
       sb <- print =<< force_ bb
-      error $ fromString $ chars $ "Expected type\n " <> expr sb <> "\ninstead of\n " <> expr sa
+      error $ stringToSource $ chars $ "Expected type\n " <> expr sb <> "\ninstead of\n " <> expr sa

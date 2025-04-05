@@ -3,32 +3,34 @@ module M7_Stage
   , stageHaskell
   ) where
 
+import qualified Prelude as P (Show, show)
+
 import M1_Base
 import M3_Parse hiding (Lam)
 import qualified M3_Parse as E
 import M4_Eval hiding (TVar, TApp)
 
-stage_ :: Val -> RefM (Scoped, [(Name, Scoped)])
+stage_ :: Val -> RefM (Scoped, List (Name, Scoped))
 stage_ t = do
   (r, m) <- quoteNF t
   r' <- unquote r
-  pure (r', [(n, t) | (n, r) <- assocsIM m, Just t <- [unquoteTy r]])
+  pure (r', do (n, r) <- assocsIM m; t <- maybeToList (unquoteTy r); pure (n, t))
 
-stage :: Val -> RefM Scoped --, [(Name, Scoped)
+stage :: Val -> RefM Scoped
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
 
 
-pShow = f 10 . show  where
-  f :: Int -> String -> String
+pShow = f 10 . fromList . P.show  where
+  f :: Word -> String -> String
   f n = g n  where
-    g 0 (' ': cs) = '\n': g n cs
-    g i (c@' ': cs) = c: g (i-1) cs
-    g i (c: cs) = c: g i cs
+    g 0 (' ':. cs) = '\n':. g n cs
+    g i (c@' ':. cs) = c:. g (i-.1) cs
+    g i (c:. cs) = c:. g i cs
     g _ Nil = Nil
 
 stageHaskell v = do
   (r, ts) <- stage_ v
-  pure $ (fromString :: String -> Source) $ pShow ({- map data2 $ -} groupData $ map (name *** convertTy) ts, convert r)
+  pure $ stringToSource $ pShow ({- map data2 $ -} groupData $ map (name *** convertTy) ts, convert r)
 
 unquoteTy :: Scoped -> Maybe Scoped
 unquoteTy = f where
@@ -89,9 +91,9 @@ unquote = f mempty
 --------------------------------- priting for backends in Haskell
 
 data HName
-  = Builtin String        -- the String is globally unique
-  | UserName String Int
-  deriving (Eq, Ord, Show)
+  = Builtin [Char]        -- the String is globally unique
+  | UserName [Char] Word
+  deriving (Eq, P.Show)
 
 data Exp
   = Lam HName Exp
@@ -101,7 +103,7 @@ data Exp
   | Con HName
   | String String
   | Nat Integer
-  deriving Show
+  deriving P.Show
 
 data Ty
   = TCon HName
@@ -109,26 +111,26 @@ data Ty
   | TApp Ty Ty
   | Pi        Ty Ty
   | HPi HName Ty Ty
-  deriving (Eq, Show)
+  deriving (P.Show)
 
 data Data
-  = Data HName Ty [(HName, Ty)]
-  deriving Show
+  = Data HName Ty (List (HName, Ty))
+  deriving P.Show
 {-
 data Data2
-  = Data2 HName [HName]
+  = Data2 HName (List HName)
   deriving Show
 -}
-instance IsString HName where fromString = Builtin
-instance IsString Exp   where fromString = Con . fromString
-instance IsString Ty    where fromString = TCon . fromString
+instance IsString HName where fromString' = Builtin . fromString'
+instance IsString Exp   where fromString' = Con . fromString'
+instance IsString Ty    where fromString' = TCon . fromString'
 
 name :: Name -> HName
 name n = case nameId n of
-    i | i < 0     -> Builtin s
-      | True      -> UserName s i
+    i | i >= 9223372036854775808 -> Builtin s
+    i -> UserName s i
    where
-    s = chars $ showMixfix $ nameStr n
+    s = toList $ chars $ showMixfix $ nameStr n
 
 convert :: Scoped -> Exp
 convert = f  where
@@ -155,11 +157,14 @@ convertTy = f  where
     _ -> impossible
 
 
-groupData :: [(HName, Ty)] -> [Data]
-groupData ts = [Data n t [(n', t) | (n', t) <- ts, con n t] | (n, t) <- ts, tcon t]
+groupData :: List (HName, Ty) -> List Data
+groupData ts = do
+  (n, t) <- ts
+  guard (tcon t)
+  pure (Data n t (filter (con n . snd) ts))
  where
   tcon = \case
-    "Ty" -> True
+    TCon "Ty" -> True
     Pi _ a -> tcon a
     HPi _ _ a -> tcon a
     _ -> False

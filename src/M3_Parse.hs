@@ -2,6 +2,7 @@ module M3_Parse
   ( Phase (..)
   , ISource, Token, OpSeq
 
+  , Arity
   , Name, nameOf
   , NameStr, nameStr, nameId
   , mkName, mkName', mapName, rename, isConName, isVarName
@@ -21,13 +22,16 @@ module M3_Parse
   , OpSeq', ExpTree', Raw_, Scoped_
   ) where
 
+-- TODO: remove
 import Unsafe.Coerce (unsafeCoerce)
 
+--import B_Prelude (getDataFileName, readFile)
 import M1_Base
 import M2_OpSeq
 
 
-class Arity a where arity :: a -> Int
+type Arity = Int
+class HasArity a where arity :: a -> Arity
 
 
 
@@ -36,7 +40,11 @@ class Arity a where arity :: a -> Int
 ------------------------------------------------------
 
 
-type Precedence = Int
+precedenceTableString :: String
+precedenceTableString = topM do
+  f <- getDataFileName "precedences"
+  readFile f
+
 
 {-# noinline precedenceTable #-}
 precedenceTable :: StringMap (Precedence, Precedence)
@@ -46,12 +54,13 @@ precedenceTable = topStringMap \m -> forM_ precedenceTable_ $ add m
     Nothing -> insertSM s (f l 0, f r 0) m
     Just (l', r') -> insertSM s (f l l', f r r') m
   f Nil x = x
-  f (p: _) _ = p
+  f (p:. _) _ = p
 
+{-# noinline lookupPrec #-}
 lookupPrec :: String -> Maybe (Precedence, Precedence)
 lookupPrec s = topM $ lookupSM s precedenceTable
 
-precedenceTable_ :: [(String, ([Precedence], [Precedence]))]
+precedenceTable_ :: List (String, (List Precedence, List Precedence))
 precedenceTable_ = mkTable (lines precedenceTableString)
  where
   mkTable
@@ -60,8 +69,8 @@ precedenceTable_ = mkTable (lines precedenceTableString)
     . reverse
     . map (mconcat . map g . words)
 
-  g ('_': s) = \p -> [(h s, ([p], Nil))]
-  g s | last s == '_' = \p -> [(h $ init s, (Nil, [p]))]
+  g ('_':. s) = \p -> [(h s, ([p], Nil))]
+  g s | last s == '_' = \p -> [(h (init s), (Nil, [p]))]
   g _ = impossible
 
   h "SEMI"    = "\v"
@@ -76,10 +85,11 @@ precedenceTable_ = mkTable (lines precedenceTableString)
 strPrecedence :: String -> (Precedence, Precedence)
 strPrecedence cs
   | Just p <- lookupPrec cs = p
-strPrecedence s@(c: _)
+strPrecedence (c:. _)
   | isAlphaNum c || c == '\"'  = fromJust $ lookupPrec "ALPHA"
   | isGraphic  c  = fromJust $ lookupPrec "GRAPHIC"
-  | True        = error $ "unknown first char in " <> fromString s
+strPrecedence s@(_ :. _)
+  = error $ "unknown first char in " <> stringToSource s
 strPrecedence _ = impossible
 
 topPrec = fromJust $ lookupPrec "ALPHA"
@@ -116,7 +126,7 @@ newtype ISource = MkISource {unISource :: Source}
 --  deriving Show
 
 instance IsString ISource where
-  fromString = MkISource . fromString
+  fromString' = MkISource . fromString'
 
 instance Parse ISource where
   parse = parse >=> pure . unindent
@@ -133,24 +143,23 @@ unindent s = MkISource $ dropNl $ h "\n" 0 $ s <> "\n"
   h _  n NilCh = mreplicate n "\r"
   h nl n (spanCh (== ' ') -> (lengthCh -> k, spanCh (/= '\n') -> (as, Cons nl' cs)))
     | NilCh <- as  = nl <> h nl' n cs
---    | True      = mreplicate (n-k) "\r" <> mreplicate (k-n) "\t" <> nl <> snd (revSpanCh (== ' ') as) <> h nl' k cs
-    | True      = mreplicate (n-k) "\r" <> nl <> mreplicate (k-n) " " <> mreplicate (k-n) "\t" <> snd (revSpanCh (== ' ') as) <> h nl' k cs
+    | True      = mreplicate (n -. k) "\r" <> nl <> mreplicate (k -. n) " " <> mreplicate (k -. n) "\t" <> snd (revSpanCh (== ' ') as) <> h nl' k cs
   h _ _ _ = impossible
 
 indent   :: ISource -> Source
 indent (MkISource s_) = g 0 s_
  where
-  g i (spanCh (== ' ') -> (sp, spanCh (== '\r') -> (((i -) . lengthCh -> i'), cs))) = case cs of
+  g i (spanCh (== ' ') -> (sp, spanCh (== '\r') -> (((i -.) . lengthCh -> i'), cs))) = case cs of
     Cons c cs | chars c == "\n" -> c <> g i' cs
     cs   -> mreplicate i' " " <> sp <> f i' cs
 
   f i (spanCh (\c -> c /= '\n' && c /= '\r' && c /= '\t') -> (s, cs)) = s <> case cs of
     Cons c@(chars -> s) cs
       | s == "\t" -> f (i+1) cs
-      | s == "\r" -> f (i-1) cs
+      | s == "\r" -> f (i-.1) cs
       | s == "\n" -> c <> g i cs
-    NilCh | i == 0 -> ""
-        | True      -> error $ fromString (show (i, show s_)) -- impossible
+    NilCh | i == 0 -> stringToSource Nil
+    NilCh -> impossible --error $ fromString' (show (i, showSource s_)) -- impossible
     _ -> impossible
 
 
@@ -164,7 +173,7 @@ data Phase
 
 data Token (a :: Phase)
   = MkToken_
-    Int -- hash/id
+    Word -- hash/id
     (Cached Source)               -- constraint: not empty, nearby chars are glued
                          --   if (a) then whitespace is allowed
     (Cached (Precedence, Precedence))
@@ -208,19 +217,20 @@ showToken = \case
     MkNat    s _ -> s
     MkString s _ -> s
 
+{-# noinline mkToken #-}
 mkToken cs = topM do
-  h <- intHash' cs
+  h <- intHash'' cs
   pure $ MkToken_ h (MkCached cs) $ MkCached $ strPrecedence $ chars cs
 
-mkIntToken n = MkNat (fromString $ show n) n
+mkIntToken n = MkNat (stringToSource $ showInteger n) n
 
 mkToken' cs
-  | Just n <- readNat cs = pure $ MkNat cs n
-  | True      = do
+  | Just n <- readNat (chars cs) = pure $ MkNat cs n
+mkToken' cs = do
     h <- intHash' cs
     pure $ MkToken_ h (MkCached cs) $ MkCached $ strPrecedence $ chars cs
 
-consts' :: [String]
+consts' :: List String
 consts' =
   [ "_", "View", "Guard", "Dot", "Fail", "noreturn"
   , "Ap"
@@ -235,11 +245,17 @@ consts' =
   ] <> map fst precedenceTable_
     <> ["___", "__", "ModuleEnd", "Type", "HPi", "CPi", "IPi", "Pi", "Constr", "Dict", "TopLet", "Let", "Funct", "Variable", "sel", "Term", "Erased", "noret"]
     <> ["app#", "lam#", "fail", "return", "match", "ret", "X"]
-    <> ["c#", "r#", "t#", "v#", "m#", "wF#", "wG#", "wS#", "wR#", "wD#", "wH#", "cS#", "cR#", "_t#", "i#", "d#", "ww#", "w#", "'", "z#"]
+    <> ["c#", "r#", "t#", "v#", "m#", "wF#", "wG#", "wS#", "wR#", "wD#", "wH#", "cS#", "cR#", "_t#", "i#", "d#", "ww#", "w#", "'", "z#", "???"]
 
 {-# noinline tokenState #-}
-tokenState :: StringMap Int
-tokenState = topStringMap \m -> forM_ consts' \s -> insertSM s (neg $ intHash s) m
+tokenState :: StringMap Word
+tokenState = topStringMap \m -> forM_ consts' \s -> insertSM s (neg (intHash s)) m
+
+intHash'' cs = lookupSM s tokenState >>= \case
+    Just i -> pure i
+    Nothing -> error $ "not predefined: " <> cs
+ where
+  s = chars cs
 
 intHash' cs = lookupSM s tokenState >>= \case
     Just i -> pure i
@@ -251,8 +267,7 @@ intHash' cs = lookupSM s tokenState >>= \case
   s = chars cs
 
 instance IsString (Token a) where
-  fromString "" = impossible
-  fromString (fromString -> cs) = mkToken cs
+  fromString' cs = mkToken (fromString' cs)
 
 instance Parse (Token a) where
   parse = parse >=> mkToken'
@@ -270,7 +285,7 @@ filterOpSeq p = mapOpSeq c where
       c _ = mempty
 {-
 instance IsString (OpSeq' a) where
-  fromString = sing . fromString
+  fromString' = sing . fromString'
 -}
 
 
@@ -286,19 +301,19 @@ glueChars c d
   || c == '{' && d == '-'
   || c == '-' && d == '}'
 
-lex :: ISource -> RefM [Token Spaced]
+lex :: ISource -> RefM (List (Token Spaced))
 lex = mapM mkToken' . f . unISource
  where
   f NilCh = Nil
-  f (groupCh glueChars -> (as, bs)) = as: f bs
+  f (groupCh glueChars -> (as, bs)) = as:. f bs
 
-unlex :: [Token Spaced] -> ISource
+unlex :: List (Token Spaced) -> ISource
 unlex = MkISource . mconcat . map showToken
 
-instance Parse [Token Spaced] where
+instance Parse (List (Token Spaced)) where
   parse = parse >=> lex
 
-instance Print [Token Spaced] where
+instance Print (List (Token Spaced)) where
   print = pure . unlex >=> print
 
 
@@ -307,10 +322,10 @@ instance Print [Token Spaced] where
 ---------------------------------------------------------
 
 
-structure   :: [Token Spaced] -> OpSeq' Spaced
+structure   :: List (Token Spaced) -> OpSeq' Spaced
 structure = foldMap sing
 
-unstructure :: OpSeq' Spaced -> [Token Spaced]
+unstructure :: OpSeq' Spaced -> List (Token Spaced)
 unstructure = fromOpSeq
 
 instance Parse (OpSeq' Spaced) where
@@ -437,7 +452,7 @@ layout = g True
         -> g top l <> sing "whereBegin" <> g True a <> sing "whereEnd" <> g top r
         | Node2 l "\v" Empty <- l
         -> g top l <> f a <> g top r
-        | True     
+        | True
         -> g top l <> g top a <> g top r
       Node2 _ t@"do"    _ -> error $ "Illegal " <> showToken t
       Node2 a "where" Empty -> g top a <> sing "whereBegin" <> sing "ModuleEnd" <> sing "whereEnd"
@@ -481,68 +496,88 @@ instance Monoid a => Monoid (DocShape a) where
 
 --------------------
 
-data Nesting = MkPC [Int] Int [Int]
+data Nesting = MkPC (List Word) Word (List Word)
 
 instance Semigroup Nesting where
   MkPC a x Nil      <> MkPC Nil y d      = MkPC a (max x y) d
-  MkPC a x Nil      <> MkPC (c: cs) y d = MkPC (a ++ (max x c): cs) y d
-  MkPC a x (c: cs) <> MkPC Nil y d      = MkPC a x (d ++ (max y c): cs)
-  MkPC a x (b: bs) <> MkPC (c: cs) y d = MkPC a x bs <> MkPC Nil (max b c + 1) Nil <> MkPC cs y d
+  MkPC a x Nil      <> MkPC (c:. cs) y d = MkPC (a ++ (max x c):. cs) y d
+  MkPC a x (c:. cs) <> MkPC Nil y d      = MkPC a x (d ++ (max y c):. cs)
+  MkPC a x (b:. bs) <> MkPC (c:. cs) y d = MkPC a x bs <> MkPC Nil (max b c + 1) Nil <> MkPC cs y d
 
 instance Monoid Nesting where
   mempty = MkPC Nil 0 Nil
 
 --------------------
 
-type Length = Sum Int
+newtype Length = MkLength Word
+  deriving (Eq, Ord)
 
-type Complexity = (Nesting, Length)
+instance Semigroup Length where
+  MkLength a <> MkLength b = MkLength (a + b)
+
+instance Monoid Length where
+  mempty = MkLength 0
+
+
+data Complexity = MkComplexity Nesting Length
+
+instance Semigroup Complexity where
+  MkComplexity a b <> MkComplexity a' b' = MkComplexity (a <> a') (b <> b')
+
+instance Monoid Complexity where
+  mempty = MkComplexity mempty mempty
 
 maxComplexity :: Complexity -> Bool
-maxComplexity (MkPC a b c, l) = l < 80 && b < 2 && (null a && all (< 1) c || null c && all (< 2) a)
+maxComplexity (MkComplexity (MkPC a b c) l) = l < MkLength 80 && b < 2 && (null a && all (< 1) c || null c && all (< 2) a)
 
 mkDocShape :: Token a -> DocShape Complexity
 mkDocShape "\v" = MultiLine mempty mempty
-mkDocShape s    = SingleLine (mempty, MkSum $ lengthCh $ showToken s)
+mkDocShape s    = SingleLine (MkComplexity mempty (MkLength $ lengthCh $ showToken s))
 
 --------------------
 
-type Doc = (Maybe (Interval (Token Uncomments) (Token Uncomments)), DocShape Complexity, (OpSeq' Uncomments))
+data Doc = MkDoc (Maybe (Interval (Token Uncomments))) (DocShape Complexity) (OpSeq' Uncomments)
+
+instance Semigroup Doc where
+  MkDoc a b c <> MkDoc a' b' c' = MkDoc (a <> a') (b <> b') (c <> c')
+
+instance Monoid Doc where
+  mempty = MkDoc mempty mempty mempty
 
 mkDoc :: (Token Uncomments) -> Doc
-mkDoc s = (Just $ mkInterval s s, mkDocShape s, sing s)
+mkDoc s = MkDoc (Just $ mkInterval s s) (mkDocShape s) (sing s)
 
 hang1, hang :: Doc -> Doc
-hang2 :: Int -> Doc -> Doc
+hang2 :: Word -> Doc -> Doc
 
-hang1 (a, b, c) = (a, mk (MkPC Nil 0 [0]) <> b <> mk (MkPC [0] 0 Nil), c)
+hang1 (MkDoc a b c) = MkDoc a (mk (MkPC Nil 0 [0]) <> b <> mk (MkPC [0] 0 Nil)) c
  where
-  mk c = SingleLine (c, mempty)
+  mk c = SingleLine (MkComplexity c mempty)
 
-hang2 n (a, b, c) = (a, b, mreplicate n (sing "\t") <> c <> mreplicate n (sing "\r"))
+hang2 n (MkDoc a b c) = MkDoc a b (mreplicate n (sing "\t") <> c <> mreplicate n (sing "\r"))
 
-hang (a, b, c)
-  | MultiLine{} <- b = hang2 2 (a, b, c)
-  | True      = (a, b, c)
+hang (MkDoc a b c)
+  | MultiLine{} <- b = hang2 2 (MkDoc a b c)
+hang (MkDoc a b c) = MkDoc a b c
 
 sep :: (Complexity -> Bool) -> Doc -> Doc -> Doc
-sep w a@(ia, da, _) b@(ib, db, _) = a <> op <> b
+sep w a@(MkDoc ia da _) b@(MkDoc ib db _) = a <> op <> b
  where
   op1
-    | Just (MkInterval (_, a)) <- ia
-    , Just (MkInterval (b, _)) <- ib
+    | Just (MkInterval _ a) <- ia
+    , Just (MkInterval b _) <- ib
     , glueChars (lastCh $ showToken a) (headCh $ showToken b)
     || not (a `elem` ["(", "[", "{", "\\"]
          || b `elem` [".", ",", ":", ";", "}", ")", "]"]
            )
     = mkDoc " "
-    | True      = mempty
+    | otherwise = mempty
 
   op
-    | (_, s, _) <- op1
+    | MkDoc _ s _ <- op1
     , w $ lastLine da <> firstLine s <> firstLine db
     = op1
-    | True      = mkDoc "\v"
+    | otherwise = mkDoc "\v"
 
 --------------------
 
@@ -555,7 +590,7 @@ seqToDoc w = f1
 
   f1, f2 :: OpSeq' Layout -> Doc
   f1 = \case
-    (getSemis -> es@(_:_:_)) -> hang $ mkDoc "do" <> mkDoc "\v" <> foldl1 (<+>) (map ff es)
+    (getSemis -> es@(_:._:._)) -> hang $ mkDoc "do" <> mkDoc "\v" <> foldl1 (<+>) (map ff es)
     Empty ->  mempty
     l := r ->  hang1 $ hang $ g l <+> f2 r
     l :> r ->                 g l <+> f1 r
@@ -571,11 +606,11 @@ seqToDoc w = f1
     Empty -> impossible
 
 getSemis = \case
-  Node2 l ";" r -> l: getSemis r
+  Node2 l ";" r -> l:. getSemis r
   x -> [x]
 
 spaceLayout :: OpSeq' Layout -> OpSeq' Uncomments
-spaceLayout x  | (_, _, a) <- seqToDoc maxComplexity x = a
+spaceLayout x  | MkDoc _ _ a <- seqToDoc maxComplexity x = a
 
 
 --------------------------------------------
@@ -583,7 +618,7 @@ spaceLayout x  | (_, _, a) <- seqToDoc maxComplexity x = a
 --------------------------------------------
 
 
-data Mixfix a = MkM_ (Cached Int){-arity-} [Token a]
+data Mixfix a = MkM_ (Cached Arity) (List (Token a))
 
 tokens (MkM_ _ ts) = ts
 
@@ -593,13 +628,13 @@ instance Ord (Mixfix a) where compare = compare `on` tokens
 pattern MkM a <- MkM_ _ a
   where MkM a =  mkM (MkCached $ arity a) a
 
-mkM :: Cached Int -> [Token a] -> Mixfix a
+mkM :: Cached Arity -> (List (Token a)) -> Mixfix a
 mkM ar ts = MkM_ ar ts
 
 {-# COMPLETE MkM #-}
 
 instance IsString (Mixfix a) where
-  fromString t = MkM [fromString t]
+  fromString' t = MkM [fromString' t]
 {-
 instance Semigroup (Mixfix a) where
   MkM a <> MkM b = MkM (a <> b)
@@ -611,24 +646,24 @@ instance IntHash (Mixfix a) where
 instance IntHash (Token a) where
   intHash = \case
     MkToken_ h _ _ -> h
-    MkNat_ _ n -> intHash $ show n  -- TODO
+    MkNat_ _ n -> intHash (showInteger n)  -- TODO
     MkString_ _ s -> intHash s
 
 -- strip os = filter (/= "___") os
 
-enrich :: [Token a] -> [Token a]
+enrich :: List (Token a) -> List (Token a)
 enrich os = g os
  where
-  g (o: os)
-    = ["___" | fst (precedence o) /= fst topPrec] ++
-      o: f (snd (precedence o) /= snd topPrec) os
+  g (o:. os)
+    = maybeList "___" (fst (precedence o) /= fst topPrec)
+      (o:. f (snd (precedence o) /= snd topPrec) os)
   g Nil = impossible
 
-  f p (o: os)
-    = ["___" | p && fst (precedence o) /= fst topPrec] ++
-      ["###" | not p && fst (precedence o) == fst topPrec] ++
-      o: f (snd (precedence o) /= snd topPrec) os
-  f p Nil = ["___" | p]
+  f p (o:. os)
+    = maybeList "___" (p && fst (precedence o) /= fst topPrec)
+      (maybeList "###" (not p && fst (precedence o) == fst topPrec)
+      (o:. f (snd (precedence o) /= snd topPrec) os))
+  f p Nil = maybeList "___" p Nil
 
 showMixfix :: Mixfix a -> Source
 showMixfix (MkM ts) = mconcat $ map showToken $ map (\case "___" -> "_"; a -> a) $ filter (/= "###") $ enrich ts
@@ -638,7 +673,7 @@ instance Print (Mixfix a) where
 
 {-
 instance IsString (Mixfix a) where
-  fromString = MkM . (:Nil) . fromString
+  fromString' = MkM . (:.Nil) . fromString'
 -}
 
 pattern NTy    = MkM [":"]
@@ -702,12 +737,12 @@ pattern NRule    = MkM ["==>"]
 pattern NLetRule = MkM ["==>",";"]
 pattern NDot     = MkM ["[","]"]
 
-instance Arity (Mixfix t) where
+instance HasArity (Mixfix t) where
   arity (MkM_ (MkCached a) _) = a
-instance Arity [Token i] where
+instance HasArity (List (Token i)) where
   arity ["_"] = 0
   arity [t] | isInfix t = 0
-  arity os = length . filter (== "___") $ enrich os
+  arity os = wordToInt . length . filter (== "___") $ enrich os
 
 
 
@@ -720,7 +755,7 @@ data ExpTree_ b a
   = RVar a
   | RNat_ (Cached Source) Integer
   | RString_ (Cached Source) String
-  | EApp Int (ExpTree_ b a) (ExpTree_ b a)
+  | EApp Arity (ExpTree_ b a) (ExpTree_ b a)
   | REmbed b
   deriving (Eq)
 
@@ -729,21 +764,21 @@ type ExpTree = ExpTree_ Void
 coerceExpTree :: ExpTree_ Void a -> ExpTree_ b a
 coerceExpTree = unsafeCoerce
 
-instance Arity a => Arity (ExpTree_ b a) where
+instance HasArity a => HasArity (ExpTree_ b a) where
   arity (RVar a) = arity a
   arity (EApp a _ _) = a
   arity _ = 0
 
-pattern (:@) :: Arity a => ExpTree_ b a -> ExpTree_ b a -> ExpTree_ b a
+pattern (:@) :: HasArity a => ExpTree_ b a -> ExpTree_ b a -> ExpTree_ b a
 pattern f :@ e <- EApp _ f e
   where f :@ e =  EApp (arity f - 1) f e
 
-pattern Apps :: Arity a => a -> [ExpTree_ b a] -> ExpTree_ b a
+pattern Apps :: HasArity a => a -> List (ExpTree_ b a) -> ExpTree_ b a
 pattern Apps a es <- (getApps Nil -> Just (a, es))
   where Apps a es = foldl (:@) (RVar a) es
 
 getApps es (RVar a) = Just (a, es)
-getApps es (f :@ e) = getApps (e: es) f
+getApps es (f :@ e) = getApps (e:. es) f
 getApps _ _ = Nothing
 
 
@@ -753,8 +788,8 @@ pattern a :@@ b <- (dup -> ((<0) . arity -> True, a :@ b))
 
 {-# COMPLETE RVar, (:@), REmbed, RNat_, RString_ #-}
 
-instance (IsString a, Arity a) => IsString (ExpTree_ b a) where
-  fromString = RVar . fromString
+instance (IsString a, HasArity a) => IsString (ExpTree_ b a) where
+  fromString' = RVar . fromString'
 
 type ExpTree'_ b a = ExpTree_ b (Mixfix a)
 type ExpTree' a = ExpTree (Mixfix a)
@@ -782,12 +817,11 @@ unop (topOp -> (os, l, ts, r)) = case os of
   f Empty a = a
   f l a = unop l :@ a
 
-  (lf, fs)
-    | fst (precedence $ head os) == fst topPrec = (f l, id)
-    | True      = (id, (l: ))
-  rf
-    | snd (precedence $ last os) == snd topPrec, Empty <- r = id
-    | True      = (:@ unop r)
+  (lf, fs) = if fst (precedence $ head os) == fst topPrec
+             then (f l, id)
+             else (id, (l :.))
+  rf x | snd (precedence $ last os) == snd topPrec, Empty <- r = x
+  rf x = x :@ unop r
 
 op :: ExpTree' Layout -> OpSeq' Layout
 op = addParens . opt
@@ -798,10 +832,10 @@ op = addParens . opt
     _ -> impossible
 
   alter acc         Nil      Nil   =        parens acc
-  alter acc         Nil  (a: as)  = alter (parens acc <> a) Nil as
-  alter acc ("___": os) (a: as)  = alter (       acc <> a) os as
-  alter acc ("___": os)     Nil   = alter         acc       os Nil
-  alter acc (o:     os)     as   = alter   (acc <> sing o) os as
+  alter acc         Nil  (a:. as)  = alter (parens acc <> a) Nil as
+  alter acc ("___":. os) (a:. as)  = alter (       acc <> a) os as
+  alter acc ("___":. os)     Nil   = alter         acc       os Nil
+  alter acc (o:.     os)     as   = alter   (acc <> sing o) os as
 
 allJoin ((l :< "###" :> _) :< _ :> _) = allJoin l
 allJoin (Empty :< _ :> Empty) = True
@@ -841,12 +875,12 @@ instance Parse (ExpTree' POp) where
   parse = fmap (defEnd . patch) . parse
 
 joinAtN i n (Apps (MkM (splitAt i -> (xs, zs)))
-                  (splitAt n -> (as, Apps (MkM ys) bs: cs))
+                  (splitAt n -> (as, Apps (MkM ys) bs:. cs))
             )
   = Apps (MkM $ xs <> ys <> zs) (as <> bs <> cs)
 joinAtN _ _ _ = impossible
 
-xApps :: Mixfix a -> [ExpTree' a] -> ExpTree' a
+xApps :: Mixfix a -> List (ExpTree' a) -> ExpTree' a
 xApps a b = norm $ Apps a b
 
 dup a = (a, a)
@@ -900,7 +934,7 @@ norm r = case r of
     _ -> undefined
   ii = length $ takeWhile (/= "___") $ filter (/= "###") $ enrich as'
 
-  gg ((== tt) -> True) bs | SApps ((== bs) -> True) _: _ <- rr = Just $ joinAtN ii 0 r
+  gg ((== tt) -> True) bs | SApps ((== bs) -> True) _:. _ <- rr = Just $ joinAtN ii 0 r
   gg _ _ = Nothing
 
 patch :: ExpTree' Layout -> ExpTree' POp
@@ -953,7 +987,7 @@ pattern RHApp a b = RApp a (ZVar NBraces :@ b)
 zVar l = ZVar (MkM l)
 
 -- GHC bug if no type signature is given
-pattern Hole :: (Arity a, IsMixfix a) => ExpTree_ b a
+pattern Hole :: (HasArity a, IsMixfix a) => ExpTree_ b a
 pattern Hole           = ZVar NHole
 
 pattern Lam    n     e = ZApps NLam   [RVar n,       e]
@@ -981,12 +1015,12 @@ pattern RAnn e t        = ZApps NExpl [e, t]
 
 unGLam = \case
   _ :@@ _ -> Nothing
-  ZApps a (RVar n: es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NLetConstructor, NLetBuiltin, NTLet, NOTLet] -> Just (ZVar a: es, n, e)
+  ZApps a (RVar n:. es) :@ e | a `elem` [NLam, NHLam, NTLam, NTHLam, NPi, NHPi, NLetTy, NLetConstructor, NLetBuiltin, NTLet, NOTLet] -> Just (ZVar a:. es, n, e)
   _ -> Nothing
 
-pattern GLam :: (Arity a, IsMixfix a) => [ExpTree_ b a] -> a -> ExpTree_ b a -> ExpTree_ b a
+pattern GLam :: (HasArity a, IsMixfix a) => List (ExpTree_ b a) -> a -> ExpTree_ b a -> ExpTree_ b a
 pattern GLam es n e <- (unGLam -> Just (es, n, e))
-  where GLam (ZVar a: es) n e = ZApps a (RVar n: es) :@ e
+  where GLam (ZVar a:. es) n e = ZApps a (RVar n:. es) :@ e
         GLam _ _ _ = impossible
 
 getBIcit = \case
@@ -1148,7 +1182,7 @@ type NameStr = Mixfix Desug
 
 data Name = MkName
   { nameStr :: NameStr
-  , nameId  :: Int
+  , nameId  :: Word
   }
 
 instance HasId Name where getId = nameId
@@ -1160,10 +1194,10 @@ instance IsMixfix Name where
   toMixfix _ = Nothing
   fromMixfix = NConst . fromMixfix
 
-instance Arity Name where
+instance HasArity Name where
   arity = arity . nameStr
 
-isGraphicMixfix (MkM (t: _)) = isGraphicToken t
+isGraphicMixfix (MkM (t:. _)) = isGraphicToken t
 isGraphicMixfix _ = False
 
 isConName (nameStr -> MkM [t]) = isUpperToken t
@@ -1172,26 +1206,26 @@ isConName _ = False
 isVarName (nameStr -> MkM [t]) = isLowerToken t
 isVarName _ = False
 
-neg :: Int -> Int
-neg i | i >= 0    = i + (-9223372036854775808)
-      | True      = i
+-- TODO: remove
+neg :: Word -> Word
+neg i = i .|. 9223372036854775808
 
-hashNameStr :: NameStr -> Int
+hashNameStr :: NameStr -> Word
 hashNameStr = neg . intHash
 
 pattern NConst :: NameStr -> Name
 pattern NConst n <- MkName n (isConstName n -> True)
-  where NConst n@(MkM [MkToken_ h _ _]) | h < 0 = MkName n h
+  where NConst n@(MkM [MkToken_ h _ _]) | h >= 9223372036854775808 = MkName n h
         NConst n = MkName n (hashNameStr n)
 
-isConstName (MkM [MkToken_ h _ _]) i = h < 0 && h == i
+isConstName (MkM [MkToken_ h _ _]) i = h >= 9223372036854775808 && h == i
 isConstName n i = hashNameStr n == i
 
 pattern RNat n <- RNat_ _ n
-  where RNat n =  RNat_ (MkCached $ fromString $ show n) n
+  where RNat n =  RNat_ (MkCached $ stringToSource $ showInteger n) n
 
 pattern RString n <- RString_ _ n
-  where RString n =  RString_ (MkCached $ fromString $ show n) n
+  where RString n =  RString_ (MkCached $ stringToSource ("\"" <> n <> "\"")) n
 
 mapName f (MkName a b) = MkName (f a) b
 rename a = mapName $ const a
@@ -1203,7 +1237,7 @@ instance Print Name where
   print = print . nameStr
 
 instance IsString Name where
-  fromString t = case fromString t of
+  fromString' t = case fromString' t of
     MkNat{}    -> impossible
     MkString{} -> impossible
     n -> NConst $ MkM [n]
@@ -1211,10 +1245,10 @@ instance IsString Name where
 mkName :: NameStr -> RefM Name
 mkName s = newId <&> MkName s
 
-mkName' s = newId <&> \i -> MkName (addSuffix s $ mkIntToken $ intToInteger i) i
+mkName' s = newId <&> \i -> MkName (addSuffix s $ mkIntToken $ wordToInteger i) i
 
 nameOf :: NameStr -> RefM Name
-nameOf n@(MkM [MkToken_ h _ _]) | h < 0 = pure $ NConst n
+nameOf n@(MkM [MkToken_ h _ _]) | h >= 9223372036854775808 = pure $ NConst n
 nameOf n = mkName n
 
 type Raw_ a = ExpTree_ a NameStr
@@ -1260,9 +1294,9 @@ instance PPrint a => Print (Scoped_ a) where
 type Scoped_ a = ExpTree_ a Name
 
 unscope :: PPrint a => Scoped_ a -> RefM (ExpTree' Desug)
-unscope t = runReader (mempty :: IntMap Name Int, emptyMap :: Map NameStr Int) ff where
+unscope t = runReader (mempty :: IntMap Name Word, emptyMap :: Map NameStr Word) ff where
 
-  addIndex n i = addSuffix (addSuffix n "_") $ mkIntToken $ intToInteger i
+  addIndex n i = addSuffix (addSuffix n "_") $ mkIntToken $ wordToInteger i
 
   ff r = f t where
 
@@ -1283,13 +1317,13 @@ unscope t = runReader (mempty :: IntMap Name Int, emptyMap :: Map NameStr Int) f
           _ -> do
             k <- asks r (lookupMap n . snd)
             let m = maybe n (addIndex n) k
-            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insert n (1 + fromMaybe (0 :: Int) k)) (f a)
+            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insert n (1 + fromMaybe (0 :: Word) k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
       RNat_ (MkCached a) b -> pure $ RVar $ MkM [MkNat a b]
       RString_ (MkCached a) b -> pure $ RVar $ MkM [MkString a b]
 
-addPrefix :: String -> Mixfix a -> Mixfix a
-addPrefix s (MkM_ ar a) = mkM ar $ mkToken (fromString s): a
+addPrefix :: Token a -> Mixfix a -> Mixfix a
+addPrefix s (MkM_ ar a) = mkM ar $ s:. a
 
 addSuffix :: Mixfix a -> Token a -> Mixfix a
 addSuffix (MkM_ ar a) s = mkM ar $ a ++ [s]
@@ -1306,21 +1340,24 @@ class PPrint a where
 instance (PPrint a, PPrint b) => PPrint (a, b) where
   pprint (a, b) = zVar ["(",",",")"] :@ pprint a :@ pprint b
 
-instance PPrint a => PPrint [a] where
+instance PPrint a => PPrint (List a) where
   pprint Nil = zVar ["[","]"]
-  pprint as = ZApps (MkM $ ["["] <> replicate (length as - 1) "," <> ["]"]) $ map pprint as
+  pprint as = ZApps (MkM $ ["["] <> replicate (length as -. 1) "," <> ["]"]) $ map pprint as
 
 instance PPrint () where
   pprint () = RVar "Unit"   -- TODO: ZVar ["(",")"], without "_"
-
+{-
 instance PPrint Int where
-  pprint i = RVar $ fromString $ show i
+  pprint i = RVar $ fromString' $ showInteger i
+-}
+instance PPrint Word where
+  pprint i = RVar $ fromString' $ showInt i
 {-
 instance PPrint String where
-  pprint s = pprint (fromString s :: Source)
+  pprint s = pprint (fromString' s :: Source)
 
 instance PPrint Char where
-  pprint c = pprint (fromString [c] :: Source)
+  pprint c = pprint (fromString' [c] :: Source)
 -}
 instance PPrint Source where
   pprint = \case
@@ -1352,8 +1389,8 @@ instance (PPrint a) => PPrint (OpSeq a) where
   pprint Empty = RVar "_"
   pprint (a :> Empty) = pprint a
   pprint (sl :< b) = zVar ["[","]"] :@ foldl (:@) (pprint sl) (f b)  where
-    f (b := c :< d) = pprint b: pprint c: f d
-    f (b :> c) = pprint b: pprint c: Nil
+    f (b := c :< d) = pprint b:. pprint c:. f d
+    f (b :> c) = pprint b:. pprint c:. Nil
     f _ = impossible
 
 instance PPrint (Token a) where
@@ -1368,7 +1405,7 @@ instance PPrint (Mixfix a) where
 instance PPrint Name where
   pprint = pprint . nameStr -- RVar ?
 
-instance (Eq a, PPrint a, Arity a) => PPrint (ExpTree_ b a) where
+instance (Eq a, PPrint a, HasArity a) => PPrint (ExpTree_ b a) where
   pprint = f where
     f = \case
       RVar n     -> pprint n

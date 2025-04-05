@@ -14,17 +14,17 @@ getTmpDir = do
 
 ----------------------------
 
-getCmd :: Source -> RefM ([[Source]], Source)
+getCmd :: Source -> RefM (List (List Source), Source)
 getCmd = \case
   Cons' '#' (Cons' ' ' (spanCh (/= '\n') -> (cmd, Cons' '\n' s))) -> do
     cmd <- parse cmd >>= f
     (cmds, s) <- getCmd s
-    pure (cmd: cmds, s)
+    pure (cmd:. cmds, s)
   s -> pure (Nil, s)
  where
-  f :: Raw -> RefM [Source]
+  f :: Raw -> RefM (List Source)
   f (a :@ b) = print b >>= \b -> f a <&> \as -> as <> [b]
-  f n = print n <&> (:Nil)
+  f n = print n <&> (:.Nil)
 
 getSource f = parseFile' "" f >>= \case
   Nothing -> pure Nothing
@@ -34,27 +34,27 @@ getSource f = parseFile' "" f >>= \case
   maybeElab cmds = cmds
 
 
-showCmd :: [Source] -> String
+showCmd :: List Source -> String
 showCmd = concat . intersperse " " . map chars
 
-doCmds :: [Source] -> Source -> RefM String
+doCmds :: List Source -> Source -> RefM String
 doCmds cmd s = do
  () <- reset
- catchError mainException (\e -> show <$> print e) (doCmds_ cmd s)
+ catchError mainException (\e -> showSource <$> print e) (doCmds_ cmd s)
 
-doCmds_ :: [Source] -> Source -> RefM String
+doCmds_ :: List Source -> Source -> RefM String
 doCmds_ cmd s = case cmd of
   [cmd]                       -> doCmd False cmd s <&> chars
-  [cmd, chars -> "highlight"]          -> doCmd False cmd s <&> show
+  [cmd, chars -> "highlight"]          -> doCmd False cmd s <&> showSource
   [cmd, chars -> "quote"]              -> doCmd True  cmd s <&> chars
-  [cmd, chars -> "quote", chars -> "highlight"] -> doCmd True  cmd s <&> show
+  [cmd, chars -> "quote", chars -> "highlight"] -> doCmd True  cmd s <&> showSource
   cmds ->  error $ "Unknown commands: " <> mconcat (intersperse " " cmds)
  where
   doCmd :: Bool -> Source -> Source -> RefM Source
   doCmd quote cmd s = case chars cmd of
     "source"    -> sh =<< (parse s :: RefM Source)
     "indent"    -> sh =<< (parse s :: RefM ISource)
-    "lex"       -> sh =<< (parse s :: RefM [Token Spaced])
+    "lex"       -> sh =<< (parse s :: RefM (List (Token Spaced)))
     "structure" -> sh =<< (parse s :: RefM (OpSeq' Spaced))
     "string"    -> sh =<< (parse s :: RefM (OpSeq' Stringed))
     "comment"   -> sh =<< (parse s :: RefM (OpSeq' Uncomment))
@@ -72,12 +72,13 @@ doCmds_ cmd s = case cmd of
     "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage)
     "haskell_stage"
                 -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stageHaskell)
-    _ -> error $ "Unknown command: " <> cmd
+    _ -> error ("Unknown command: " <> cmd)
    where
-    sh = if quote then sh' else print
+    sh :: (PPrint a, Print a) => a -> RefM Source
+    sh x = if quote then sh' x else print x
 
-  sh' :: (PPrint a) => a -> RefM Source
-  sh' m = print $ pprint m
+  sh' :: PPrint a => a -> RefM Source
+  sh' m = print (pprint m)
 
 
 ----------------------------
@@ -87,15 +88,15 @@ listDirRec f = doesDirectoryExist f >>= \case
   False -> pure [f]
 
 testNames dir = do
-  ns <- listDirRec dir <&> \fs -> sort [f | f <- fs, Just _ <- [stripSuffix ".csip" f]]
-  if null ns then error $ "no .csip files found at " <> fromString dir
+  ns <- listDirRec dir <&> \fs -> sort (filter (isJust . stripSuffix ".csip") fs)
+  if null ns then error $ "no .csip files found at " <> stringToSource dir
     else pure ns
 
 
 getResult odir fn s cmd _i n = do
   r <- parseFile' odir out
   pure (printFile' (odir </> out), r)
- where out = hashString $ "# " <> showCmd cmd <> " # " <> fn <> " # " <> show n <> " # " <> versionString <> "\n" <> chars s
+ where out = hashString $ "# " <> showCmd cmd <> " # " <> fn <> " # " <> showInt n <> " # " <> versionString <> "\n" <> chars s
 
 getResult' odir fn s cmd i n = do
   (printres, r) <- getResult odir fn s cmd i n
@@ -110,7 +111,7 @@ printFile' f s = do
   printFile f s
 
 directory f = case dropWhile (/= '/') $ reverse f of
-  '/': bs -> reverse bs
+  '/':. bs -> reverse bs
   _ -> ""
 
 
@@ -140,11 +141,11 @@ testFiles accept dir odir = do
           <> r <> "\n"
           <> maybe "" (\r' -> if lines r' /= lines r then
                invert (foreground red $ "    first diff    ")
-            <> ["\n" <> a <> "\n" <> b <> "\n" | (a, b) <- repNl (lines r') (lines r), a /= b] !! 0
+            <> (do (a, b) <- repNl (lines r') (lines r); guard (a /= b); pure ("\n" <> a <> "\n" <> b <> "\n")) !! 0
             else "") r2
         askYN "accept" >>= \b -> if b then printres r else pure ()
 
-repNl as bs = zip (as ++ replicate (c-a) "") (bs ++ replicate (c-b) "")
+repNl as bs = zip (as ++ replicate (c-.a) "") (bs ++ replicate (c-.b) "")
  where
   a = length as; b = length bs; c = a + b
 
@@ -165,8 +166,8 @@ present dir odir beg = do
       let
         g = do
           let
-            nextF   = [f (i+1) | i+1 < l]
-            prevF   = [f (i-1) | i > 0]
+            nextF   = maybeList (f (i+1)) (i+1 < l) Nil
+            prevF   = maybeList (f (i-.1)) (i > 0) Nil
             end     = [pure ()]
             wait k  = listToMaybe $ case k of
               " "         -> nextF
@@ -183,59 +184,59 @@ present dir odir beg = do
           disp h (mkScreen True (w, h) cyan rs) wait
       g
 
-  presentationMode $ f $ min (length fs - 1) $ length $ filter (< beg) fs
+  presentationMode $ f $ min (length fs -. 1) $ length $ filter (< beg) fs
 
 export dir odir = do
-  (w, h) <- getTerminalSize
+  wh <- getTerminalSize
   fs <- testNames dir
   rs <- forM fs \fn -> do
     Just (cmds, s) <- getSource fn
     rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
       r <- getResult' odir fn s cmd j (length cmds)
       pure (showCmd cmd <> " " <> fn, r)
-    pure $ mkScreen False (w, h) cyan rs
+    pure $ mkScreen False wh cyan rs
   pure (concat $ map (<>"\n") $ concat $ rs :: String)
 
-distribute :: Int -> Int -> [Int]
-distribute parts i = zipWith (-) is (0:is) where
-  is = [(j * i - 1) `div` parts + 1 | j <- enumFromTo 1 parts]
+distribute :: Word -> Word -> List Word
+distribute ((+1) -> parts) i = zipWith (-.) is (0:.is) where
+  is = enumFromTo 1 parts <&> \j -> (j * i -. 1) `div` parts
 
-mkScreen :: Bool -> (Int, Int) -> Int -> [(String, String)] -> [String]
+mkScreen :: Bool -> (Word, Word) -> Word -> List (String, String) -> List String
 mkScreen rich (w, h) color ts
-  = concat
-    [ t: replicate o1 "" ++ ls ++ replicate o2 ""
-    | (o, t: ls) <- zip os tls
-    , let o1 = o `div` 2
-    , let o2 = o - o1
-    ]
+  = concat $ zip os tls <&> \case
+    (o, t:. ls) ->
+      let o1 = o `div` 2 in
+      let o2 = o -. o1   in
+         t:. replicate o1 "" ++ ls ++ replicate o2 ""
+    _ -> impossible
  where
   mh = sum $ map length tls
-  os = distribute (length tls) $ max 0 $ h - mh
+  os = distribute (length tls) $ h -. mh
   tls = map f ts
 
   f (title, s) =
     (if rich then invert . foreground color $ replicate t1 ' ' <> title <> replicate t2 ' '
              else replicate t1 '=' <> title <> replicate t2 '=')
-    : [(if rich then cursorForward ow else replicate ow ' ') <> s | s <- ls]
+    :. (ls <&> \s -> (if rich then cursorForward ow else replicate ow ' ') <> s)
    where
     ls = lines s
-    mw = maximum (0: map lengthANSI ls)
-    ow = max 0 $ (w - mw) `div` 2
-    t1 = max 0 $ (w - length title) `div` 2
-    t2 = max 0 $ w - t1 - length title
+    mw = maximum (0:. map lengthANSI ls)
+    ow = (w -. mw) `div` 2
+    t1 = (w -. length title) `div` 2
+    t2 = w -. t1 -. length title
 
-disp :: Int -> [String] -> (String -> Maybe (IO ())) -> IO ()
+disp :: Word -> List String -> (String -> Maybe (IO ())) -> IO ()
 disp h ls' cont = wait 0
    where
-    mz = max 0 $ length ls' - h
+    mz = length ls' -. h
     wait z = do
       putStr
         $  clearScreen
-        <> mconcat [setCursorPosition i 0 <> l | (i, l) <- zip (enumFromTo 0 (h-1)) $ drop z ls']
+        <> mconcat (zip (enumFromTo 0 h) (drop z ls') <&> \(i, l) -> setCursorPosition i 0 <> l)
       getKey >>= \case
-        "Up"       | z > 0  -> wait (z-1)
+        "Up"       | z > 0  -> wait (z-.1)
         "Down"     | z < mz -> wait (z+1)
-        "PageUp"   | z > 0  -> wait $ max 0  $ z - h
+        "PageUp"   | z > 0  -> wait $ z -. h
         "PageDown" | z < mz -> wait $ min mz $ z + h
         s -> maybe (wait z) id $ cont s
 

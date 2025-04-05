@@ -44,8 +44,10 @@ executable csip
   other-modules:
       Paths_csip
     , A_Builtins
+    , B_Prelude
     , M0_Map
     , M0_IntMap
+    , M0_StringMap
     , M1_Base
     , M2_OpSeq
     , M3_Parse
@@ -62,6 +64,7 @@ executable csip
   default-extensions:
       RebindableSyntax
     , OverloadedStrings
+    , OverloadedLists
     , BlockArguments
     , LambdaCase
     , Strict
@@ -75,6 +78,8 @@ executable csip
     , FlexibleInstances
     , FlexibleContexts
     , GeneralizedNewtypeDeriving
+    , TypeFamilies
+    , ConstraintKinds
 
   ghc-options:
     -fobject-code

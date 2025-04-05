@@ -1,5 +1,6 @@
 module M2_OpSeq
-  ( OpSeq
+  ( Precedence
+  , OpSeq
     ( Empty, Node
     , Node2, Node3, (:<), (:=), (:>)   -- derived
     )
@@ -16,15 +17,15 @@ import M1_Base
 
 ----------------------------------------
 
-type Precedence = Int
+type Precedence = Word
 
 data SeqPrec
-  = ConsP Precedence Int SeqPrec
+  = ConsP {-# UNPACK #-} Precedence {-# UNPACK #-} Int SeqPrec
   | NilP
   deriving (Eq, Ord)
 
 singPrec :: Precedence -> SeqPrec
-singPrec p = ConsP p (-1) NilP
+singPrec p = ConsP p 0 NilP
 
 minPrec :: Precedence -> SeqPrec -> SeqPrec
 minPrec a NilP = singPrec a
@@ -50,7 +51,7 @@ data OpSeq b
 data Mid b = MkMid Precedence (OpSeq b) Precedence b
   deriving (Eq)
 
-type Enclosed b = [Mid b]
+type Enclosed b = List (Mid b)
 
 ----------------------------------------
 
@@ -106,7 +107,7 @@ getRight _ = Nothing
 pattern (:>) :: b -> OpSeq b -> OpSeq b
 pattern a :> b <- (getRight -> Just (a, b))
 
-getMid (Node Empty _ a (MkMid _ b c d: e) f g) = Just (a, mkNode b c d e f g)
+getMid (Node Empty _ a (MkMid _ b c d:. e) f g) = Just (a, mkNode b c d e f g)
 getMid _ = Nothing
 
 pattern (:=) :: b -> OpSeq b -> OpSeq b
@@ -117,16 +118,16 @@ pattern a := b <- (getMid -> Just (a, b))
 pattern Node2 a b c <- Node a _ b Nil _ c
 pattern Node3 a b c d e <- Node a _ b [MkMid _ c _ d] _ e
 
-toOpSeq :: [(Precedence, b, Precedence)] -> OpSeq b
+toOpSeq :: List (Precedence, b, Precedence) -> OpSeq b
 toOpSeq = foldMap singOpSeq
 
-fromOpSeq :: OpSeq b -> [b]
+fromOpSeq :: OpSeq b -> List b
 fromOpSeq t = f1 t Nil
  where
   f1 = \case
     Empty  -> id
-    a := b -> (a:) . f1 b
-    a :> b -> (a:) . f1 b
+    a := b -> (a:.) . f1 b
+    a :> b -> (a:.) . f1 b
     a :< b -> f1 a . f1 b
 
 mapOpSeq f = comm where
@@ -136,8 +137,8 @@ mapOpSeq f = comm where
       a :< b -> comm a <> comm b
       Empty -> mempty
 
-topOp :: OpSeq b -> ([b], OpSeq b, [OpSeq b], OpSeq b)
+topOp :: OpSeq b -> (List b, OpSeq b, List (OpSeq b), OpSeq b)
 topOp = \case
   Empty -> (Nil, Empty, Nil, Empty)
-  Node a _ c d _ f -> (c : [x | MkMid _ _ _ x <- d], a, [x | MkMid _ x _ _ <- d], f)
+  Node a _ c d _ f -> (c :. (d <&> \(MkMid _ _ _ x) -> x), a, d <&> \(MkMid _ x _ _) -> x, f)
 

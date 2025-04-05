@@ -17,31 +17,27 @@ module M8_IO
   )
  where
 
-import A_Builtins
-import M1_Base
+import B_Prelude
 
 -----------------------------------------------
 
 hashString :: String -> String
 hashString = map char . base 22 64 . hash
  where
-  hash :: String -> Integer
-  hash = foldl (\h c -> m $ 33 * h + intToInteger (ord c)) 5381   -- djb2
+  hash :: String -> Word128
+  hash = foldl (\h c -> 33 * h + wordToWord128 (ord c)) 5381   -- djb2
 
-  m :: Integer -> Integer
-  m i = i `mod` shiftL 1 128
-
-  base :: Int -> Integer -> Integer -> [Int]
+  base :: Word -> Word128 -> Word128 -> List Word
   base 0 _ _ = Nil
-  base n b i = integerToInt (mod i b): base (n-1) b (div i b)
+  base n b i = word128ToWord (mod i b):. base (n-.1) b (div i b)
 
   char i
-    | i < 26 = chr $ i      + ord 'A'
-    | i < 52 = chr $ i - 26 + ord 'a'
-    | i < 62 = chr $ i - 52 + ord '0'
+    | i < 26 = chr $ i       + ord 'A'
+    | i < 52 = chr $ i -. 26 + ord 'a'
+    | i < 62 = chr $ i -. 52 + ord '0'
     | i == 62 = '-'
     | i == 63 = '_'
-    | True      = impossible
+  char _ = impossible
 
 -----------------------------------------------
 
@@ -76,10 +72,10 @@ askYN s = do
 
 
 runIO m = do
-  hSetBuffering stdin NoBuffering
-  hSetBuffering stdout LineBuffering
+  hSetBuffering stdin noBuffering
+  hSetBuffering stdout lineBuffering
   () <- reset
-  catchError mainException (\e -> print e >>= die . show) m
+  catchError mainException (\e -> print e >>= die . showSource) m
 
 presentationMode m = do
   putStr
@@ -97,13 +93,10 @@ presentationMode m = do
     <> "\ESC[?2004l"
     <> showCursor
 
-defaultTerminalSize :: (Int, Int)
+defaultTerminalSize :: (Word, Word)
 defaultTerminalSize = (119, 31)
-{-
-getTerminalSize :: IO (Int, Int)
-getTerminalSize = Terminal.size <&> fromMaybe defaultTerminalSize . fmap (\(Terminal.Window h w) -> (w, h))
--}
-getTerminalSize :: IO (Int, Int)
+
+getTerminalSize :: IO (Word, Word)
 getTerminalSize = fromMaybe defaultTerminalSize <$> do
   b <- hIsTerminalDevice stdout
   if b then do
@@ -127,7 +120,7 @@ getTerminalSize = fromMaybe defaultTerminalSize <$> do
       clearStdin
 
   skip Nil = pure ()
-  skip (c: cs) = getChar >>= \c' -> if c' == c then skip cs else undefined
+  skip (c:. cs) = getChar >>= \c' -> if c' == c then skip cs else undefined
 
   getInt acc end = getChar >>= \c -> case c of
     c | c == end -> pure $ Just acc
@@ -139,12 +132,12 @@ getKey = getChar >>= \case
   '\DEL' -> pure "Backspace"
   '\ESC' -> getChar >>= \case
     '[' -> getArgs >>= \case
-      ("1": _a, '~') -> pure "Home"
-      ("2": _a, '~') -> pure "Ins"
-      ("3": _a, '~') -> pure "Del"
-      ("4": _a, '~') -> pure "End"
-      ("5": _a, '~') -> pure "PageUp"
-      ("6": _a, '~') -> pure "PageDown"
+      ("1":. _a, '~') -> pure "Home"
+      ("2":. _a, '~') -> pure "Ins"
+      ("3":. _a, '~') -> pure "Del"
+      ("4":. _a, '~') -> pure "End"
+      ("5":. _a, '~') -> pure "PageUp"
+      ("6":. _a, '~') -> pure "PageDown"
       (_, 'A') -> pure "Up"
       (_, 'B') -> pure "Down"
       (_, 'C') -> pure "Right"
@@ -155,17 +148,17 @@ getKey = getChar >>= \case
  where
   getArgs = first (reverse . map reverse) <$> f "" Nil
   f i is = getChar >>= \case
-    ';' -> f "" (i: is)
-    c | isDigit c -> f (c: i) is
-    c -> pure (i: is, c)
+    ';' -> f "" (i:. is)
+    c | isDigit c -> f (c:. i) is
+    c -> pure (i:. is, c)
 
 versionString :: String
-versionString = intercalate "." $ map show $ versionBranch version
+versionString = intercalate "." $ map showInt versionBranch
 
 -------------------------------- command line interface
 
 data CLI
-  = Commands [(String, String, CLI)] CLI
+  = Commands (List (String, String, CLI)) CLI
   | Dir (String -> IO ())
   | Pure (IO ())
   | CEmpty
@@ -180,20 +173,20 @@ instance Semigroup CLI where
   a <> _ = a
 
 runCLI :: String -> CLI -> IO ()
-runCLI progname x = runIO $ getArgs >>= eval Nil x
+runCLI progname x = runIO (getArgs >>= eval Nil x)
  where
-  eval hs x (s: _) | s == "-h" || s == "--help" = printHelp hs $ usage x
-  eval hs (Commands ps _) (s: ss)
-    | Just (h, x) <- lookupList s [(a, (h, c)) | (a, h, c) <- ps] = eval (h: hs) x ss
+  eval hs x (s:. _) | s == "-h" || s == "--help" = printHelp hs (usage x)
+  eval hs (Commands ps _) (s:. ss)
+    | Just (h, x) <- lookupList s (ps <&> \(a, h, c) -> (a, (h, c))) = eval (h:. hs) x ss
   eval hs (Commands _ p) ss = eval hs p ss
   eval _ (Dir io) [s] = io s
   eval _ (Pure io) Nil = io
-  eval _ _ _ = putStr $ unlines $ ["Usage:", ""] ++ ["  " ++ progname ++ h | h <- usage x]
+  eval _ _ _ = putStr $ unlines $ ["Usage:", ""] ++ (usage x <&> \h -> "  " ++ progname ++ h)
 
   usage = \case
     Dir _ -> [" FILE|DIR"]
     Pure _ -> [""]
-    Commands ps p -> [" " <> a <> r | (a, _b, c) <- ps, r <- usage c] ++ usage p
+    Commands ps p -> (do (a, _b, c) <- ps; r <- usage c; pure (" " <> a <> r)) ++ usage p
     CEmpty -> Nil
 
   printHelp a hs = putStr $ unlines $ a ++ case hs of
