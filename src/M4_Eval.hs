@@ -1,13 +1,14 @@
 module M4_Eval
   ( Combinator, varName
 
-  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard, TDot)
+  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard, TDot,  TRet, TSel, TMatch, TSup, TNoRet)
   , Tm, tLam, tMeta, tLets
   , Raw, Scoped
 
   , Val ( WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta,  WSel, WMatch, WRet, WNoRet
-        , CFail, CSuperClassCons, CSuperClassNil, CMkStr, CMkNat
+        , CFail, CSuperClassCons, CSuperClassNil, CMkStr, CMkNat, CTopLet
         )
+  , name
   , vNat, vString, mkFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
   , mkCon, mkBuiltin, RuleRef
   , rigid, closed
@@ -231,7 +232,7 @@ closedTm = f where
 
 ---------
 
-notDefined x = error' $ fmap ("not defined: " <>) $ print x
+notDefined x = errorM $ "not defined: " <<>> print x
 
 eval_
   :: (Print a, Ord a, HasId a)
@@ -554,7 +555,7 @@ vApp a_ u = do
     WNeutralApp{}  -> mkApp_ aa u NeutralApp'
     WVar{}         -> mkApp_ aa u NeutralApp'
 
-    _z             -> error' $ print _z
+    _z             -> errorM $ print _z
  where
   deltaArity = \case
     WDelta _ ar _    -> Just ar
@@ -564,11 +565,17 @@ vApp a_ u = do
 tLazy :: Tm -> RefM Tm
 tLazy = tLam "_"
 
-tEval :: Tm -> Tm
-tEval x = TApp x $ TVal $ WCon 0 "X"
+tOLazy :: Tm -> RefM Tm
+tOLazy = tOLam "_"
 
-vEval :: Val -> RefM Val
-vEval x = vApp x $ WCon 0 "X"
+tForce :: Tm -> Tm
+tForce x = TApp x $ TVal $ WCon 0 "X"
+
+tOForce :: Tm -> Tm
+tOForce x = tOApp x $ TVal $ WCon 0 "X"
+
+vForce :: Val -> RefM Val
+vForce x = vApp x $ WCon 0 "X"
 
 
 vApps :: Val -> List Val -> RefM Val
@@ -624,7 +631,7 @@ lookupRule r = readRef r
 
 updateRule :: NameStr -> RuleRef -> Val -> RefM ()
 updateRule fn _ b
-  | not (rigid b), fn /= "lookupDict", fn /= "superClasses" = error' $ (("rule body is not rigid:\n" <> showMixfix fn <> " = ") <>) <$> print b
+  | not (rigid b), fn /= "lookupDict", fn /= "superClasses" = errorM $ (("rule body is not rigid:\n" <> showMixfix fn <> " = ") <>) <$> print b
 updateRule _ r b
   = writeRef r b
 
@@ -660,7 +667,7 @@ addRule_ fn lhs rhs = do
     TGuard a _ -> ruleName a
     TApps (TVal (WCon _ "App")) [_, _, a, _] -> ruleName a
     TApp a _ -> ruleName a
-    t -> error' $ ("TODO (11): " <>) <$> print t
+    t -> error' $ "TODO (11): " <<>> print t
 
   compileLHS e old rhs = go e rhs where
    go :: Tm -> (Tm -> RefM Tm) -> RefM Tm
@@ -673,19 +680,21 @@ addRule_ fn lhs rhs = do
         TVar m -> nameStr m
         _ -> "v#"
       fn <- mkName "fail"
-      r <- rhs $ TVar fn
+      r <- rhs $ tOForce $ TVar fn
       e <- compilePat' (TVar fn) b (TVar n) (tNoRet r)
-      ee <- tOLet fn (tOApp (tNoRet fail) (TVar n)) e
+      tx <- tOLazy $ tOApp (tNoRet fail) (TVar n)
+      ee <- tOLet fn tx e
       TRet <$> tOLam n ee
     TApp a b -> go a \fail -> do
       n <- mkName $ case b of
         TVar m -> nameStr m
         _ -> "v#"
       fn <- mkName "fail"
-      r <- rhs $ tEval $ TVar fn
+      r <- rhs $ tForce $ TVar fn
       e <- compilePat (TVar fn) b (TVar n) r
       tx <- tLazy $ TApp fail $ TVar n
-      tLam n $ TLet fn tx e
+      ee <- pure $ TLet fn tx e
+      tLam n ee
     TVal WFun{} -> rhs $ TVal old
     _ -> impossible
 
@@ -703,13 +712,13 @@ addRule_ fn lhs rhs = do
       mok <- tLams ns tx
       pure $ TLet ne e $ TMatch c (TVar ne) mok f
     TApps (TVal _) (_:._) -> undefined
-    TApps v (_:._) -> error' (print (pprint v))
+    TApps v (_:._) -> errorM (print (pprint v))
 --    TVal WString{} -> compilePat f (TView (TVal (mkBuiltin 2 "EqStr" Nothing) `TApp` p) (TVal CTrue)) e m
     TGen{} -> undefined
     TVal{} -> undefined
     TSup{} -> undefined
     TLet{} -> undefined
-    p -> error' $ (\a b -> "TODO (13):\n  " <> a <> "\n... =\n  " <> b) <$> print p <*> print rhs
+    p -> errorM $ "TODO (13):\n  " <<>> print p <<>> "\n... =\n  " <<>> print rhs
 
   compilePat' :: Tm -> Tm -> Tm -> Tm -> RefM Tm
   compilePat' f p e m = case p of
@@ -720,19 +729,19 @@ addRule_ fn lhs rhs = do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w#"   -- TODO: better naming
       x <- foldr (\(a, b) m -> m >>= \x -> compilePat' f a b x) (pure m) $ zip ps $ map TVar ns
-      tx <- pure x
+      tx <- tOLazy x
       ne <- mkName "w#"   -- TODO: better naming
       mok <- tOLams ns tx
       cs <- vString $ chars $ showName c
       tOLet ne e $ TApps (TVal COMatch) [TVal cs, TVar ne, mok, f]
     TApps (TVal _) (_:._) -> undefined
-    TApps v (_:._) -> error' (print (pprint v))
+    TApps v (_:._) -> errorM (print (pprint v))
 --    TVal WString{} -> compilePat f (TView (TVal COEqStr `TApp` p) (TVal COTrue)) e m
     TGen{} -> undefined
     TVal{} -> undefined
     TSup{} -> undefined
     TLet{} -> undefined
-    p -> error' $ (\a b -> "TODO (23):\n  " <> a <> "\n... =\n  " <> b) <$> print p <*> print rhs
+    p -> errorM $ "TODO (23):\n  " <<>> print p <<>> "\n... =\n  " <<>> print rhs
 
 tLets ds e = foldr (uncurry TLet) e ds
 
@@ -764,9 +773,9 @@ vSel i j v_ = force v_ >>= \v -> case headCon v of
 vMatch :: Name -> Val -> Val -> Val -> RefM Val
 vMatch n v_ ok fail = force v_ >>= \v -> case headCon v of
   Just (_{-TODO: 0-}, c)
-    | c == n      -> vEval =<< vApps ok (spineCon v)
+    | c == n      -> vForce =<< vApps ok (spineCon v)
   Just (_{-TODO: 0-}, _)
-                  -> vEval fail
+                  -> vForce fail
   _ -> do
     dep <- case snd <$> metaDep v of
       Nothing -> pure Nothing
@@ -985,6 +994,7 @@ pattern COEqStr = WCon 2 "OEqStr"
 pattern COEqNat = WCon 2 "OEqNat"
 pattern COTrue = WCon 0 "OTrue"
 pattern CErased = WCon 0 "Erased"
+pattern CTopLet = WCon 5 "TopLet"
 
 type MTT = Map Tm Tm
 
@@ -1064,7 +1074,7 @@ getGens get_ bv tt = do
               Nothing -> traceShow Nil ("missed lookup: " <<>> showM' ns)
               _ -> pure ()
             pure $ TGen $ fromMaybe ns lo
-      t -> error' $ ("TODO(8): " <>) <$> print t
+      t -> errorM $ "TODO(8): " <<>> print t
      where
       addSuperClasses st v d = do
                 r <- getProjections =<< vApp superClassesFun d
@@ -1085,8 +1095,8 @@ getGens get_ bv tt = do
           pure $ TVal w
         WMetaApp_ _ _ _ _d | pat -> do
           pure $ TVal w
-        WMeta{} -> err >>= errorM
-        WMetaApp{} -> err >>= errorM
+        WMeta{} -> errorM err
+        WMetaApp{} -> errorM err
         WApp a b -> TApp <$> f a <*> f b
         WFun{}  -> pure $ TVal w
         WVar n  -> pure $ TVar n
@@ -1096,7 +1106,7 @@ getGens get_ bv tt = do
                 t <- evalCombinator c $ vs <> [vVar n]
                 tLam n =<< f t
         _ | closed w && rigid w -> pure $ TVal w
-        w -> error' $ ("TODO(1): " <>) <$> print w
+        w -> errorM $ "TODO(1): " <<>> print w
 
 getProjections :: Val -> RefM (List (Val, Val))
 getProjections v = spine' v >>= \case
@@ -1159,7 +1169,7 @@ mkFun = \case
 strictForce :: Val -> RefM Val
 strictForce v = deepForce v >>= \case
   v | rigid v -> pure v
-  v -> print v >>= \s -> errorM $ "meta in value:\n" <> s
+  v -> errorM $ "meta in value:\n" <<>> print v
 
 deepForce :: Val -> RefM Val
 deepForce v_ = do

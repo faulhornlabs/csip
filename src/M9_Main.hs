@@ -72,6 +72,7 @@ doCmds_ cmd s = case cmd of
     "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage)
     "haskell_stage"
                 -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stageHaskell)
+    "stage_eval"-> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage_eval)
     _ -> error ("Unknown command: " <> cmd)
    where
     sh :: (PPrint a, Print a) => a -> RefM Source

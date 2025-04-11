@@ -145,8 +145,14 @@ tl Nil = []  where
 
 -------------------------------------------------- String
 
+-- TODO: CharArray
 type String = List Char
 
+fs :: P.String -> String
+fs = fl
+
+ts :: String -> P.String
+ts = tl
 
 
 -------------------------------------------------- IO
@@ -163,7 +169,7 @@ bindIO' :: IO a -> IO b -> IO b
 bindIO' = (P.>>)
 
 failIO :: String -> IO a
-failIO s = P.fail (tl s)
+failIO s = P.fail (ts s)
 
 finally :: IO a -> IO b -> IO a
 finally = P.finally
@@ -190,8 +196,8 @@ writeIORef = P.writeIORef
 
 type CharArray = P.UArray Word Char
 
-listArray :: List Char -> (Word, CharArray)
-listArray (tl -> es) = (l, P.listArray (0, l P.- 1) es)   -- TODO: l /= 0
+listArray :: List Char -> (Word -> CharArray -> r) -> r
+listArray (tl -> es) cont = cont l (P.listArray (0, l P.- 1) es)   -- TODO: l /= 0
  where
   fromInteger = P.fromInteger
   l = intToWord (P.length es)
@@ -222,11 +228,12 @@ unsafeWrite ar i e = P.unsafeWrite ar (wordToInt i) e
 -------------------------------------------------- exceptions
 
 -- internal
-data GException (i :: P.Nat) = MkGException P.Any P.String
+data GException (i :: P.Nat) = MkGException P.Any
 
 -- internal
 instance P.Show (GException i) where
-  show (MkGException _ s) = s
+  show (MkGException _) = "<<exception>>"
+    where fromString = P.fromString
 
 -- internal
 instance P.KnownNat i => P.Exception (GException i)
@@ -237,26 +244,26 @@ someNatVal i = case P.someNatVal (wordToInteger i) of
   P.Just x -> x
   _ -> P.undefined
 
-throwIO' :: Word -> e -> String -> IO a
-throwIO' (someNatVal -> P.SomeNat p) e (tl -> s) = P.throwIO (mk p e s)
+throwIO' :: Word -> e -> IO a
+throwIO' (someNatVal -> P.SomeNat p) e = P.throwIO (mk p e)
  where
-  mk :: P.Proxy i -> e -> P.String -> GException i
-  mk _ e s = MkGException (P.unsafeCoerce e) s
+  mk :: P.Proxy i -> e -> GException i
+  mk _ e = MkGException (P.unsafeCoerce e)
 
 catch' :: Word -> (e -> IO a) -> IO a -> IO a
 catch' (someNatVal -> P.SomeNat p) f ~g
   = P.catch (g P.>>= \a -> a `P.seq` P.pure a) (fun p f)
  where
   fun :: P.Proxy i -> (e -> IO a) -> GException i -> IO a
-  fun _ f (MkGException x _) = f (P.unsafeCoerce x)
+  fun _ f (MkGException x) = f (P.unsafeCoerce x)
 
 
 -------------------------------------------------- callstack
 
 type HasCallStack = P.HasCallStack
 
-callStack :: String
-callStack = fl (printCallStack (P.getCallStack P.callStack))
+callStack :: HasCallStack => String
+callStack = fs (printCallStack (P.getCallStack P.callStack))
  where
   fromString = P.fromString
   (<>) = (P.<>)
@@ -272,10 +279,10 @@ versionBranch :: List Word
 versionBranch = fl (P.map intToWord (P.versionBranch P.version))
 
 getArgs :: IO (List String)
-getArgs = P.fmap (fl P.. P.fmap fl) P.getArgs
+getArgs = P.fmap (fl P.. P.fmap fs) P.getArgs
 
 die :: String -> IO a
-die s = P.die (tl s)
+die s = P.die (ts s)
 
 
 -------------------------------------------------- terminal I/O
@@ -322,30 +329,30 @@ hSetBuffering = P.hSetBuffering
 type FilePath = String
 
 readFile :: FilePath -> IO String
-readFile f = P.fmap fl (P.readFile (tl f))
+readFile f = P.fmap fs (P.readFile (ts f))
 
 writeFile :: FilePath -> String -> IO ()
-writeFile f s = P.writeFile (tl f) (tl s)
+writeFile f s = P.writeFile (ts f) (ts s)
 
 doesFileExist, doesDirectoryExist :: FilePath -> IO Bool
-doesFileExist f = P.doesFileExist (tl f)
-doesDirectoryExist f = P.doesDirectoryExist (tl f)
+doesFileExist f = P.doesFileExist (ts f)
+doesDirectoryExist f = P.doesDirectoryExist (ts f)
 
 getTemporaryDirectory, getDataDir :: IO FilePath
-getTemporaryDirectory = P.fmap fl P.getTemporaryDirectory
-getDataDir = P.fmap fl P.getDataDir
+getTemporaryDirectory = P.fmap fs P.getTemporaryDirectory
+getDataDir = P.fmap fs P.getDataDir
 
 getDataFileName :: FilePath -> IO FilePath
-getDataFileName f = P.fmap fl (P.getDataFileName (tl f))
+getDataFileName f = P.fmap fs (P.getDataFileName (ts f))
 
 createDirectoryIfMissing :: Bool -> FilePath -> IO ()
-createDirectoryIfMissing b f = P.createDirectoryIfMissing b (tl f)
+createDirectoryIfMissing b f = P.createDirectoryIfMissing b (ts f)
 
 removeDirectoryRecursive :: FilePath -> IO ()
-removeDirectoryRecursive f = P.removeDirectoryRecursive (tl f)
+removeDirectoryRecursive f = P.removeDirectoryRecursive (ts f)
 
 listDirectory :: FilePath -> IO (List FilePath)
-listDirectory f = P.fmap (fl P.. P.fmap fl) (P.listDirectory (tl f))
+listDirectory f = P.fmap (fl P.. P.fmap fs) (P.listDirectory (ts f))
 
 
 -------------------------------------------------- misc

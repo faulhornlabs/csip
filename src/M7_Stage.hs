@@ -1,14 +1,17 @@
 module M7_Stage
   ( stage
   , stageHaskell
+  , stage_eval
   ) where
 
-import qualified Prelude as P (Show, show)
+import qualified Prelude as P (String, Show, show)
 
+import A_Builtins (tl)
 import M1_Base
 import M3_Parse hiding (Lam)
 import qualified M3_Parse as E
-import M4_Eval hiding (TVar, TApp)
+import M4_Eval hiding (TVar, TApp, name)
+import qualified M4_Eval as E
 
 stage_ :: Val -> RefM (Scoped, List (Name, Scoped))
 stage_ t = do
@@ -20,7 +23,7 @@ stage :: Val -> RefM Scoped
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
 
 
-pShow = f 10 . fromList . P.show  where
+pShow = {- f 10 . -} fromList . P.show  where
   f :: Word -> String -> String
   f n = g n  where
     g 0 (' ':. cs) = '\n':. g n cs
@@ -44,6 +47,32 @@ unquoteTy = f where
     RVar "HPi" :@ a :@ E.Lam  n e -> f a >>= \fa -> f e <&> \fe -> RVar "HPi" :@ fa :@ E.Lam n fe
     a :@ b -> (:@) <$> f a <*> f b
     _ -> Nothing
+
+
+stage_eval :: Val -> RefM Scoped
+stage_eval v = do
+  t <- quoteTm_ True True False v
+  v' <- evalClosed =<< unquoteTm t
+  (s, _) <- quoteNF v'
+  pure s
+
+unquoteTm :: Tm -> RefM Tm
+unquoteTm t = runReader mempty (g t) where
+ g t st = f t  where
+  f = \case
+    TApps (TVal CTopLet) [_, _, TVal (E.name -> n), d, e] -> TLet n <$> f d <*> local st (insertIS n) (f e)
+    TVal CTopLet -> impossible
+    E.TApp a b -> E.TApp <$> f a <*> f b
+--    TVal 
+    TVal v -> pure (TVal v)
+    TSup c ts -> TSup c <$> mapM f ts
+    TLet{} -> impossible
+    TGen{} -> impossible
+    E.TVar{} -> impossible
+    TMatch{} -> impossible
+    TSel{} -> impossible
+    TRet{} -> impossible
+    TNoRet{} -> impossible
 
 unquote :: Scoped -> RefM Scoped
 unquote = f mempty
@@ -91,8 +120,8 @@ unquote = f mempty
 --------------------------------- priting for backends in Haskell
 
 data HName
-  = Builtin [Char]        -- the String is globally unique
-  | UserName [Char] Word
+  = Builtin P.String        -- the String is globally unique
+  | UserName P.String Word
   deriving (Eq, P.Show)
 
 data Exp
@@ -101,7 +130,7 @@ data Exp
   | App Exp Exp
   | Var HName
   | Con HName
-  | String String
+  | String P.String
   | Nat Integer
   deriving P.Show
 
@@ -139,7 +168,7 @@ convert = f  where
     RLet n Hole a b -> Let (name n) (f a) (f b)
     a :@ b -> App (f a) (f b)
     RNat n    -> Nat n
-    RString s -> String s
+    RString s -> String (tl s)
     RVar n -> case n of
       m | isConName m -> Con $ name n
       _ -> Var $ name n

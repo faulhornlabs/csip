@@ -25,7 +25,6 @@ pattern CAp     = WCon 2 "Ap"
 pattern CApp    = WCon 2 "App"
 pattern CLam    = WCon 2 "Lam"
 pattern CBool   = WCon 0 "Bool"
-pattern CTopLet = WCon 5 "TopLet"
 pattern CLet    = WCon 4 "Let"
 
 data Icit = Impl | ImplClass | Expl
@@ -145,9 +144,9 @@ defineGlob_ n_ fv t_ elab cont = nameOf n_ >>= \n -> addName_ n_ n do
   top <- asksEnv onTop
   case () of
     _ | not top -> addLocal False n v t co
-      | not (rigid t)   -> print t >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " : " <> s
+      | not (rigid t)   -> errorM $ pure ("meta in global definition:\n" <> showName n <> " : ") <<>> print t
       | not (rigid v), n_ /= "lookupDict", n_ /= "superClasses"
-      -> print v >>= \s -> errorM $ "meta in global definition:\n" <> showName n <> " = " <> s
+      -> errorM $ pure ("meta in global definition:\n" <> showName n <> " = ") <> print v
     _ -> addGlobal n v t co
 
 defineBound'_ :: NameStr -> Name -> Val -> RefM a -> RefM a
@@ -563,7 +562,7 @@ inferMethodBodies r = case r of
   RRule a b c -> addRule' (mapHead tickName a) b >> inferMethodBodies c
   RLet a Hole b c -> addRule' (RVar $ tickName a) b >> inferMethodBodies c
   REnd -> pure ()
-  r -> error' $ ("can't infer method body :\n" <>) <$> print r
+  r -> errorM $ ("can't infer method body :\n" <>) <$> print r
 
 addRule' a b = do
   lu <- asksEnv lookupName

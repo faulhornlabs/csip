@@ -677,13 +677,13 @@ class IsString a where
   fromString' :: String -> a
 
 fromString :: IsString a => [Char] -> a
-fromString cs = fromString' (fl cs)
+fromString cs = fromString' (fs cs)
 
 instance IsString String where
   fromString' s = s
 
 instance IsString [Char] where
-  fromString' s = tl s
+  fromString' s = ts s
 
 
 showInt :: Word -> String
@@ -1112,9 +1112,8 @@ exceptCounter = topM (newRef 0)    -- TODO: reset for local newExcept calls
 newExcept :: RefM (Except e)
 newExcept = MkExcept <$> (stateRef exceptCounter \i -> (i+1, i))
 
-throwError :: (HasCallStack, Print e) => Except e -> e -> RefM a
-throwError (MkExcept p) e
-  = print e >>= \s -> throwIO' p e ("\n" <> showSource s)
+throwError :: Except e -> e -> RefM a
+throwError (MkExcept p) e = throwIO' p e
 
 catchError :: Except e -> (e -> RefM a) -> RefM a -> RefM a
 catchError (MkExcept p) f ~g = catch' p f g
@@ -1390,7 +1389,7 @@ instance IsString Source where
 
 source_ :: Maybe Handler -> String -> Source
 source_ _ Nil = NilS
-source_ n s = let (l, v) = listArray s in ConsS 0 l (MkCtx n v) NilS
+source_ n s = listArray s \l v -> ConsS 0 l (MkCtx n v) NilS
 
 
 guard :: Bool -> List ()
@@ -1499,12 +1498,12 @@ instance Parse String where
 ----------------------------------------------- main exception
 
 data MainException
-  = MkMainException Source
+  = MkMainException (RefM Source)
   | MkTag (RefM Source) MainException
 
 instance Print MainException where
   print = \case
-    MkMainException s -> pure s
+    MkMainException s -> s
     MkTag _ r@MkTag{} -> print r
     MkTag s r -> s >>= \s -> print r <&> \r -> stringToSource (showSource r <> showLoc s)
 
@@ -1512,17 +1511,17 @@ instance Print MainException where
 mainException :: Except MainException
 mainException = topM newExcept
 
-errorM_ :: HasCallStack => Bool -> Source -> RefM a
-errorM_ cs s = throwError mainException (MkMainException (if cs then s <> "\n" <> stringToSource callStack else s))
+errorM_ :: HasCallStack => Bool -> RefM Source -> RefM a
+errorM_ cs ~s = throwError mainException (MkMainException (if cs then s <<>> "\n" <<>> pure (stringToSource callStack) else s))
 
-errorM :: HasCallStack => Source -> RefM a
+errorM :: HasCallStack => RefM Source -> RefM a
 errorM = errorM_ False
 
 error' :: HasCallStack => IO Source -> a
-error' s = unsafePerformIO (s >>= errorM_ False)
+error' ~s = unsafePerformIO (errorM_ False s)
 
 error :: HasCallStack => Source -> a
-error s = error' (pure s)
+error ~s = error' (pure s)
 
 undefined :: HasCallStack => a
 undefined = unsafePerformIO (errorM_ True "TODO")
@@ -1539,7 +1538,7 @@ assertM :: HasCallStack => Bool -> RefM ()
 assertM ~_ = pure ()
 
 tag :: Print s => s -> RefM a -> RefM a
-tag s = catchError mainException (throwError mainException . MkTag (print s))
+tag ~s = catchError mainException (throwError mainException . MkTag (print s))
 
 traceShow :: String -> RefM String -> RefM ()
 --traceShow ~s m {- | s `elem` ["1","2","3","4","5","6","7"] -} = m >>= \s -> traceM s
