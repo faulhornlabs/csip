@@ -33,7 +33,7 @@ pShow = {- f 10 . -} fromList . P.show  where
 
 stageHaskell v = do
   (r, ts) <- stage_ v
-  pure $ stringToSource $ pShow ({- map data2 $ -} groupData $ map (name *** convertTy) ts, convert r)
+  pure $ stringToSource $ pShow (tl $ groupData $ map (name *** convertTy) ts, convert r)
 
 unquoteTy :: Scoped -> Maybe Scoped
 unquoteTy = f where
@@ -143,13 +143,9 @@ data Ty
   deriving (P.Show)
 
 data Data
-  = Data HName Ty (List (HName, Ty))
+  = Data HName Ty [(HName, Ty)]
   deriving P.Show
-{-
-data Data2
-  = Data2 HName (List HName)
-  deriving Show
--}
+
 instance IsString HName where fromString' = Builtin . fromString'
 instance IsString Exp   where fromString' = Con . fromString'
 instance IsString Ty    where fromString' = TCon . fromString'
@@ -190,7 +186,7 @@ groupData :: List (HName, Ty) -> List Data
 groupData ts = do
   (n, t) <- ts
   guard (tcon t)
-  pure (Data n t (filter (con n . snd) ts))
+  pure (Data n t $ tl (filter (con n . snd) ts))
  where
   tcon = \case
     TCon "Ty" -> True
