@@ -35,7 +35,7 @@ getSource f = parseFile' "" f >>= \case
 
 
 showCmd :: List Source -> String
-showCmd = concat . intersperse " " . map chars
+showCmd = concatStr . intersperse " " . map chars
 
 doCmds :: List Source -> Source -> RefM String
 doCmds cmd s = do
@@ -89,15 +89,15 @@ listDirRec f = doesDirectoryExist f >>= \case
   False -> pure [f]
 
 testNames dir = do
-  ns <- listDirRec dir <&> \fs -> sort (filter (isJust . stripSuffix ".csip") fs)
-  if null ns then error $ "no .csip files found at " <> stringToSource dir
+  ns <- listDirRec dir <&> \fs -> sort (filter (isJust . stripSuffix ".csip" . MkString . stringToList) fs)
+  if null ns then error $ "no .csip files found at " <> stringToSource (MkString $ stringToList dir)
     else pure ns
 
 
 getResult odir fn s cmd _i n = do
   r <- parseFile' odir out
   pure (printFile' (odir </> out), r)
- where out = hashString $ "# " <> showCmd cmd <> " # " <> fn <> " # " <> showInt n <> " # " <> versionString <> "\n" <> chars s
+ where out = listToString $ unString $ hashString $ "# " <> showCmd cmd <> " # " <> MkString (stringToList fn) <> " # " <> showInt n <> " # " <> versionString <> "\n" <> chars s
 
 getResult' odir fn s cmd i n = do
   (printres, r) <- getResult odir fn s cmd i n
@@ -111,11 +111,6 @@ printFile' f s = do
   createDirectoryIfMissing True (directory f)
   printFile f s
 
-directory f = case dropWhile (/= '/') $ reverse f of
-  '/':. bs -> reverse bs
-  _ -> ""
-
-
 tests accept dir = do
   odir <- getTmpDir
   testFiles accept dir odir
@@ -123,12 +118,13 @@ tests accept dir = do
 testFiles accept dir odir = do
  fs <- testNames dir
  forM_ fs \fn -> do
+  let fn' = MkString (stringToList fn)
   Just (cmds, s) <- getSource fn
   forM_ (numberWith (,) 0 cmds) \(i, cmd) -> do
     if accept then do
       r <- getResult' odir fn s cmd i (length cmds)
       putStr
-           $ invert (foreground cyan $ "           " <> showCmd cmd <> " " <> fn <> "           ") <> "\n"
+           $ invert (foreground cyan $ "           " <> showCmd cmd <> " " <> fn' <> "           ") <> "\n"
           <> r <> "\n"
      else do
       (printres, r2) <- getResult odir fn s cmd i (length cmds)
@@ -136,9 +132,9 @@ testFiles accept dir odir = do
       when (r2 /= Just r) do
         putStr
            $ maybe "" (\r -> 
-             invert (foreground cyan $ "   old     " <> showCmd cmd <> " " <> fn <> "           ") <> "\n"
+             invert (foreground cyan $ "   old     " <> showCmd cmd <> " " <> fn' <> "           ") <> "\n"
           <> r <> "\n") r2
-          <> invert (foreground cyan $ "   new     " <> showCmd cmd <> " " <> fn <> "           ") <> "\n"
+          <> invert (foreground cyan $ "   new     " <> showCmd cmd <> " " <> fn' <> "           ") <> "\n"
           <> r <> "\n"
           <> maybe "" (\r' -> if lines r' /= lines r then
                invert (foreground red $ "    first diff    ")
@@ -157,13 +153,14 @@ present dir odir beg = do
    f i = do
     let fn = fs !! i
         reload  = present dir odir fn
+    let fn' = MkString (stringToList fn)
     getSource fn >>= \case
      Nothing -> reload
      Just (cmds, s) -> do
 
       rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
           r <- getResult' odir fn s cmd j (length cmds)
-          pure (showCmd cmd <> " " <> fn, r)
+          pure (showCmd cmd <> " " <> fn', r)
       let
         g = do
           let
@@ -191,12 +188,13 @@ export dir odir = do
   wh <- getTerminalSize
   fs <- testNames dir
   rs <- forM fs \fn -> do
+    let fn' = MkString (stringToList fn)
     Just (cmds, s) <- getSource fn
     rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
       r <- getResult' odir fn s cmd j (length cmds)
-      pure (showCmd cmd <> " " <> fn, r)
+      pure (showCmd cmd <> " " <> fn', r)
     pure $ mkScreen False wh cyan rs
-  pure (concat $ map (<>"\n") $ concat $ rs :: String)
+  pure (concatStr $ map (<> "\n") $ concat rs)
 
 distribute :: Word -> Word -> List Word
 distribute ((+1) -> parts) i = zipWith (-.) is (0:.is) where
@@ -215,16 +213,17 @@ mkScreen rich (w, h) color ts
   os = distribute (length tls) $ h -. mh
   tls = map f ts
 
+  f :: (String, String) -> List String
   f (title, s) =
-    (if rich then invert . foreground color $ replicate t1 ' ' <> title <> replicate t2 ' '
-             else replicate t1 '=' <> title <> replicate t2 '=')
-    :. (ls <&> \s -> (if rich then cursorForward ow else replicate ow ' ') <> s)
+    (if rich then invert . foreground color $ replicateStr t1 ' ' <> title <> replicateStr t2 ' '
+             else replicateStr t1 '=' <> title <> replicateStr t2 '=')
+    :. (ls <&> \s -> (if rich then cursorForward ow else replicateStr ow ' ') <> s)
    where
     ls = lines s
     mw = maximum (0:. map lengthANSI ls)
     ow = (w -. mw) `div` 2
-    t1 = (w -. length title) `div` 2
-    t2 = w -. t1 -. length title
+    t1 = (w -. lengthStr title) `div` 2
+    t2 = w -. t1 -. lengthStr title
 
 disp :: Word -> List String -> (String -> Maybe (IO ())) -> IO ()
 disp h ls' cont = wait 0
@@ -240,6 +239,7 @@ disp h ls' cont = wait 0
         "PageUp"   | z > 0  -> wait $ z -. h
         "PageDown" | z < mz -> wait $ min mz $ z + h
         s -> maybe (wait z) id $ cont s
+
 
 ----------------------------
 

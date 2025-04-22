@@ -9,7 +9,8 @@ description:
   Csip is a minimalistic Agda-like language for writing efficient programs with
   high-level abstractions.
 
-  Csip does staged compilation, without termination checking.
+  Csip supports staged compilation.
+  Csip has no termination checking.
 
 license:       BSD-2-Clause
 license-file:  LICENSE

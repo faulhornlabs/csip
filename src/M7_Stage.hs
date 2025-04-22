@@ -6,7 +6,7 @@ module M7_Stage
 
 import qualified Prelude as P (String, Show, show)
 
-import A_Builtins (tl)
+import A_Builtins (tl, fl)
 import M1_Base
 import M3_Parse hiding (Lam)
 import qualified M3_Parse as E
@@ -23,13 +23,15 @@ stage :: Val -> RefM Scoped
 stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
 
 
-pShow = {- f 10 . -} fromList . P.show  where
+pShow = {- f 10 . -} MkString . fl . P.show  where
+{-
   f :: Word -> String -> String
   f n = g n  where
     g 0 (' ':. cs) = '\n':. g n cs
     g i (c@' ':. cs) = c:. g (i-.1) cs
     g i (c:. cs) = c:. g i cs
     g _ Nil = Nil
+-}
 
 stageHaskell v = do
   (r, ts) <- stage_ v
@@ -155,7 +157,7 @@ name n = case nameId n of
     i | i >= 9223372036854775808 -> Builtin s
     i -> UserName s i
    where
-    s = toList $ chars $ showMixfix $ nameStr n
+    s = tl $ unString $ chars $ showMixfix $ nameStr n
 
 convert :: Scoped -> Exp
 convert = f  where
@@ -164,7 +166,7 @@ convert = f  where
     RLet n Hole a b -> Let (name n) (f a) (f b)
     a :@ b -> App (f a) (f b)
     RNat n    -> Nat n
-    RString s -> String (tl s)
+    RString s -> String (tl $ unString s)
     RVar n -> case n of
       m | isConName m -> Con $ name n
       _ -> Var $ name n

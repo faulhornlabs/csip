@@ -535,7 +535,7 @@ analyzeInstanceHead t = do
   cn <- getConName cn <&> fromJust
   pure (ns, is, cn, t)
 
-defineSuperclasses :: NameStr -> Val -> Name -> Word -> List Val -> RefM ()
+defineSuperclasses :: NameStr -> Val -> ConInfo -> Word -> List Val -> RefM ()
 defineSuperclasses nclass vclass dict num supers = do
   m <- mkName "m#"
   let c = TVal vclass `TApp` TVar m
@@ -644,13 +644,13 @@ infer_ top r = case r of
      inferMethods under b \mts -> do
       (supers, dt) <- dictType ct $ map snd mts
       ar <- conArity dt
-      defineGlob (dictName n_) (\n -> pure $ mkCon ar n $ Just dt) dt \dn dv _dt -> do
+      defineGlob (dictName n_) (\n -> pure $ mkCon ar n $ Just dt) dt \dn dv dt -> do
        addClass n (MkClassData tc dv supers mts) do
         gl <- asksEnv globals
         forM_ (numberWith (,) 0 mts) \(i, (mname, _)) -> case lookupIM mname gl of
-         Just (vf, _) -> addDictSelector vf dn (1 + length supers + length mts) (1 + length supers + i)
+         Just (vf, _) -> addDictSelector vf (dn, Just dt) (1 + length supers + length mts) (1 + length supers + i)
          _ -> impossible
-        defineSuperclasses n_ tc dn (1 + length supers + length mts) supers
+        defineSuperclasses n_ tc (dn, Just dt) (1 + length supers + length mts) supers
         infer e
   RInstance a b c | top -> do
     ct <- addForalls a >>= \a -> check a CType >>= evalEnv

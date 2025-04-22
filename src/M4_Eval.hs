@@ -4,6 +4,7 @@ module M4_Eval
   , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard, TDot,  TRet, TSel, TMatch, TSup, TNoRet)
   , Tm, tLam, tMeta, tLets
   , Raw, Scoped
+  , ConInfo
 
   , Val ( WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta,  WSel, WMatch, WRet, WNoRet
         , CFail, CSuperClassCons, CSuperClassNil, CMkStr, CMkNat, CTopLet
@@ -132,7 +133,7 @@ data Tm_ a
   | TSup Combinator (List (Tm_ a)) -- c t1 ... t(N-1)
   | TLet a (Tm_ a) (Tm_ a)  -- x = t; u
 
-  | TMatch Name (Tm_ a) (Tm_ a) (Tm_ a)
+  | TMatch ConInfo (Tm_ a) (Tm_ a) (Tm_ a)
   | TSel Word Word (Tm_ a)  -- unused
   | TRet (Tm_ a)
   | TNoRet (Tm_ a)
@@ -242,7 +243,7 @@ eval_
   -> (b -> b -> RefM b)
   -> (Combinator -> List b -> RefM b)
   -> (a -> RefM b)
-  -> (Name -> b -> b -> b -> RefM b)
+  -> (ConInfo -> b -> b -> b -> RefM b)
   -> (Word -> Word -> b -> RefM b)
   -> (b -> RefM b)
   -> (b -> RefM b)
@@ -349,6 +350,8 @@ type Scoped = Scoped_ Embedded
 
 -------------------------------
 
+type ConInfo = (Name, Maybe Val)
+
 data View
   = VCon Arity (Maybe Val){-type-}
   | VVar
@@ -363,7 +366,7 @@ data View
 
   | VSel Word Word Val       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
                            -- unused
-  | VMatch Name Val Val Val (Maybe (MetaRef, MetaDep))
+  | VMatch ConInfo Val Val Val (Maybe (MetaRef, MetaDep))
   | VRet Val
   | VNoRet Val
 
@@ -502,8 +505,8 @@ mkBuiltin :: Arity -> Name -> Maybe Val -> Val
 mkBuiltin ar n ty = case n of
   "AppendStr" -> f 2 \d -> \case [WString va, WString vb] -> vString $ va <> vb; _ -> d
   "EqStr"     -> f 2 \d -> \case [WString va, WString vb] -> if va == vb then pure CTrue else pure CFalse; _ -> d
-  "TakeStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ take (integerToWord va) vb; _ -> d
-  "DropStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ drop (integerToWord va) vb; _ -> d
+  "TakeStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ takeStr (integerToWord va) vb; _ -> d
+  "DropStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ dropStr (integerToWord va) vb; _ -> d
   "DecNat"    -> f 1 \d -> \case [WNat va] -> vNat $ max 0 $ va -. 1; _ -> d
   "AddNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va + vb; _ -> d
   "MulNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va * vb; _ -> d
@@ -703,14 +706,14 @@ addRule_ fn lhs rhs = do
     TDot{} -> pure m
     TVar n -> pure $ TLet n e m
     TView g p -> compilePat f p (TApp g e) m
-    TApps (TVal (WCon _ c)) ps -> do
+    TApps (TVal (WCon_ c _ ct)) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "wF#"   -- TODO: better naming
       x <- foldr (\(a, b) m -> m >>= \x -> compilePat f a b x) (pure m) $ zip ps $ map TVar ns
       tx <- tLazy x
       ne <- mkName "wG#"   -- TODO: better naming
       mok <- tLams ns tx
-      pure $ TLet ne e $ TMatch c (TVar ne) mok f
+      pure $ TLet ne e $ TMatch (c, ct) (TVar ne) mok f
     TApps (TVal _) (_:._) -> undefined
     TApps v (_:._) -> errorM (print (pprint v))
 --    TVal WString{} -> compilePat f (TView (TVal (mkBuiltin 2 "EqStr" Nothing) `TApp` p) (TVal CTrue)) e m
@@ -725,15 +728,14 @@ addRule_ fn lhs rhs = do
     TDot{} -> pure m
     TVar n -> tOLet n e m
     TView g p -> compilePat' f p (TApp g e) m
-    TApps (TVal (WCon _ c)) ps -> do
+    TApps (TVal con@WCon{}) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w#"   -- TODO: better naming
       x <- foldr (\(a, b) m -> m >>= \x -> compilePat' f a b x) (pure m) $ zip ps $ map TVar ns
       tx <- tOLazy x
       ne <- mkName "w#"   -- TODO: better naming
       mok <- tOLams ns tx
-      cs <- vString $ chars $ showName c
-      tOLet ne e $ TApps (TVal COMatch) [TVal cs, TVar ne, mok, f]
+      tOLet ne e $ TApps (TVal COMatch) [TVal con, TVar ne, mok, f]
     TApps (TVal _) (_:._) -> undefined
     TApps v (_:._) -> errorM (print (pprint v))
 --    TVal WString{} -> compilePat f (TView (TVal COEqStr `TApp` p) (TVal COTrue)) e m
@@ -745,7 +747,7 @@ addRule_ fn lhs rhs = do
 
 tLets ds e = foldr (uncurry TLet) e ds
 
-addDictSelector :: Val -> Name -> Word -> Word -> RefM ()
+addDictSelector :: Val -> ConInfo -> Word -> Word -> RefM ()
 addDictSelector (WFun _ r) dict args i = do
   old <- lookupRule r
   w <- mkName "_"
@@ -755,7 +757,7 @@ addDictSelector (WFun _ r) dict args i = do
   body <- tLams ns =<< tLazy (TRet $ TVar $ ns !! i)
   f <- tLam d $ TMatch dict (TVar d) body lold
   new <- tLam w f
-  updateRule (nameStr dict) r =<< evalClosed new
+  updateRule (nameStr $ fst dict) r =<< evalClosed new
 addDictSelector _ _ _ _ = impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
@@ -770,10 +772,10 @@ vSel i j v_ = force v_ >>= \v -> case headCon v of
     _ -> mkValue "sel" (rigid v) (closed v) $ VSel i j v
   _ -> mkValue "sel" (rigid v) (closed v) $ VSel i j v
 
-vMatch :: Name -> Val -> Val -> Val -> RefM Val
+vMatch :: ConInfo -> Val -> Val -> Val -> RefM Val
 vMatch n v_ ok fail = force v_ >>= \v -> case headCon v of
   Just (_{-TODO: 0-}, c)
-    | c == n      -> vForce =<< vApps ok (spineCon v)
+    | c == fst n -> vForce =<< vApps ok (spineCon v)
   Just (_{-TODO: 0-}, _)
                   -> vForce fail
   _ -> do
@@ -885,7 +887,13 @@ quoteNF v = runWriter g where
     WMeta_ n _    -> pure $ RVar n
     WFun n _  -> pure $ RVar n --lookupRule n r >>= f
     WSel i j e -> rSel i j <$> f e
-    WMatch n a b c _ -> rMatch n <$> f a <*> f b <*> f c
+    WMatch n@(n', ty) a b c _ -> do
+      case ty of
+        Nothing -> pure ()
+        Just ty -> do
+          t <- f ty
+          tell wst $ singletonIM n' t
+      rMatch n <$> f a <*> f b <*> f c
     WRet a -> rRet <$> f a
     WNoRet a -> rNoRet <$> f a
     WApp t u -> (:@) <$> f t <*> f u
@@ -896,7 +904,7 @@ quoteNF v = runWriter g where
       pure $ Lam (name n) q
     _ -> impossible
 
-rMatch n a b c = "match" :@ RVar n :@ a :@ b :@ c
+rMatch n a b c = "match" :@ RVar (fst n) :@ a :@ b :@ c
 rSel i j e = "sel" :@ RNat (wordToInteger i) :@ RNat (wordToInteger j) :@ e
 rRet e = "return" :@ e
 rNoRet e = "noreturn" :@ e
@@ -1002,7 +1010,7 @@ newCon n = mkName n <&> \n -> vCon 0 n Nothing
 
 getGens :: Either (State (MTT, List Name)) MTT -> NameSet -> Tm -> RefM Tm
 getGens get_ bv tt = do
-  traceShow Nil $ "getGens " <<>> showM tt
+  traceShow "" $ "getGens " <<>> showM tt
   runReader bv ff
  where
   ff rst = f get_ tt
@@ -1041,7 +1049,7 @@ getGens get_ bv tt = do
            WMeta d -> do
              n <- mkName "wS#"
              c <- newCon "cS#"
-             traceShow Nil $ "meta->var " <<>> showM c <<>> "\n := " <<>> showM n
+             traceShow "" $ "meta->var " <<>> showM c <<>> "\n := " <<>> showM n
              update d c
              modify st $ first $ insert (TVal c) $ TVar n
              modify st $ second (n:.)
@@ -1049,7 +1057,7 @@ getGens get_ bv tt = do
            WMetaApp_ _ _ _ d -> do
              n <- mkName "wR#"
              c <- newCon "cR#"
-             traceShow Nil $ "meta->var2 " <<>> showM c <<>> "\n := " <<>> showM n
+             traceShow "" $ "meta->var2 " <<>> showM c <<>> "\n := " <<>> showM n
              num <- metaArgNum vns
              ns <- mapM mkName $ replicate num "wD#"
              update d =<< vLams ns c
@@ -1060,7 +1068,7 @@ getGens get_ bv tt = do
              t <- metaToVar True (("TODO (22):\n" <>) <$> print vns) vns
              n <- mkName "wH#"
              modify st $ first $ insert t $ TVar n
-             traceShow Nil $ "addSuperClasses " <<>> showM d
+             traceShow "" $ "addSuperClasses " <<>> showM d
              addSuperClasses st (vVar n) d
              pure $ TVar n
            _ -> do
@@ -1071,7 +1079,7 @@ getGens get_ bv tt = do
             ns <- metaToVar False (pure "TODO (20)") vns
             let lo = lookupMap ns m
             case lo of
-              Nothing -> traceShow Nil ("missed lookup: " <<>> showM' ns)
+              Nothing -> traceShow "" ("missed lookup: " <<>> showM' ns)
               _ -> pure ()
             pure $ TGen $ fromMaybe ns lo
       t -> errorM $ "TODO(8): " <<>> print t
@@ -1082,7 +1090,7 @@ getGens get_ bv tt = do
                   a' <- quote =<< vApp lookupDictFun a
                   vv <- vApp b v
                   b' <- quote vv
-                  traceShow Nil ("superClass " <<>> showM' a' <<>> "\n  --> " <<>> showM b')
+                  traceShow "" ("superClass " <<>> showM' a' <<>> "\n  --> " <<>> showM b')
                   modify st $ first $ insert a' b'
                   addSuperClasses st vv a
 

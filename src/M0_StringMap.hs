@@ -38,7 +38,7 @@ topStringMap init = top_ do
   pure (m, reset)
 
 lookupSM_ :: String -> StringMap a -> RefM (HItem a)
-lookupSM_ s (MkSM hm) | h <- hashString s = unsafeRead hm h <&> f s
+lookupSM_ (unString -> s) (MkSM hm) | h <- hashString s = unsafeRead hm h <&> f s
    where
     f Nil = \case
       ConsHM _ _ t -> f Nil t
@@ -56,7 +56,7 @@ lookupSM s sm = lookupSM_ s sm <&> \case
   _ -> impossible
 
 updateSM :: String -> HItem a -> StringMap a -> RefM ()
-updateSM s x (MkSM hm) | h <- hashString s = do
+updateSM (unString -> s) x (MkSM hm) | h <- hashString s = do
     t <- unsafeRead hm h
     unsafeWrite hm h $ ins s t
    where

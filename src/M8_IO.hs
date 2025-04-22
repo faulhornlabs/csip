@@ -5,7 +5,7 @@ module M8_IO
   , presentationMode
   , putStr
   , flushStdout
-  , (</>)
+  , (</>), directory
   , parseFile
   , printFile
   , CLI (Dir, Pure), command, runCLI
@@ -17,14 +17,15 @@ module M8_IO
   )
  where
 
+import qualified A_Builtins as B
 import B_Prelude
 
 -----------------------------------------------
 
 hashString :: String -> String
-hashString = map char . base 22 64 . hash
+hashString = MkString . map char . base 22 64 . hash . unString
  where
-  hash :: String -> Word128
+  hash :: List Char -> Word128
   hash = foldl (\h c -> 33 * h + wordToWord128 (ord c)) 5381   -- djb2
 
   base :: Word -> Word128 -> Word128 -> List Word
@@ -43,8 +44,12 @@ hashString = map char . base 22 64 . hash
 
 (</>) :: FilePath -> FilePath -> FilePath
 "" </> b = b
-a </> b | last a == '/' = a <> b
+a </> b | last (stringToList a) == '/' = a <> b
 a </> b = a <> "/" <> b
+
+directory (stringToList -> f) = case dropWhile (/= '/') $ reverse f of
+  '/':. bs -> listToString (reverse bs)
+  _ -> ""
 
 parseFile :: (Parse a) => FilePath -> FilePath -> IO a
 parseFile dir f = do
@@ -53,10 +58,10 @@ parseFile dir f = do
 
 printFile :: (Print a) => FilePath -> a -> IO ()
 printFile f a =
-  writeFile f . chars =<< print a
+  writeFile f . listToString . unString . chars =<< print a
 
 putStr :: String -> IO ()
-putStr s = mapM_ putChar (fixANSI s) >> flushStdout
+putStr s = mapM_ putChar (unString (fixANSI s)) >> flushStdout
 
 flushStdout   :: IO ()
 flushStdout   = hFlush stdout
@@ -75,7 +80,7 @@ runIO m = do
   hSetBuffering stdin noBuffering
   hSetBuffering stdout lineBuffering
   () <- reset
-  catchError mainException (\e -> print e >>= die . showSource) m
+  catchError mainException (\e -> print e >>= die . listToString . unString . showSource) m
 
 presentationMode m = do
   putStr
@@ -105,7 +110,7 @@ getTerminalSize = fromMaybe defaultTerminalSize <$> do
     clearStdin
     putStr $ CSI [6] 'n' ""
     hFlush stdout
-    skip "\ESC["
+    skip ('\ESC' :. '[' :. Nil)
     as <- getInt 0 ';'
     bs <- getInt 0 'R'
     putStr "\ESC8" -- restore cursor
@@ -128,38 +133,39 @@ getTerminalSize = fromMaybe defaultTerminalSize <$> do
     _ -> pure Nothing
 
 
+getKey :: IO String
 getKey = getChar >>= \case
   '\DEL' -> pure "Backspace"
   '\ESC' -> getChar >>= \case
     '[' -> getArgs >>= \case
-      ("1":. _a, '~') -> pure "Home"
-      ("2":. _a, '~') -> pure "Ins"
-      ("3":. _a, '~') -> pure "Del"
-      ("4":. _a, '~') -> pure "End"
-      ("5":. _a, '~') -> pure "PageUp"
-      ("6":. _a, '~') -> pure "PageDown"
+      (('1' :. Nil) :. _a, '~') -> pure "Home"
+      (('2' :. Nil) :. _a, '~') -> pure "Ins"
+      (('3' :. Nil) :. _a, '~') -> pure "Del"
+      (('4' :. Nil) :. _a, '~') -> pure "End"
+      (('5' :. Nil) :. _a, '~') -> pure "PageUp"
+      (('6' :. Nil) :. _a, '~') -> pure "PageDown"
       (_, 'A') -> pure "Up"
       (_, 'B') -> pure "Down"
       (_, 'C') -> pure "Right"
       (_, 'D') -> pure "Left"
       _ -> getKey
     _ -> pure "Esc"
-  c -> pure [c]
+  c -> pure (charStr c)
  where
-  getArgs = first (reverse . map reverse) <$> f "" Nil
+  getArgs = first (reverse . map reverse) <$> f Nil Nil
   f i is = getChar >>= \case
-    ';' -> f "" (i:. is)
+    ';' -> f Nil (i:. is)
     c | isDigit c -> f (c:. i) is
     c -> pure (i:. is, c)
 
 versionString :: String
-versionString = intercalate "." $ map showInt versionBranch
+versionString = (concatStr . intersperse "." . map showInt) versionBranch
 
 -------------------------------- command line interface
 
 data CLI
   = Commands (List (String, String, CLI)) CLI
-  | Dir (String -> IO ())
+  | Dir (B.String -> IO ())
   | Pure (IO ())
   | CEmpty
 
@@ -173,23 +179,25 @@ instance Semigroup CLI where
   a <> _ = a
 
 runCLI :: String -> CLI -> IO ()
-runCLI progname x = runIO (getArgs >>= eval Nil x)
+runCLI progname x = runIO (getArgs >>= eval Nil x . map (MkString . stringToList))
  where
+  eval :: List String -> CLI -> List String -> IO ()
   eval hs x (s:. _) | s == "-h" || s == "--help" = printHelp hs (usage x)
   eval hs (Commands ps _) (s:. ss)
     | Just (h, x) <- lookupList s (ps <&> \(a, h, c) -> (a, (h, c))) = eval (h:. hs) x ss
   eval hs (Commands _ p) ss = eval hs p ss
-  eval _ (Dir io) [s] = io s
+  eval _ (Dir io) [s] = io $ listToString $ unString s
   eval _ (Pure io) Nil = io
-  eval _ _ _ = putStr $ unlines $ ["Usage:", ""] ++ (usage x <&> \h -> "  " ++ progname ++ h)
+  eval _ _ _ = putStr $ unlines $ ["Usage:", ""] <> (usage x <&> \h -> "  " <> progname <> h)
 
   usage = \case
     Dir _ -> [" FILE|DIR"]
     Pure _ -> [""]
-    Commands ps p -> (do (a, _b, c) <- ps; r <- usage c; pure (" " <> a <> r)) ++ usage p
+    Commands ps p -> (do (a, _b, c) <- ps; r <- usage c; pure (" " <> a <> r)) <> usage p
     CEmpty -> Nil
 
-  printHelp a hs = putStr $ unlines $ a ++ case hs of
-    hs | all null hs -> Nil
+  printHelp :: List String -> List String -> IO ()
+  printHelp a hs = putStr $ unlines $ a <> case hs of
+    hs | all nullStr hs -> Nil
     _  -> ["", "Options:"] ++ hs
 

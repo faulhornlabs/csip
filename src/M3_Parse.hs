@@ -43,7 +43,7 @@ class HasArity a where arity :: a -> Arity
 precedenceTableString :: String
 precedenceTableString = topM do
   f <- getDataFileName "precedences"
-  readFile f
+  readFile f <&> MkString . stringToList
 
 
 {-# noinline precedenceTable #-}
@@ -69,8 +69,8 @@ precedenceTable_ = mkTable (lines precedenceTableString)
     . reverse
     . map (mconcat . map g . words)
 
-  g ('_':. s) = \p -> [(h s, ([p], Nil))]
-  g s | last s == '_' = \p -> [(h (init s), (Nil, [p]))]
+  g s | headStr s == '_' = \p -> [(h (tailStr s), ([p], Nil))]
+  g s | lastStr s == '_' = \p -> [(h (initStr s), (Nil, [p]))]
   g _ = impossible
 
   h "SEMI"    = "\v"
@@ -83,14 +83,16 @@ precedenceTable_ = mkTable (lines precedenceTableString)
   ff n f = f n
 
 strPrecedence :: String -> (Precedence, Precedence)
+strPrecedence cs | nullStr cs = impossible
 strPrecedence cs
   | Just p <- lookupPrec cs = p
-strPrecedence (c:. _)
+strPrecedence s
   | isAlphaNum c || c == '\"'  = fromJust $ lookupPrec "ALPHA"
   | isGraphic  c  = fromJust $ lookupPrec "GRAPHIC"
-strPrecedence s@(_ :. _)
+ where
+  c = headStr s
+strPrecedence s
   = error $ "unknown first char in " <> stringToSource s
-strPrecedence _ = impossible
 
 topPrec = fromJust $ lookupPrec "ALPHA"
 maxPrec = fromJust $ lookupPrec "MAXPREC"
@@ -158,7 +160,7 @@ indent (MkISource s_) = g 0 s_
       | s == "\t" -> f (i+1) cs
       | s == "\r" -> f (i-.1) cs
       | s == "\n" -> c <> g i cs
-    NilCh | i == 0 -> stringToSource Nil
+    NilCh | i == 0 -> stringToSource ""
     NilCh -> impossible --error $ fromString' (show (i, showSource s_)) -- impossible
     _ -> impossible
 
@@ -178,14 +180,14 @@ data Token (a :: Phase)
                          --   if (a) then whitespace is allowed
     (Cached (Precedence, Precedence))
   | MkNat_ (Cached Source) Integer
-  | MkString_ (Cached Source) String
+  | StringToken_ (Cached Source) String
   deriving (Eq, Ord)
 
 pattern MkNat a b = MkNat_ (MkCached a) b
-pattern MkString a b = MkString_ (MkCached a) b
+pattern StringToken a b = StringToken_ (MkCached a) b
 pattern MkToken a b <- MkToken_ _ (MkCached a) b
 
-{-# COMPLETE MkToken, MkNat, MkString #-}
+{-# COMPLETE MkToken, MkNat, StringToken #-}
 
 {-
 instance Semigroup (Token a) where
@@ -215,7 +217,7 @@ isLowerToken t = isAtom t && case t of
 showToken = \case
     MkToken cs _ -> cs
     MkNat    s _ -> s
-    MkString s _ -> s
+    StringToken s _ -> s
 
 {-# noinline mkToken #-}
 mkToken cs = topM do
@@ -344,7 +346,7 @@ string   :: (OpSeq' Spaced) -> (OpSeq' Stringed)
 string = \case
   Node2 l a@"\"" (Node2 s b@"\"" r)
     | not (hasNl s), ss <- foldMap showToken $ fromOpSeq s
-    -> coerce l <> sing (MkString (showToken a <> ss <> showToken b) (chars ss)) <> string r
+    -> coerce l <> sing (StringToken (showToken a <> ss <> showToken b) (chars ss)) <> string r
   Node2 _ s@"\"" _ -> error' $ print s <&> \r -> "Unterminated string\n" <> r
   a -> coerce a
  where
@@ -647,7 +649,7 @@ instance IntHash (Token a) where
   intHash = \case
     MkToken_ h _ _ -> h
     MkNat_ _ n -> intHash (showInteger n)  -- TODO
-    MkString_ _ s -> intHash s
+    StringToken_ _ s -> intHash s
 
 -- strip os = filter (/= "___") os
 
@@ -1152,7 +1154,7 @@ preprocess t = coerceExpTree <$> f t  where
 preprocess2 t = f t  where
     f = \case
       RVar (MkM [MkNat s n]) -> RNat_ (MkCached s) n
-      RVar (MkM [MkString s n]) -> RString_ (MkCached s) n
+      RVar (MkM [StringToken s n]) -> RString_ (MkCached s) n
       RVar n -> RVar n
       REmbed x -> REmbed x
       a :@ b -> f a :@ f b
@@ -1167,7 +1169,7 @@ unembed = f where
   f = \case
     REmbed _ -> RVar "???"
     RNat_ (MkCached a) b -> RVar $ MkM [MkNat a b]
-    RString_ (MkCached a) b -> RVar $ MkM [MkString a b]
+    RString_ (MkCached a) b -> RVar $ MkM [StringToken a b]
     a :@ b -> f a :@ f b
     RVar n -> RVar n
 
@@ -1239,7 +1241,7 @@ instance Print Name where
 instance IsString Name where
   fromString' t = case fromString' t of
     MkNat{}    -> impossible
-    MkString{} -> impossible
+    StringToken{} -> impossible
     n -> NConst $ MkM [n]
 
 mkName :: NameStr -> RefM Name
@@ -1320,7 +1322,7 @@ unscope t = runReader (mempty :: IntMap Name Word, emptyMap :: Map NameStr Word)
             GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insert n (1 + fromMaybe (0 :: Word) k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
       RNat_ (MkCached a) b -> pure $ RVar $ MkM [MkNat a b]
-      RString_ (MkCached a) b -> pure $ RVar $ MkM [MkString a b]
+      RString_ (MkCached a) b -> pure $ RVar $ MkM [StringToken a b]
 
 addPrefix :: Token a -> Mixfix a -> Mixfix a
 addPrefix s (MkM_ ar a) = mkM ar $ s:. a
@@ -1371,8 +1373,8 @@ instance PPrint Source where
     (spanCh (\c -> not $ c `elem` ['\n', '\t', '\r', '\"', '\v']) -> (as, bs))
       -> co (res as) bs
    where
-    r s = pprintToken $ MkString s (chars s)
-    res s = pprintToken $ MkString ("\"" <> s <> "\"") (chars s)
+    r s = pprintToken $ StringToken s (chars s)
+    res s = pprintToken $ StringToken ("\"" <> s <> "\"") (chars s)
     co a NilCh = a
     co a b = RVar "<>" :@ a :@ pprint b
 
@@ -1400,7 +1402,7 @@ instance PPrint (Token a) where
 
 instance PPrint (Mixfix a) where
   pprint (MkM [t]) | precedence t == topPrec = pprint t
-  pprint s = pprintToken $ MkString x (chars x) where x = showMixfix s
+  pprint s = pprintToken $ StringToken x (chars x) where x = showMixfix s
 
 instance PPrint Name where
   pprint = pprint . nameStr -- RVar ?

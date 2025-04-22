@@ -181,7 +181,7 @@ compiled_words :=
   Dec \coll ->
   Dec \skip ->
   Def skip (c_words_skip coll skip)
- (Def coll (c_words_collect coll skip)
+ (Def coll (\w -> c_words_collect coll skip w)
   skip
  )
 

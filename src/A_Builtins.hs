@@ -145,14 +145,38 @@ tl Nil = []  where
 
 -------------------------------------------------- String
 
--- TODO: CharArray
-type String = List Char
+type String = P.UArray Word Char
 
-fs :: P.String -> String
-fs = fl
+unsafeAt :: String -> Word -> Char
+unsafeAt v i = P.unsafeAt v (wordToInt i)
 
-ts :: String -> P.String
-ts = tl
+numElements :: String -> Word
+numElements v = intToWord (P.numElements v)
+
+nullString :: String
+nullString = P.unsafeCoerce (P.listArray (0, P.negate 1) [] :: P.UArray Int Char)
+ where
+  fromInteger = P.fromInteger
+  fromListN _ x = x
+
+listToString :: List Char -> String
+listToString Nil = nullString
+listToString (tl -> es) = P.listArray (0, intToWord (P.length es P.- 1)) es
+ where
+  fromInteger = P.fromInteger
+
+stringToList :: String -> List Char
+stringToList s = go 0 (numElements s) where
+  fromInteger = P.fromInteger
+
+  go i j | i P.== j = Nil
+  go i j = Cons (unsafeAt s i) (go (i P.+ 1) j)
+
+fromPreludeString :: P.String -> String
+fromPreludeString s = listToString (fl s)
+
+toPreludeString :: String -> P.String
+toPreludeString s = tl (stringToList s)
 
 
 -------------------------------------------------- IO
@@ -169,7 +193,7 @@ bindIO' :: IO a -> IO b -> IO b
 bindIO' = (P.>>)
 
 failIO :: String -> IO a
-failIO s = P.fail (ts s)
+failIO s = P.fail (toPreludeString s)
 
 finally :: IO a -> IO b -> IO a
 finally = P.finally
@@ -190,23 +214,6 @@ readIORef = P.readIORef
 
 writeIORef :: IORef a -> a -> IO ()
 writeIORef = P.writeIORef
-
-
--------------------------------------------------- CharArray
-
-type CharArray = P.UArray Word Char
-
-listArray :: List Char -> (Word -> CharArray -> r) -> r
-listArray (tl -> es) cont = cont l (P.listArray (0, l P.- 1) es)   -- TODO: l /= 0
- where
-  fromInteger = P.fromInteger
-  l = intToWord (P.length es)
-
-unsafeAt :: CharArray -> Word -> Char
-unsafeAt v i = P.unsafeAt v (wordToInt i)
-
-numElements :: CharArray -> Word
-numElements v = intToWord (P.numElements v)
 
 
 -------------------------------------------------- IOArray
@@ -263,7 +270,7 @@ catch' (someNatVal -> P.SomeNat p) f ~g
 type HasCallStack = P.HasCallStack
 
 callStack :: HasCallStack => String
-callStack = fs (printCallStack (P.getCallStack P.callStack))
+callStack = fromPreludeString (printCallStack (P.getCallStack P.callStack))
  where
   fromString = P.fromString
   (<>) = (P.<>)
@@ -279,10 +286,10 @@ versionBranch :: List Word
 versionBranch = fl (P.map intToWord (P.versionBranch P.version))
 
 getArgs :: IO (List String)
-getArgs = P.fmap (fl P.. P.fmap fs) P.getArgs
+getArgs = P.fmap (fl P.. P.fmap fromPreludeString) P.getArgs
 
 die :: String -> IO a
-die s = P.die (ts s)
+die s = P.die (toPreludeString s)
 
 
 -------------------------------------------------- terminal I/O
@@ -329,30 +336,30 @@ hSetBuffering = P.hSetBuffering
 type FilePath = String
 
 readFile :: FilePath -> IO String
-readFile f = P.fmap fs (P.readFile (ts f))
+readFile f = P.fmap fromPreludeString (P.readFile (toPreludeString f))
 
 writeFile :: FilePath -> String -> IO ()
-writeFile f s = P.writeFile (ts f) (ts s)
+writeFile f s = P.writeFile (toPreludeString f) (toPreludeString s)
 
 doesFileExist, doesDirectoryExist :: FilePath -> IO Bool
-doesFileExist f = P.doesFileExist (ts f)
-doesDirectoryExist f = P.doesDirectoryExist (ts f)
+doesFileExist f = P.doesFileExist (toPreludeString f)
+doesDirectoryExist f = P.doesDirectoryExist (toPreludeString f)
 
 getTemporaryDirectory, getDataDir :: IO FilePath
-getTemporaryDirectory = P.fmap fs P.getTemporaryDirectory
-getDataDir = P.fmap fs P.getDataDir
+getTemporaryDirectory = P.fmap fromPreludeString P.getTemporaryDirectory
+getDataDir = P.fmap fromPreludeString P.getDataDir
 
 getDataFileName :: FilePath -> IO FilePath
-getDataFileName f = P.fmap fs (P.getDataFileName (ts f))
+getDataFileName f = P.fmap fromPreludeString (P.getDataFileName (toPreludeString f))
 
 createDirectoryIfMissing :: Bool -> FilePath -> IO ()
-createDirectoryIfMissing b f = P.createDirectoryIfMissing b (ts f)
+createDirectoryIfMissing b f = P.createDirectoryIfMissing b (toPreludeString f)
 
 removeDirectoryRecursive :: FilePath -> IO ()
-removeDirectoryRecursive f = P.removeDirectoryRecursive (ts f)
+removeDirectoryRecursive f = P.removeDirectoryRecursive (toPreludeString f)
 
 listDirectory :: FilePath -> IO (List FilePath)
-listDirectory f = P.fmap (fl P.. P.fmap fs) (P.listDirectory (ts f))
+listDirectory f = P.fmap (fl P.. P.fmap fromPreludeString) (P.listDirectory (toPreludeString f))
 
 
 -------------------------------------------------- misc

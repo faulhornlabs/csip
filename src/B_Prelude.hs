@@ -53,7 +53,7 @@ module B_Prelude
 
 
   , IO, FilePath, readFile
-  , IOArray, CharArray, unsafeRead, unsafeWrite, unsafeAt, unsafeNewArray_, numElements, listArray
+  , IOArray, unsafeRead, unsafeWrite, unsafeNewArray_
 
   , IORef, newIORef, readIORef, writeIORef
 
@@ -134,7 +134,8 @@ module B_Prelude
   , fromListN, fromList, toList
   , showSource
 
-
+  , unString, pattern MkString, lastStr, headStr, concatStr, nullStr, lengthStr, tailStr, initStr, takeStr, dropStr, replicateStr, charStr
+  , stringToList, listToString
   ) where
 
 import Prelude
@@ -143,7 +144,7 @@ import Prelude
   , otherwise
   )
 
-import A_Builtins hiding (Cons)
+import A_Builtins hiding (Cons, String)
 import qualified A_Builtins as B
 
 
@@ -548,10 +549,8 @@ stripPrefix Nil ~xs = Just xs
 stripPrefix (a :. ~as) (b :. ~bs) | a == b = stripPrefix as bs
 stripPrefix _ _ = Nothing
 
-maybeList a True bs = a :. bs
-maybeList _ _ bs = bs
-
-stripSuffix a b = fmap reverse (stripPrefix (reverse a) (reverse b))
+maybeList ~_ False bs = bs
+maybeList a _ bs = a :. bs
 
 
 ---------------------------------------- Ord
@@ -673,56 +672,89 @@ isAlphaNum c
 
 ---------------------------------------- String
 
+instance Semigroup B.String where
+  a <> b = listToString (stringToList a <> stringToList b)
+
+newtype String = MkString (List Char)
+
+unString (MkString s) = s
+
+
+instance Semigroup String where
+  MkString a <> MkString b = MkString (a <> b)
+
+instance Monoid String where
+  mempty = MkString mempty
+
+instance Eq String where
+  MkString a == MkString b = a == b
+
+instance Ord String where
+  MkString a `compare` MkString b = compare a b
+
+
 class IsString a where
   fromString' :: String -> a
 
 fromString :: IsString a => [Char] -> a
-fromString cs = fromString' (fs cs)
+fromString cs = fromString' (MkString (fl cs))
 
 instance IsString String where
   fromString' s = s
 
 instance IsString [Char] where
-  fromString' s = ts s
+  fromString' (MkString s) = tl s
 
+instance IsString B.String where
+  fromString' (MkString s) = listToString s
+
+{-
+instance IsString (List Char) where
+  fromString' (MkString s) = s
+-}
 
 showInt :: Word -> String
-showInt i | i == 0 = '0' :. Nil
-showInt i = f i
+showInt i | i == 0 = MkString ('0' :. Nil)
+showInt i = MkString (f i)
  where
   f i = g Nil (div i 10) (mod i 10)
   g acc 0 0 = acc
   g acc q r = g (chr (48 + r) :. acc) (div q 10) (mod q 10)
 
 showInteger :: Integer -> String
-showInteger i | i == 0 = '0' :. Nil
-showInteger i = f i
+showInteger i | i == 0 = MkString ('0' :. Nil)
+showInteger i = MkString (f i)
  where
   f i = g Nil (div i 10) (mod i 10)
   g acc 0 0 = acc
   g acc q r = g (chr (48 + integerToWord r) :. acc) (div q 10) (mod q 10)
 
 readInt :: String -> Word
-readInt ('0' :. Nil) = 0
-readInt cs = f 0 cs where
+readInt (MkString ('0' :. Nil)) = 0
+readInt (MkString cs) = f 0 cs where
   f acc Nil = acc
   f acc (c :. cs) = f (10 * acc + ord c -. 48) cs
 
-unlines xs = concat (map (++ ('\n' :. Nil)) xs)
+unlines :: List String -> String
+unlines xs = concatStr (map (<> "\n") xs)
 
-words = g where
+words :: String -> List String
+words (MkString s) = g s where
   g Nil = Nil
   g (' ' :. xs) = g xs
   g (x :. xs) = h (singleton x) xs
 
-  h acc Nil = reverse acc :. Nil
-  h acc (' ' :. ~xs) = reverse acc :. g xs
+  h acc Nil = MkString (reverse acc) :. Nil
+  h acc (' ' :. ~xs) = MkString (reverse acc) :. g xs
   h acc (x :. ~xs) = h (x :. acc) xs
 
-lines = h Nil where
-  h acc Nil = reverse acc :. Nil
-  h acc ('\n' :. ~xs) = reverse acc :. h Nil xs
+lines :: String -> List String
+lines (MkString s) = h Nil s where
+  h acc Nil = MkString (reverse acc) :. Nil
+  h acc ('\n' :. ~xs) = MkString (reverse acc) :. h Nil xs
   h acc (x :. ~xs) = h (x :. acc) xs
+
+stripSuffix (MkString a) (MkString b) = fmap (MkString . reverse) (stripPrefix (reverse a) (reverse b))
 
 
 -----------------------------------------------
@@ -838,6 +870,9 @@ instance IntHash Word where
 instance IntHash Char where
   intHash = ord
 
+instance IntHash String where
+  intHash (MkString s) = intHash s
+
 instance IntHash a => IntHash (List a) where
   intHash xs
     = foldl (\h c -> 33*h + c) 5381 (map intHash xs)   -- djb2
@@ -916,7 +951,7 @@ instance Natural Integer where
   mod = modInteger
 
 readNat :: String -> Maybe Integer
-readNat cs
+readNat (MkString cs)
   | all isDigit cs = Just (foldl (\i c -> 10*i + wordToInteger (digitToInt c)) 0 cs)
   | otherwise = Nothing
 
@@ -935,7 +970,7 @@ instance Monad IO where
   (>>) = bindIO'
 
 instance MonadFail IO where
-  fail = failIO
+  fail (MkString s) = failIO (listToString s)
 
 instance Semigroup a => Semigroup (IO a) where
   m <> n = m >>= \x -> n >>= \y -> pure (x <> y)
@@ -1127,7 +1162,7 @@ runExcept f = do
 ----------------------------------------------- ANSI String
 
 stripANSI :: String -> String
-stripANSI = f
+stripANSI (MkString s) = MkString (f s)
  where
   f = \case
     '\ESC':. '[':. cs -> f (skip cs)
@@ -1136,8 +1171,12 @@ stripANSI = f
 
   skip = drop 1 . dropWhile (\c -> isDigit c || c `elem` [';','?'])
 
+lengthStr (MkString s) = length s
+nullStr (MkString s) = null s
+
+
 lengthANSI :: String -> Word
-lengthANSI = length . stripANSI
+lengthANSI = lengthStr . stripANSI
 
 csi :: (IsString a, Monoid a) => List Word -> a -> a
 csi args code = "\ESC[" <> mconcat (intersperse ";" (map (fromString' . showInt) args)) <> code
@@ -1181,26 +1220,33 @@ fixANSI = f [0] [0] where
   f as bs (SGR [i] cs)
     | 30 <= i, i <= 37 = SGR [i] (f (i:. as) bs cs)
     | 40 <= i, i <= 47 = SGR [i] (f as (i:. bs) cs)
-  f as bs (c:. cs) = c:. f as bs cs
-  f _  _  Nil = Nil
+  f as bs (MkString (c:. cs)) | MkString s <- f as bs (MkString cs) = MkString (c:. s)
+  f _  _  (MkString Nil) = MkString Nil
 
-getCSI ('\ESC':. '[':. cs) = f "" Nil cs
+getCSI (MkString ('\ESC':. '[':. cs)) = f Nil Nil cs
  where
   f i is (c:. cs) = case c of
-    ';'           -> f "" (i:. is) cs
+    ';'           -> f Nil (i:. is) cs
     c | isDigit c -> f (c:. i) is cs
-    c             -> Just (reverse (map (readInt . reverse) (i:. is)), c, cs)
+    c             -> Just (reverse (map (readInt . MkString . reverse) (i:. is)), c, MkString cs)
   f _ _ _ = Nothing
 getCSI _ = Nothing
 
 pattern CSI :: List Word -> Char -> String -> String
 pattern CSI is c cs <- (getCSI -> Just (is, c, cs))
-  where CSI is c cs =  "\ESC[" ++ mconcat (intersperse ";" (map showInt is)) ++ c:. cs
+  where CSI is c cs =  "\ESC[" <> concatStr (intersperse ";" (map showInt is)) <> charStr c <> cs
 
+concatStr :: List String -> String
+concatStr = mconcat
+
+replicateStr n c = MkString (replicate n c)
+
+charStr :: Char -> String
+charStr c = MkString (c :. Nil)
 
 ----------------------------------------------- Source
 
-data Handler = MkHandler {fileId :: Word, fileName :: String}
+data Handler = MkHandler {fileId :: Word, fileName :: B.String}
 
 instance Eq  Handler where (==) = (==) `on` fileId
 instance Ord Handler where compare = compare `on` fileId
@@ -1210,12 +1256,12 @@ mkHandler s = do
   i <- newId
   pure (MkHandler i s)
 
-source :: (Parse a) => String -> String -> RefM a
+source :: (Parse a) => FilePath -> B.String -> RefM a
 source n s = do
   p <- mkHandler n
   parse (source_ (Just p) s)
 
-type Vec = CharArray
+type Vec = B.String
 
 lengthVec :: Vec -> Word
 lengthVec = numElements
@@ -1280,8 +1326,9 @@ meld s = f (len s) s  where
 
 {-# INLINE chars #-}
 chars :: Source -> String
-chars NilS = Nil
-chars (ConsS i j (MkCtx _ v) s) = (indexVec v <$> enumFromTo i j) ++ chars s
+chars s = MkString (go s)  where
+  go NilS = Nil
+  go (ConsS i j (MkCtx _ v) s) = (indexVec v <$> enumFromTo i j) ++ go s
 
 
 indexCtx (MkCtx _ v) i = indexVec v i
@@ -1375,21 +1422,28 @@ lengthCh = f 0 where
    f acc NilS = acc
    f acc (ConsS i j _ s) = f (acc + (j -. i)) s
 
-lastCh   = last   . chars
-headCh   = head   . chars
+lastCh   = lastStr   . chars
+headCh   = headStr   . chars
+
+lastStr (MkString s) = last s
+initStr (MkString s) = MkString (init s)
+headStr (MkString s) = head s
+tailStr (MkString s) = MkString (tail s)
+takeStr n (MkString s) = MkString (take n s)
+dropStr n (MkString s) = MkString (drop n s)
 
 mreplicate n a = mconcat (replicate n a)
 
 showSource s = chars s <> "\n" <> showLoc s
 
-stringToSource = source_ Nothing
+stringToSource (MkString s) = source_ Nothing (listToString s)
 
 instance IsString Source where
   fromString' = stringToSource
 
-source_ :: Maybe Handler -> String -> Source
-source_ _ Nil = NilS
-source_ n s = listArray s \l v -> ConsS 0 l (MkCtx n v) NilS
+source_ :: Maybe Handler -> B.String -> Source
+source_ _ "" = NilS
+source_ n v = ConsS 0 (numElements v) (MkCtx n v) NilS
 
 
 guard :: Bool -> List ()
@@ -1400,7 +1454,7 @@ showLoc_ :: Source -> List (String, String)
 showLoc_ s = split (meld s)
  where
   split NilS = Nil
-  split s@(ConsS _ _ (MkCtx (Just h) v) _) | (as, rest) <- go s = (fileName h, h_ (v, as)):. split rest
+  split s@(ConsS _ _ (MkCtx (Just h) v) _) | (as, rest) <- go s = (MkString $ stringToList $ fileName h, h_ (v, as)):. split rest
    where
     go (ConsS a b (MkCtx (Just h') _) s)
       | h' == h, (is, rest) <- go s = ((a, b):. is, rest)
@@ -1428,8 +1482,8 @@ showLoc_ s = split (meld s)
     . lines
     . h1
 
-  hh :: List (List (Bool, String)) -> String
-  hh ss = (intercalate "\n" . map h2 . groupOn . zip (widen 1 mask)) s2
+  hh :: List (List (Bool, List Char)) -> String
+  hh ss = (concatStr . intersperse "\n" . map h2 . groupOn . zip (widen 1 mask)) s2
    where
     s2 :: List String
     s2 = numberWith gb 1 ss
@@ -1437,29 +1491,29 @@ showLoc_ s = split (meld s)
 
   widen i bs = (take (length bs) . map (or . take (2*i + 1)) . tails) (replicate i False <> bs)
 
-  h2 (True, s) = intercalate "\n" s
+  h2 (True, s) = concatStr (intersperse "\n" s)
   h2 (False, _) = foreground green "..."
 
   ga Nil = False
   ga [(False, _)] = False
   ga _ = True
 
-  gb :: Word -> List (Bool, String) -> String
-  gb n s = foreground green (showInt n <> " | ") <> concat (map g s)  where
-    g (True, s) = background blue s
-    g (_, s) = s
+  gb :: Word -> List (Bool, List Char) -> String
+  gb n s = foreground green (showInt n <> " | ") <> concatStr (map g s)  where
+    g (True, s) = background blue (MkString s)
+    g (_, s) = MkString s
 
 showLoc :: Source -> String
-showLoc s = intercalate "\n" (showLoc_ s <&> \(f, x) -> invert (foreground green $ " " <> f <> " ") <> "\n" <> x)
+showLoc s = concatStr $ intersperse "\n" (showLoc_ s <&> \(f, x) -> invert (foreground green $ " " <> f <> " ") <> "\n" <> x)
 
 
 ------------------------------------------------
 
 importFile :: Parse a => Source -> RefM a
-importFile f = do
+importFile (listToString . unString . chars -> f) = do
   d <- getDataDir
-  s <- readFile (d <> "/" <> chars f <> ".csip")
-  source (chars f) s
+  s <- readFile (d <> "/" <> f <> ".csip")
+  source f s
 
 
 -----------------------------------------------
@@ -1512,7 +1566,7 @@ mainException :: Except MainException
 mainException = topM newExcept
 
 errorM_ :: HasCallStack => Bool -> RefM Source -> RefM a
-errorM_ cs ~s = throwError mainException (MkMainException (if cs then s <<>> "\n" <<>> pure (stringToSource callStack) else s))
+errorM_ cs ~s = throwError mainException (MkMainException (if cs then s <<>> "\n" <<>> pure (source_ Nothing callStack) else s))
 
 errorM :: HasCallStack => RefM Source -> RefM a
 errorM = errorM_ False
