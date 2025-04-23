@@ -19,7 +19,7 @@ Warning: It is not advised to use Csip yet, it is under development.
 
 ## Basic usage
 
-The extension of Csip source files is `.csip`  
+The extension of Csip source files is `.csip`
 
 The first lines of `.csip` files are directives
 which tell the compiler what to do.  
@@ -48,7 +48,7 @@ Compilation of source files:
 
     csip FILE|DIR
 
-The output is written to the standard output.  
+The output is written to the standard output.
 
 Note that the compiler output is cached.
 
@@ -157,35 +157,73 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- staging feature: object level recursion compiled to object level constructs is not supported
-- staging feature: no support for multiple object codes
-- feature: only builtin modules can be imported
-- feature: no deriving support
+- errors: check that no meta-level constructs remain in staged output
 - errors: pattern matching should not be allowed on object language constructors
-- errors: the main expression should be Code in staging mode
-- errors: constructors should be saturated in patterns
-- errors: recursive meta solutions should not be allowed
-- errors: constructors placement should be checked
-- errors: validity of type class and instance definitions should be checked
-- missing documentation
-- feature: local definitions are not supported
-- feature: only simple guards are supported
-- errors: infinite evaluation is not catched (by "gas", for example)
-- feature: closed data types and closed functions are not supported
+- staging feature: eta-expansion is needed on functions with object-level pattern matching only
+- feature: deriving for Eq and Ord classes
+- feature: only builtin modules can be imported
+
+- feature: improve metavariable handling before pattern match compilation
+- libraries: add typical dependently-typed data types (Fin, Vec, Dec, LessOrEqual, Image)
+
+- feature: lookupDict should be deeply replaced
+- feature: (=>) should be dependently typed
+- feature: better representation for constructor applications (~>)
+- feature: better handling of lambdas regarding type classes
+- refactoring: superclasses -> coerce
+- libraries: improve MTL
+
 - printing: recursive definitions are not properly printed
 - printing: sharing between values are sometimes lost during printing
+
+- errors: add limitations for pretty-printed output
+- errors: the main expression should be Code in staging mode
+- errors: check validity of constructor types
+- errors: check validity of type class and instance definitions
+- missing documentation
+
+- staging feature: add default interpreter backend
+- staging feature: object level recursion compiled to object level constructs is not supported
+- staging feature: support for multiple object codes
+- staging feature: support for more stages (pattern matching on staging output)
+
+- feature: support parametric modules
+
+- feature: support pattern synonyms
+- refactoring: Cons and Succ as pattern synonyms
+- feature: elab-level (meta-meta-level) implementation of metalevel
+  laziness, deriving, type classes, pattern synonyms, metavars, imports
+
 - feautre: dot patterns (in dependent pattern matching) are not supported
-- feature: pattern synonyms are not supported
-- feature: multi parameter type classes are not supported
+- feature: support closed data types
+- feature: support closed functions
+- feature: support multi-parameter type classes
+- feature: support local definitions
+- feature: only simple guards are supported
+
+- errors: infinite evaluation is not catched (by "gas", for example)
+- parsing: multiline comments interferes with layout rules
+- printing: string literal printing is not the inverse of the string literal parsing
+- errors: better gluing result (show less generated code)
+- errors: recursive meta solutions should not be allowed
+
+- performance: faster parametric modules
+- performance: type erasure
+- performance: refactor String handling
+- performance: optimize chained rewrite rules produced by pattern match compilation
+- performance: parsing and pretty printing should be near linear time operation
+- performance: faster supercombinator evaluation using interpreted register machines
+- performance: run staging on closed meta level values
+- performance: use linear maps (`IORef`s) instead of `IntMap`s
+
 - staging feature: there is no stage polymorphism
+- parsing: desugared `(a b : c)` does not share `c`
 - feature: `import` acts as an "include"
 - printing: types are not shown in elaborated output
 - printing: implicit/explicit distinction of lambdas and applications are missing in elaborated output
 - parsing: `do` and `where` should be at the end of the line
-- parsing: multiline comments interferes with layout rules
-- pringing: string literal printing is not the inverse of the string literal parsing
-- parsing: desugared `(a b : c)` does not share `c`
 - parsing: user defined operator precedences are not supported
+- performance: redirect graph nodes after conversion checking
 
 
 ## Performance
@@ -197,15 +235,6 @@ Implemented performance improvements:
 - unsaturated and blocked rewrite rule applications are cached
 - monad stacks in the Haskell source code are replaced with a custom solution
 
-Planned performance improvements:
-
-- optimize chained rewrite rules produced by pattern match compilation
-- parsing and pretty printing should be near linear time operation
-- faster supercombinator evaluation using interpreted register machines
-- run staging on closed meta level values
-- use linear maps (`IORef`s) instead of `IntMap`s
-- type erasure
-- redirect graph nodes after conversion checking
 
 
 ## Development workflows

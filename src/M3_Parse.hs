@@ -1298,7 +1298,10 @@ type Scoped_ a = ExpTree_ a Name
 unscope :: PPrint a => Scoped_ a -> RefM (ExpTree' Desug)
 unscope t = runReader (mempty :: IntMap Name Word, emptyMap :: Map NameStr Word) ff where
 
-  addIndex n i = addSuffix (addSuffix n "_") $ mkIntToken $ wordToInteger i
+  addIndex n Nothing = nameStr n
+  addIndex (nameStr -> n) (Just i) = addSuffix (addSuffix n "_") $ mkIntToken $ wordToInteger i
+
+--  addIndex n _i = addSuffix (addSuffix (nameStr n) "_") $ mkIntToken $ wordToInteger (nameId n)
 
   ff r = f t where
 
@@ -1309,16 +1312,16 @@ unscope t = runReader (mempty :: IntMap Name Word, emptyMap :: Map NameStr Word)
       RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
       RVar "CPi" :@ a :@       e -> f $ RCPi   a e
       RVar "IPi" :@ a :@       e -> f $ RIPi   a e
-      RVar v@(nameStr -> n) -> do
+      RVar v -> do
         k <- asks r (lookupIM v . fst)
-        let m = maybe n (addIndex n) k
+        let m = addIndex v k
         pure $ RVar m
       GLam es v a
         | NConst n@"_" <- v -> GLam <$> mapM f es <*> pure n <*> f a
         | n <- nameStr v -> asks r (lookupIM v . fst) >>= \case
           _ -> do
             k <- asks r (lookupMap n . snd)
-            let m = maybe n (addIndex n) k
+            let m = addIndex v k
             GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insert n (1 + fromMaybe (0 :: Word) k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
       RNat_ (MkCached a) b -> pure $ RVar $ MkM [MkNat a b]

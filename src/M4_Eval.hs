@@ -174,8 +174,11 @@ pattern TApps e es <- (getTApps -> (e, reverse -> es))
 
 tLam :: Name -> Tm -> RefM Tm
 tLam n t = do
+  traceShow "57" $ "tLam begin " <<>> showM n <<>> "  -->  " <<>> showM t
   (c, ns') <- mkCombinator n t
-  pure $ TSup c $ map TVar ns'
+  let r = TSup c $ map TVar ns'
+  traceShow "57" $ "tLam end " <<>> showM r
+  pure r
 
 tLams :: List Name -> Tm -> RefM Tm
 tLams Nil t = pure t

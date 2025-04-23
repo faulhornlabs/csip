@@ -153,7 +153,7 @@ defineBound'_ :: NameStr -> Name -> Val -> RefM a -> RefM a
 defineBound'_ n_ n t cont = addName_ n_ n $ addLocal True n (vVar n) t cont
 
 defineBound' :: NameStr -> Val -> (Name -> RefM a) -> RefM a
-defineBound' n_ t cont = nameOf n_ >>= \n -> defineBound'_ n_ n t $ cont n
+defineBound' n_ t cont = mkName n_ >>= \n -> defineBound'_ n_ n t $ cont n
 
 defineGlob n v t cont = do
   defineGlob_ n v t (pure ()) \a b c _ -> cont a b c
@@ -273,14 +273,12 @@ conv_ a b = do
       (f, m1, m1', m2, m2') <- matchArr a
 
       c1 <- vApp CCode m1'
-      q <- conv_ m3{- m3 -} c1{- Code m1 -}
+      q <- conv_ m3 c1{- Code m1 -}
 
       v <- lamName "v#" m4
       defineBound' v c1 \v -> do
-        let vv = vVar v
-
         c2 <- vApp CCode m2'
-        m4_v <- vApp m4 vv
+        m4_v <- vApp m4 (vVar v)
         h_v <- conv_ c2{- Code m2 -} m4_v  --  (Code m1 -> Code m2)  ==>  (Code m1 -> m4)
 
         let lam t = case (h_v, q) of

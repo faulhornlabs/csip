@@ -1595,7 +1595,7 @@ tag :: Print s => s -> RefM a -> RefM a
 tag ~s = catchError mainException (throwError mainException . MkTag (print s))
 
 traceShow :: String -> RefM String -> RefM ()
---traceShow ~s m {- | s `elem` ["1","2","3","4","5","6","7"] -} = m >>= \s -> traceM s
+--traceShow ~s m  | s `elem` ["56", "57"] {- "1","2","3","4","5","6","7"] -} = m >>= \s -> mapM_ putChar (unString s) >> putChar '\n'
 traceShow ~_ ~_ = pure ()
 
 

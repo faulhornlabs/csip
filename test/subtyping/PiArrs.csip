@@ -1,0 +1,13 @@
+# elab
+# stage
+# haskell_stage
+
+import Builtins
+
+data Int : Ty where
+
+builtin F : Code (Int -> Int -> Int -> Int -> Int) -> Code Int
+
+builtin G : Code Int -> Code Int -> Code Int -> Code Int -> Code Int
+
+F G
