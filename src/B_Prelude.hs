@@ -1,150 +1,98 @@
 module B_Prelude
   ( on, ($), (.), const, flip, id
 
-  , seq
-  , String
-  , Int, showInt, showInteger
-  , Word, Integer, {- intToInteger, integerToInt, -} wordToInteger, integerToWord, intToWord, wordToInt
-  , Word128, wordToWord128, word128ToWord
-  , fromInteger
-  , Bool, pattern True, otherwise, pattern False, (&&), (||), not, ifThenElse
-  , fst, snd, uncurry
-  , enumFromTo
+  , Semigroup, (<>), (<<>>)
+  , Monoid, mempty, mconcat, mreplicate
+
+  , Functor, fmap, (<$>), (<&>)
+  , pure, (<*>)
+
+  , Monad, when, (>>=), (>>), join, (>=>), (<=<), (=<<), forM, forM_, foldM
+  , MonadFail, fail
+
+  , Bool, pattern True, pattern False, otherwise, (&&), (||), not, ifThenElse
 
   , Char, ord, chr, digitToInt
+  , isUpper, isLower, isDigit, isGraphic, isAlphaNum
 
-  , List, pattern Nil, pattern (:.)
+  , List (Nil, (:.))
+  , head, tail
   , nub, init, last, (!!), (++), drop, dropWhile, take, takeWhile, filter
   , map, replicate, reverse, span, splitAt, zip, zipWith, unzip, groupBy
   , intercalate, intersperse, stripPrefix, tails
 
   , Maybe (Just, Nothing), maybe, fromMaybe, maybeToList, listToMaybe, isJust, isNothing
+  , fromJust, firstJust
 
+  , Void
   , Either (Left, Right), either
 
-  , IsString, fromString', fromString, unlines, lines, words
+  , Eq, (==), (/=)
+  , Ordering, pattern LT, pattern EQ, pattern GT, Ord, compare, (<=), (>=), (<), (>), max, min
 
-  , Eq ((==)), (/=)
-  , Ordering, pattern LT, pattern EQ, pattern GT
-  , Ord, compare, (<=), (>=), (<), (>), max, min
-  , Num, (+), (-), (*), (-.)
-  , div, mod, shiftR, shiftL, (.&.), (.|.), even
---  , Show, show
-  , readInt
+  , Int, showInt, showInteger, readInt, readNat
+  , Word, Integer, wordToInteger, integerToWord, intToWord, wordToInt
+  , Word128, wordToWord128, word128ToWord
+  , enumFromTo, numberWith
 
-  , Semigroup, (<>)
-  , Monoid, mempty, mconcat
+  , Num ((+), (*), fromInteger)
+  , Minus ((-))
+  , Diff ((-.))
+  , Natural (div, mod)
+  , Bits (shiftR, shiftL, (.&.), (.|.)), even
 
-  , Functor (fmap), (<$>), (<&>)
-
-  , pure, (<*>)
-
-  , Tup0, pattern T0, Tup2, pattern T2, Tup3, pattern T3, Tup4, pattern T4
+  , Tup0 (T0), Tup2 (T2), Tup3 (T3), Tup4 (T4), Tup5 (T5)
+  , fst, snd, uncurry
   , (***), first, second
 
-  , when, (>>=), (>>), join, (>=>), (<=<), (=<<), forM, forM_, foldM
-  , fail
-
   , foldMap, foldr, foldl, foldl1, null, length, elem, maximum, minimum, sum, all, and, any, or
-  , concat, concatMap, mapM_
-  , sequence, mapM
-
-  , coerce
-
-
-  , IO, FilePath, readFile
-  , IOArray, unsafeRead, unsafeWrite, unsafeNewArray_
-
-  , IORef, newIORef, readIORef, writeIORef
-
-  , HasCallStack, callStack
-
-  , finally
-
-  , getArgs
-
-  , hReady, hFlush, hSetEcho, BufferMode, noBuffering, lineBuffering, hSetBuffering, hIsTerminalDevice, stdin, stdout
-
-  , die
-
-  , versionBranch
-
-  , writeFile, getChar, putChar
-
-  , doesFileExist, doesDirectoryExist, getTemporaryDirectory
-  , listDirectory, createDirectoryIfMissing, removeDirectoryRecursive
-
-  , getDataDir, getDataFileName
-
---  , fromList, fromListN, toList
-  , throwIO', catch'
-
-------------------------
-
-  , maybeList, stringToSource, guard, lookupList
-  , stripSuffix
-  , firstJust
-
+  , concat, concatMap, mapM_, sequence, mapM
+  , condCons, guard, lookupList
 
   , Interval (MkInterval), mkInterval
   , Cached (MkCached, getCached)         -- newtype with trivial Eq, Ord instances
 
-  , mreplicate
+  , String (NilStr, ConsStr, ConsChar)
+  , mkString, mkLocString, appendLoc, charStr, lengthStr, stringToList, stripSuffix
+  , splitAtStr, revSplitAtStr, spanStr, revSpanStr, takeStr, revTakeStr, dropStr, revDropStr
+  , nullStr, tailStr, initStr, replicateStr, groupStr, lastStr, headStr
+  , unlines, lines, words
 
-  , head, tail, fromJust
-  , isUpper, isLower, isDigit, isGraphic, isAlphaNum
-
-  , Source (Cons, Cons', NilCh)
-  , lengthCh, spanCh, groupCh, splitAtCh, takeCh, dropCh, revSpanCh, revTakeCh, revDropCh, lastCh, headCh, readNat
-  , chars
   , Print (print)
   , Parse (parse)
-  , source
+  , IsString (fromString'), fromString
+
+  , Color, black, red, green, yellow, blue, magenta, cyan, white
+  , invertColors, background, foreground
+  , lengthANSI, fixANSI
+
+  , IntHash (intHash)
 
   , RefM, Ref, newRef, readRef, writeRef, modifyRef, stateRef
-  , top_
+  , top_  -- TODO: rename
   , topM, topRef, reset
 
   -- monad transformer alternatives
   , State,  runState,  evalState, gets, modify, topState
-  , Reader, runReader, asks, local, topReader
-  , Writer, runWriter, tell, listenAll
+  , Reader, runReader, asks, local, localInv, topReader
+  , Writer, runWriter, tell
   , Except, runExcept, throwError, catchError
 
   , newId
 
-  , pattern CSI
-  , invert, background, foreground, black, red, green, yellow, blue, magenta, cyan, white
-  , clearScreen, setCursorPosition, setCursorHPosition, cursorUp, cursorDown, cursorForward, cursorBack
-  , showCursor, hideCursor, fixANSI
-  , lengthANSI
+  , mainException, tagError
+  , impossible, undefined, error, errorM
+  , traceShow
 
-  , mainException
-  , tag
-  , impossible, undefined, error, error', errorM, assert, assertM
+  , coerce
 
-  , traceShow, (<<>>)
+  , HasCallStack
 
-  , IntHash (intHash)
-  , importFile
-
-  , Void
-
-  , numberWith
-  , fromListN, fromList, toList
-  , showSource
-
-  , unString, pattern MkString, lastStr, headStr, concatStr, nullStr, lengthStr, tailStr, initStr, takeStr, dropStr, replicateStr, charStr
-  , stringToList, listToString
   ) where
 
-import Prelude
-  ( Eq, (==)
-  , Ord, compare
-  , otherwise
-  )
+import Prelude (Eq, (==), Ord, compare, otherwise)
 
-import A_Builtins hiding (Cons, String)
+import A_Builtins hiding (Cons, String, FilePath, stringToList, listToString)
 import qualified A_Builtins as B
 
 
@@ -179,7 +127,7 @@ class Semigroup a => Monoid a where
 
 mconcat = foldr (<>) mempty
 
-foldMap f = foldr (\ a ~b -> f a <> b) mempty
+foldMap f = foldr (\a b -> f a <> b) mempty
 
 
 ---------------------------------------- Functor, Applicative, Monad
@@ -197,27 +145,31 @@ class Functor m => Applicative m where
 
 class Applicative m => Monad m where
   (>>=) :: m a -> (a -> m b) -> m b
-  (>>)  :: m a -> m b -> m b
-  a >> b = a >>= \_ -> b
+
+(>>) :: Monad m => m a -> m b -> m b
+a >> b = a >>= \_ -> b
 
 f =<< m = m >>= f
 
 mapM _ Nil = pure Nil
-mapM f (x :. ~xs) = f x >>= \x -> mapM f xs <&> (:.) x
+mapM f (x :. xs) = f x >>= \x -> mapM f xs <&> (:.) x
 
 mapM_ _ Nil = pure T0
-mapM_ f (x :. ~xs) = f x >> mapM_ f xs
+mapM_ f (x :. xs) = f x >> mapM_ f xs
 
 sequence Nil = pure Nil
-sequence (x :. ~xs) = x >>= \x -> sequence xs <&> (:.) x
+sequence (x :. xs) = x >>= \x -> sequence xs <&> (:.) x
 {-
 sequence_ Nil = pure T0
-sequence_ (x :. ~xs) = x >> sequence_ xs
+sequence_ (x :. xs) = x >> sequence_ xs
 -}
 
-forM a b = mapM b a
+forM  a b = mapM  b a
+
 forM_ a b = mapM_ b a
-(f >=> g) x = f x >>= g
+
+f >=> g = \x -> f x >>= g
+
 a <=< b = b >=> a
 
 foldM :: Monad m => (b -> a -> m b) -> b -> List a -> m b
@@ -225,8 +177,9 @@ foldM f a l = foldl (\a b -> a >>= \a -> f a b) (pure a) l
 
 join m = m >>= \x -> x
 
-when False ~_ = pure ()
-when _ m = m
+when :: Applicative m => Bool -> m Tup0 -> m Tup0
+when False ~_ = pure T0
+when _      m = m
 
 
 class Monad m => MonadFail m where
@@ -247,54 +200,24 @@ f $ ~x = f x
 
 on f g = \x y -> f (g x) (g y)
 
-seq _a b = b
-
 instance Semigroup a => Semigroup (b -> a) where
   (f <> g) x = f x <> g x
 
 instance Monoid a => Monoid (b -> a) where
-  mempty ~_ = mempty
+  mempty _ = mempty
 
 instance Functor ((->) a) where
   fmap f g x = f (g x)
 
 instance Applicative ((->) a) where
-  pure x ~_ = x
+  pure x _ = x
   (f <*> g) x = f x (g x)
 
 
 ---------------------------------------- List
 
-class IsList l where
-  type Item l
-
-  fromList :: [Item l] -> l
-  toList   :: l -> [Item l]
-
-  fromListN :: Int -> [Item l] -> l
-  fromListN _ = fromList
-{-
-  nil :: l
-  isNil :: l -> Bool
-
-  cons :: Item l -> l -> l
-  unCons :: l -> Maybe (Item l, l)
--}
-
-instance IsList [a] where
-  type Item [a] = a
-  fromList x = x
-  toList x = x
-
-instance IsList (List a) where
-  type Item (List a) = a
-
-  fromList = fl
-  toList = tl
-
 pattern (:.) :: a -> List a -> List a
-pattern x :. xs <- B.Cons x ~xs
-  where x :. ~xs = B.Cons x xs
+pattern x :. xs = B.Cons x xs
 
 {-# COMPLETE Nil, (:.) #-}
 
@@ -322,67 +245,70 @@ tail :: HasCallStack => List a -> List a
 tail (_:. as) = as
 tail _ = impossible
 
+tails Nil = Nil :. Nil
+tails ys@(_ :. xs) = ys :. tails xs
+
 singleton x = x :. Nil
 
 intersperse :: a -> List a -> List a
 intersperse _ Nil = Nil
 intersperse _ xs@(_ :. Nil) = xs
-intersperse x (a :. ~as) = a :. x :. intersperse x as
+intersperse x (a :. as) = a :. x :. intersperse x as
 
 intercalate :: List a -> List (List a) -> List a
 intercalate xs xss = concat (intersperse xs xss)
 
-{-
-head (a :. ~_) = a
--}
-
 init (_ :. Nil) = Nil
 init (x :. xs) = x :. init xs
-init _ = undefined
+init _ = impossible
 
 last (x :. Nil) = x
 last (_ :. xs) = last xs
-last _ = undefined
+last _ = impossible
 
 reverse = f Nil where
   f acc Nil = acc
   f acc (x :. xs) = f (x :. acc) xs
 
-tails Nil = Nil :. Nil
-tails ys@(_ :. ~xs) = ys :. tails xs
 
-
-foldr _ ~n Nil = n
-foldr f ~n (a :. ~b) = f a (foldr f n b)
+foldr _ n Nil = n
+foldr f n (a :. b) = f a (foldr f n b)
 
 foldl _ n Nil = n
 foldl f n (a :. b) = foldl f (f n a) b
 
 foldl1 f (x :. xs) = foldl f x xs
-foldl1 _ _ = undefined
+foldl1 _ _ = impossible
 
-{-
-scanl f ~n ~xs = n :. case xs of
-  Nil -> Nil
-  a :. ~b -> scanl f (f n a) b
--}
-
--- xs ++ ~ys = foldr (:.) ys xs
-(x :. ~xs) ++ ~ys = x :. (xs ++ ys)
-Nil ++ ys = ys
+(x :. xs) ++ ys = x :. (xs ++ ys)
+Nil       ++ ys = ys
 
 concat = foldr (++) Nil
 
---map f = foldr (\ x ~y -> f x :. y) Nil
 map _ Nil = Nil
-map f (x :. ~xs) = f x :. map f xs
+map f (x :. xs) = f x :. map f xs
 
 concatMap _ Nil = Nil
-concatMap f (a :. ~b) = f a ++ concatMap f b
+concatMap f (a :. b) = f a ++ concatMap f b
 
 numberWith :: (Word -> a -> b) -> Word -> List a -> List b
 numberWith _ _ Nil = Nil
-numberWith f i (~x :. ~xs) = f i x :. numberWith f (i+1) xs
+numberWith f i (x :. xs) = f i x :. numberWith f (i+1) xs
+
+
+mreplicate n a = mconcat (replicate n a)
+
+guard :: Bool -> List Tup0
+guard True = T0 :. Nil
+guard _ = Nil
+
+everyNth _ Nil = Nil
+everyNth i as = take i as :. everyNth i (drop i as)
+
+mapHead _ _ Nil = Nil
+mapHead f g (a :. as) = f a :. map g as
+
+revSplitAt n xs = splitAt (length xs -. n) xs
 
 
 ------------------------------------------------ Void
@@ -395,14 +321,6 @@ instance Ord Void where compare = impossible
 
 ---------------------------------------- Tuples
 
-{-
-data Tup0 = T0
--}
-
-type Tup0 = ()
-pattern T0 = ()
-{-# COMPLETE T0 #-}
-
 instance Semigroup Tup0 where
   _ <> _ = T0
 
@@ -410,15 +328,8 @@ instance Monoid Tup0 where
   mempty = T0
 
 
-
-{-
 data Tup2 a b = T2 a b
--}
-
-type Tup2 a b = (a, b)
-pattern T2 a b <- (~a, ~b)
-  where T2 ~a ~b = (a, b)
-{-# COMPLETE T2 #-}
+  deriving (Eq, Ord)
 
 instance (Semigroup a, Semigroup b) => Semigroup (Tup2 a b) where
   T2 a b <> T2 a' b' = T2 (a <> a') (b <> b')
@@ -426,47 +337,40 @@ instance (Semigroup a, Semigroup b) => Semigroup (Tup2 a b) where
 instance (Monoid a, Monoid b) => Monoid (Tup2 a b) where
   mempty = T2 mempty mempty
 
-fst (T2 a ~_) = a
+fst (T2 a _) = a
 
-snd (T2 ~_ b) = b
+snd (T2 _ b) = b
 
-uncurry f = \(T2 ~a ~b) -> f a b
+uncurry f = \(T2 a b) -> f a b
 
-first f = \(T2 ~a ~b) -> T2 (f a) b
+first f = \(T2 a b) -> T2 (f a) b
 
-second f = \(T2 ~a ~b) -> T2 a (f b)
+second f = \(T2 a b) -> T2 a (f b)
 
-f *** g = \(T2 ~a ~b) -> T2 (f a) (g b)
+f *** g = \(T2 a b) -> T2 (f a) (g b)
 
-zipWith f (x :. ~xs) (y :. ~ys) = f x y :. zipWith f xs ys
+matchT2 (T2 a b) f = f a b
+
+zipWith f (x :. xs) (y :. ys) = f x y :. zipWith f xs ys
 zipWith _ _ _ = Nil
 
 zip = zipWith T2
 
 unzip Nil = T2 Nil Nil
-unzip (T2 ~x ~y :. ~xs) | T2 ~a ~b <- unzip xs = T2 (x :. a) (y :. b)
+unzip (T2 x y :. xs) | T2 a b <- unzip xs = T2 (x :. a) (y :. b)
 
 
-
-{-
 data Tup3 a b c = T3 a b c
-data Tup4 a b c d = T4 a b c d
-data Tup5 a b c d e = T5 a b c d e
-data Tup6 a b c d e f = T6 a b c d e f
--}
-
-type Tup3 a b c = (a, b, c)
-pattern T3 a b c = (a, b, c)
-{-# COMPLETE T3 #-}
-type Tup4 a b c d = (a, b, c, d)
-pattern T4 a b c d = (a, b, c, d)
-{-# COMPLETE T4 #-}
 
 instance (Semigroup a, Semigroup b, Semigroup c) => Semigroup (Tup3 a b c) where
   T3 a b c <> T3 a' b' c' = T3 (a <> a') (b <> b') (c <> c')
 
 instance (Monoid a, Monoid b, Monoid c) => Monoid (Tup3 a b c) where
   mempty = T3 mempty mempty mempty
+
+data Tup4 a b c d = T4 a b c d
+
+data Tup5 a b c d e = T5 a b c d e
 
 
 ---------------------------------------- Bool
@@ -475,38 +379,38 @@ instance (Monoid a, Monoid b, Monoid c) => Monoid (Tup3 a b c) where
 data Bool = False | True
 -}
 
-ifThenElse True ~a ~_ = a
-ifThenElse _    ~_ ~b = b
+ifThenElse True a ~_ = a
+ifThenElse _    ~_ b = b
 
 not True = False
 not False = True
 
 False && ~_ = False
-True  && b = b
+True  && b  = b
 
-True || ~_ = True
-False || b = b
+True  || ~_ = True
+False || b  = b
 
 and = foldr (&&) True
 or  = foldr (||) False
 
-any p (x:. ~xs) = p x || any p xs
+any p (x:. xs) = p x || any p xs
 any _ _ = False
 
-all p (x:. ~xs) = p x && all p xs
+all p (x:. xs) = p x && all p xs
 all _ _ = True
 
-takeWhile p (x :. ~xs) | p x = x :. takeWhile p xs
+takeWhile p (x :. xs) | p x = x :. takeWhile p xs
 takeWhile _ _ = Nil
 
-dropWhile p (x :. ~xs) | p x = dropWhile p xs
+dropWhile p (x :. xs) | p x = dropWhile p xs
 dropWhile _ xs = xs
 
 span p (x :. xs) | p x, T2 as bs <- span p xs = T2 (x :. as) bs
 span _ xs = T2 Nil xs
 
 null Nil = True
-null _ = False
+null _   = False
 
 
 
@@ -515,42 +419,42 @@ null _ = False
 a /= b = not (a == b)
 
 
+condCons False ~_ bs =      bs
+condCons _      a bs = a :. bs
+
 filter _ Nil = Nil
-filter p (x :. ~xs) = case p x of False -> filter p xs; True -> x :. filter p xs
+filter p (x :. xs) = condCons (p x) x (filter p xs)
 
 groupBy _ Nil = Nil
-groupBy f xs | (as, ~bs) <- g xs = as:. groupBy f bs
+groupBy f xs | T2 as bs <- g xs = as:. groupBy f bs
  where
-  g Nil = (Nil, Nil)
-  g (x:. ~xs) | (as, ~bs) <- h x xs = (x:. as, bs)
+  g Nil = T2 Nil Nil
+  g (x:. xs) | T2 as bs <- h x xs = T2 (x:. as) bs
 
-  h _ Nil = (Nil, Nil)
-  h x (y:. ~ys)
-    | f x y, (as, ~bs) <- h y ys = (y:. as, bs)
-  h _ (y:. ~ys) = (Nil, y:. ys)
+  h _ Nil = T2 Nil Nil
+  h x (y:. ys)
+    | f x y, T2 as bs <- h y ys = T2 (y:. as) bs
+  h _ (y:. ys) = T2 Nil (y:. ys)
 
 nub Nil = Nil
-nub (x:. ~xs) = x:. nub (filter (/= x) xs)
+nub (x:. xs) = x:. nub (filter (/= x) xs)
 {-
 nubBy _ Nil = Nil
-nubBy f (x:. ~xs) = x:. nub (filter (\y -> f x /= f y) xs)
+nubBy f (x:. xs) = x:. nub (filter (\y -> f x /= f y) xs)
 -}
 
 lookupList _ Nil = Nothing
-lookupList a (T2 b ~c :. ~_) | a == b = Just c
+lookupList a (T2 b c :. _) | a == b = Just c
 lookupList a (_ :. bs) = lookupList a bs
 
 elem _ Nil = False
-elem a (b :. ~_) | a == b = True
+elem a (b :. _) | a == b = True
 elem a (_ :. bs) = elem a bs
 
 stripPrefix :: Eq a => List a -> List a -> Maybe (List a)
-stripPrefix Nil ~xs = Just xs
-stripPrefix (a :. ~as) (b :. ~bs) | a == b = stripPrefix as bs
+stripPrefix Nil xs = Just xs
+stripPrefix (a :. as) (b :. bs) | a == b = stripPrefix as bs
 stripPrefix _ _ = Nothing
-
-maybeList ~_ False bs = bs
-maybeList a _ bs = a :. bs
 
 
 ---------------------------------------- Ord
@@ -560,12 +464,16 @@ class Eq a => Ord a where
 -}
 
 a < b = compare a b == LT
+
 a > b = compare a b == GT
+
 a <= b = not (a > b)
+
 a >= b = not (a < b)
 
 max a b | a < b = b
 max a _ = a
+
 min a b | a > b = b
 min a _ = a
 
@@ -577,13 +485,7 @@ minimum = foldl1 min
 
 data Maybe a = Nothing | Just a
   deriving (Eq, Ord)
-{-
-instance Ord a => Ord (Maybe a) where
-  compare Nothing Nothing = EQ
-  compare Nothing _ = LT
-  compare _ Nothing = GT
-  compare (Just a) (Just b) = compare a b
--}
+
 maybeToList (Just x) = x :. Nil
 maybeToList _ = Nil
 
@@ -604,22 +506,22 @@ fromMaybe ~_ (Just a) = a
 fromMaybe a _ = a
 
 maybe ~_ b (Just c) = b c
-maybe a _ _ = a
+maybe a ~_ _ = a
 
 firstJust :: Maybe a -> Maybe a -> Maybe a
 firstJust Nothing x = x
-firstJust x _ = x
+firstJust x ~_ = x
 
 instance Semigroup a => Semigroup (Maybe a) where
-  Nothing <> a = a
-  a <> Nothing = a
-  Just a <> Just b = Just (a <> b)
+  Nothing <> a       = a
+  a       <> Nothing = a
+  Just a  <> Just b  = Just (a <> b)
 
 instance Semigroup a => Monoid (Maybe a) where
   mempty = Nothing
 
 instance Functor Maybe where
-  fmap _ Nothing = Nothing
+  fmap _ Nothing  = Nothing
   fmap f (Just a) = Just (f a)
 
 instance Applicative Maybe where
@@ -628,20 +530,14 @@ instance Applicative Maybe where
 
 instance Monad Maybe where
   Nothing >>= _ = Nothing
-  Just a >>= f = f a
+  Just a  >>= f = f a
 
 
 ---------------------------------------- Either
 
 data Either a b = Left a | Right b
   deriving (Eq, Ord)
-{-
-instance (Ord a, Ord b) => Ord (Either a b) where
-  Left a `compare` Left b = compare a b
-  Left{} `compare` _      = LT
-  _      `compare` Left{} = GT
-  Right a `compare` Right b = compare a b
--}
+
 either f g e = case e of
   Left  a -> f a
   Right b -> g b
@@ -655,106 +551,23 @@ chr = wordToChar
 
 digitToInt c = ord c -. ord '0'
 
-isUpper, isLower, isDigit, isGraphic, isAlphaNum :: Char -> Bool
+isSpace, isUpper, isLower, isDigit, isGraphic, isAlphaNum :: Char -> Bool
+
+isSpace ' '  = True
+isSpace '\n' = True
+isSpace _    = False
 
 isUpper c = 'A' <= c && c <= 'Z'
 isLower c = 'a' <= c && c <= 'z'
 isDigit c = '0' <= c && c <= '9'
 
 isGraphic c = c `elem`
-  [ '!',  '#','$','%','&',  '*','+'
-  , '-','.','/',  ':',  '<','=','>','?','@'
-  , '\\',  '^',  '|',  '~']
+  ( '!' :. '#' :. '$' :. '%' :. '&' :. '*' :. '+'
+   :. '-' :. '.' :. '/' :. ':' :. '<' :. '=' :. '>' :. '?' :. '@'
+   :. '\\' :. '^' :. '|' :. '~' :. Nil)
 
 isAlphaNum c
   = isLower c || isUpper c || isDigit c || c == '_' || c == '\''
-
-
----------------------------------------- String
-
-instance Semigroup B.String where
-  a <> b = listToString (stringToList a <> stringToList b)
-
-newtype String = MkString (List Char)
-
-unString (MkString s) = s
-
-
-instance Semigroup String where
-  MkString a <> MkString b = MkString (a <> b)
-
-instance Monoid String where
-  mempty = MkString mempty
-
-instance Eq String where
-  MkString a == MkString b = a == b
-
-instance Ord String where
-  MkString a `compare` MkString b = compare a b
-
-
-class IsString a where
-  fromString' :: String -> a
-
-fromString :: IsString a => [Char] -> a
-fromString cs = fromString' (MkString (fl cs))
-
-instance IsString String where
-  fromString' s = s
-
-instance IsString [Char] where
-  fromString' (MkString s) = tl s
-
-instance IsString B.String where
-  fromString' (MkString s) = listToString s
-
-{-
-instance IsString (List Char) where
-  fromString' (MkString s) = s
--}
-
-showInt :: Word -> String
-showInt i | i == 0 = MkString ('0' :. Nil)
-showInt i = MkString (f i)
- where
-  f i = g Nil (div i 10) (mod i 10)
-  g acc 0 0 = acc
-  g acc q r = g (chr (48 + r) :. acc) (div q 10) (mod q 10)
-
-showInteger :: Integer -> String
-showInteger i | i == 0 = MkString ('0' :. Nil)
-showInteger i = MkString (f i)
- where
-  f i = g Nil (div i 10) (mod i 10)
-  g acc 0 0 = acc
-  g acc q r = g (chr (48 + integerToWord r) :. acc) (div q 10) (mod q 10)
-
-readInt :: String -> Word
-readInt (MkString ('0' :. Nil)) = 0
-readInt (MkString cs) = f 0 cs where
-  f acc Nil = acc
-  f acc (c :. cs) = f (10 * acc + ord c -. 48) cs
-
-unlines :: List String -> String
-unlines xs = concatStr (map (<> "\n") xs)
-
-words :: String -> List String
-words (MkString s) = g s where
-  g Nil = Nil
-  g (' ' :. xs) = g xs
-  g (x :. xs) = h (singleton x) xs
-
-  h acc Nil = MkString (reverse acc) :. Nil
-  h acc (' ' :. ~xs) = MkString (reverse acc) :. g xs
-  h acc (x :. ~xs) = h (x :. acc) xs
-
-lines :: String -> List String
-lines (MkString s) = h Nil s where
-  h acc Nil = MkString (reverse acc) :. Nil
-  h acc ('\n' :. ~xs) = MkString (reverse acc) :. h Nil xs
-  h acc (x :. ~xs) = h (x :. acc) xs
-
-stripSuffix (MkString a) (MkString b) = fmap (MkString . reverse) (stripPrefix (reverse a) (reverse b))
 
 
 -----------------------------------------------
@@ -835,28 +648,28 @@ replicate 0 _ = Nil
 replicate i x = x :. replicate (i-.1) x
 
 take :: Word -> List a -> List a
-take 0 ~_ = Nil
+take 0 _   = Nil
 take _ Nil = Nil
-take i (x :. ~xs) = x :. take (i-.1) xs
+take i (x :. xs) = x :. take (i-.1) xs
 
 drop :: Word -> List a -> List a
-drop 0 xs = xs
+drop 0 xs  = xs
 drop _ Nil = Nil
-drop i (_ :. ~xs) = drop (i-.1) xs
+drop i (_ :. xs) = drop (i-.1) xs
 
 splitAt :: Word -> List a -> Tup2 (List a) (List a)
-splitAt 0 ~xs = T2 Nil xs
+splitAt 0 xs  = T2 Nil xs
 splitAt _ Nil = T2 Nil Nil
-splitAt i (x :. ~xs) | T2 as bs <- splitAt (i-.1) xs = T2 (x :. as) bs
+splitAt i (x :. xs) | T2 as bs <- splitAt (i-.1) xs = T2 (x :. as) bs
 
 enumFromTo :: Word -> Word -> List Word
 enumFromTo a b | a >= b = Nil
 enumFromTo a b = a :. enumFromTo (a+1) b
 
 (!!) :: List a -> Word -> a
-(x :. ~_) !! 0 = x
+(x :. _)  !! 0 = x
 (_ :. xs) !! i = xs !! (i-.1)
-_ !! _ = undefined
+_         !! _ = impossible
 
 
 ------------------------------------------------ IntHash
@@ -870,15 +683,12 @@ instance IntHash Word where
 instance IntHash Char where
   intHash = ord
 
-instance IntHash String where
-  intHash (MkString s) = intHash s
-
 instance IntHash a => IntHash (List a) where
   intHash xs
     = foldl (\h c -> 33*h + c) 5381 (map intHash xs)   -- djb2
 
-instance IntHash Source where
-  intHash = intHash . chars
+instance IntHash String where
+  intHash = intHash . stringToList
 
 
 ---------------------------------------- Int
@@ -945,15 +755,9 @@ instance Bits Integer where
   shiftL = shiftLInteger
   shiftR = shiftRInteger
 
--- TODO: remove
 instance Natural Integer where
   div = divInteger
   mod = modInteger
-
-readNat :: String -> Maybe Integer
-readNat (MkString cs)
-  | all isDigit cs = Just (foldl (\i c -> 10*i + wordToInteger (digitToInt c)) 0 cs)
-  | otherwise = Nothing
 
 
 ---------------------------------------- IO
@@ -967,10 +771,9 @@ instance Applicative IO where
 
 instance Monad IO where
   (>>=) = bindIO
-  (>>) = bindIO'
 
 instance MonadFail IO where
-  fail (MkString s) = failIO (listToString s)
+  fail s = failIO (fromString' s)
 
 instance Semigroup a => Semigroup (IO a) where
   m <> n = m >>= \x -> n >>= \y -> pure (x <> y)
@@ -1001,16 +804,16 @@ newRef a = MkRef <$> newIORef a
 readRef  :: Ref a -> RefM a
 readRef (MkRef r) = readIORef r
 
-writeRef :: Ref a -> a -> RefM ()
+writeRef :: Ref a -> a -> RefM Tup0
 writeRef (MkRef r) a = writeIORef r a
 
-modifyRef :: Ref a -> (a -> a) -> RefM ()
+modifyRef :: Ref a -> (a -> a) -> RefM Tup0
 modifyRef r f = readRef r >>= writeRef r . f
 
-stateRef :: Ref a -> (a -> (a, b)) -> RefM b
+stateRef :: Ref a -> (a -> Tup2 a b) -> RefM b
 stateRef r f = do
   a_ <- readRef r
-  let (a, b) = f a_
+  let T2 a b = f a_
   writeRef r a
   pure b
 
@@ -1022,14 +825,14 @@ idRef :: Ref Word
 idRef = topRef 0
 
 newId :: RefM Word
-newId = stateRef idRef \i -> (i+1, i)
+newId = stateRef idRef \i -> T2 (i+1) i
 
 
 --------------------------------------------------
 
 {-# noinline resetRef #-}
-resetRef :: Ref (RefM ())
-resetRef = topM (newRef (pure ()))
+resetRef :: Ref (RefM Tup0)
+resetRef = topM (newRef (pure T0))
 
 -- use with {-# noinline #-}
 -- only on top level
@@ -1040,15 +843,15 @@ topRef a = topRef_ (pure a)
 topRef_ :: RefM a -> Ref a
 topRef_ mx = top_ do
   r <- newRef =<< mx
-  pure (r, mx >>= writeRef r)
+  pure (T2 r (mx >>= writeRef r))
 
-top_ :: RefM (a, RefM ()) -> a
+top_ :: RefM (Tup2 a (RefM Tup0)) -> a
 top_ mx = topM do
-  (r, reset) <- mx
-  () <- modifyRef resetRef \m -> m >> reset
+  T2 r reset <- mx
+  T0 <- modifyRef resetRef \m -> m >> reset
   pure r
 
-reset :: RefM ()
+reset :: RefM Tup0
 reset = join (readRef resetRef)
 
 
@@ -1062,12 +865,12 @@ newState a = MkState <$> newRef a
 topState :: RefM a -> State a
 topState a = MkState (topRef_ a)
 
-runState :: a -> (State a -> RefM b) -> RefM (b, a)
+runState :: a -> (State a -> RefM b) -> RefM (Tup2 b a)
 runState a cont = do
   s@(MkState r) <- newState a
   b <- cont s
   a <- readRef r
-  pure (b, a)
+  pure (T2 b a)
 
 evalState :: a -> (State a -> RefM b) -> RefM b
 evalState s f = fst <$> runState s f
@@ -1075,7 +878,7 @@ evalState s f = fst <$> runState s f
 gets :: State a -> (a -> b) -> RefM b
 gets (MkState r) f = readRef r <&> f
 
-modify :: State a -> (a -> a) -> RefM ()
+modify :: State a -> (a -> a) -> RefM Tup0
 modify (MkState r) f = modifyRef r f
 
 
@@ -1102,14 +905,14 @@ local (MkReader st) f m = do
   a <- m
   writeRef st r
   pure a
-{-
+
 localInv :: Reader r -> (r -> r) -> (r -> r) -> RefM a -> RefM a
 localInv (MkReader st) f g m = do
   modifyRef st f
   a <- m
   modifyRef st g
   pure a
--}
+
 
 ----------------------------------------------- Writer
 
@@ -1117,22 +920,24 @@ newtype Writer a = MkWriter (Ref a)
 
 newWriter :: Monoid w => RefM (Writer w)
 newWriter = MkWriter <$> newRef mempty
-
-listenAll :: (Monoid w) => Writer w -> RefM a -> RefM (a, w)
+{-
+listenAll :: (Monoid w) => Writer w -> RefM a -> RefM (Tup2 a w)
 listenAll (MkWriter st) m = do
   r <- readRef st
   writeRef st mempty
   a <- m
   r2 <- readRef st
   writeRef st r
-  pure (a, r2)
-
-runWriter :: (Monoid w) => (Writer w -> RefM a) -> RefM (a, w)
+  pure (T2 a r2)
+-}
+runWriter :: (Monoid w) => (Writer w -> RefM a) -> RefM (Tup2 a w)
 runWriter cont = do
-  w <- newWriter
-  listenAll w (cont w)
+  w@(MkWriter st) <- newWriter
+  a <- cont w
+  r <- readRef st
+  pure (T2 a r)
 
-tell :: (Semigroup w) => Writer w -> w -> RefM ()
+tell :: (Semigroup w) => Writer w -> w -> RefM Tup0
 tell (MkWriter st) x = modify (MkState st) (x <>)
 
 
@@ -1145,7 +950,7 @@ exceptCounter :: Ref Word
 exceptCounter = topM (newRef 0)    -- TODO: reset for local newExcept calls
 
 newExcept :: RefM (Except e)
-newExcept = MkExcept <$> (stateRef exceptCounter \i -> (i+1, i))
+newExcept = MkExcept <$> (stateRef exceptCounter \i -> T2 (i+1) i)
 
 throwError :: Except e -> e -> RefM a
 throwError (MkExcept p) e = throwIO' p e
@@ -1159,128 +964,132 @@ runExcept f = do
   catchError e (pure . Left) (Right <$> f e)
 
 
------------------------------------------------ ANSI String
+---------------------------------------- String
 
-stripANSI :: String -> String
-stripANSI (MkString s) = MkString (f s)
- where
-  f = \case
-    '\ESC':. '[':. cs -> f (skip cs)
-    c:. cs -> c:. f cs
-    Nil -> Nil
+stringToList :: String -> List Char
+stringToList s = go s  where
+  go NilS = Nil
+  go (ConsS i j c s) = (indexCtx c <$> enumFromTo i j) ++ go s
 
-  skip = drop 1 . dropWhile (\c -> isDigit c || c `elem` [';','?'])
+instance Eq String where
+  (==) = (==) `on` stringToList
 
-lengthStr (MkString s) = length s
-nullStr (MkString s) = null s
+instance Ord String where
+  compare = compare `on` stringToList
 
+replicateStr :: Word -> Char -> String
+replicateStr n c = mreplicate n $ charStr c
 
-lengthANSI :: String -> Word
-lengthANSI = lengthStr . stripANSI
-
-csi :: (IsString a, Monoid a) => List Word -> a -> a
-csi args code = "\ESC[" <> mconcat (intersperse ";" (map (fromString' . showInt) args)) <> code
-
-clearScreen = csi [2] "J"
-setCursorHPosition n = csi [n + 1] "G"
-setCursorPosition n m = csi [n + 1, m + 1] "H"
-cursorUp      n = csi [n] "A"
-cursorDown    n = csi [n] "B"
-cursorForward n = csi [n] "C"
-cursorBack    n = csi [n] "D"
-
-hideCursor = csi Nil "?25l"
-showCursor = csi Nil "?25h"
-
-sgr args = csi args "m"
-background_ n = sgr [n + 40]
-foreground_ n = sgr [n + 30]
-normal = 9  -- color
-
-invert s = sgr [7] <> s <> sgr [27]
-background n s = background_ n <> s <> background_ normal
-
-foreground :: (IsString s, Monoid s) => Word -> s -> s
-foreground n s = foreground_ n <> s <> foreground_ normal
-
-black = 0
-red = 1
-green = 2
-yellow = 3
-blue = 4
-magenta = 5
-cyan = 6
-white = 7
-
-pattern SGR is s = CSI is 'm' s
-
-fixANSI = f [0] [0] where
-  f (_:. a:. as) bs (SGR [39] cs) = SGR [a] (f (a:. as) bs cs)
-  f as (_:. b:. bs) (SGR [49] cs) = SGR [b] (f as (b:. bs) cs)
-  f as bs (SGR [i] cs)
-    | 30 <= i, i <= 37 = SGR [i] (f (i:. as) bs cs)
-    | 40 <= i, i <= 47 = SGR [i] (f as (i:. bs) cs)
-  f as bs (MkString (c:. cs)) | MkString s <- f as bs (MkString cs) = MkString (c:. s)
-  f _  _  (MkString Nil) = MkString Nil
-
-getCSI (MkString ('\ESC':. '[':. cs)) = f Nil Nil cs
- where
-  f i is (c:. cs) = case c of
-    ';'           -> f Nil (i:. is) cs
-    c | isDigit c -> f (c:. i) is cs
-    c             -> Just (reverse (map (readInt . MkString . reverse) (i:. is)), c, MkString cs)
-  f _ _ _ = Nothing
-getCSI _ = Nothing
-
-pattern CSI :: List Word -> Char -> String -> String
-pattern CSI is c cs <- (getCSI -> Just (is, c, cs))
-  where CSI is c cs =  "\ESC[" <> concatStr (intersperse ";" (map showInt is)) <> charStr c <> cs
-
-concatStr :: List String -> String
-concatStr = mconcat
-
-replicateStr n c = MkString (replicate n c)
+charsStr :: B.String
+charsStr = B.listToString $ map wordToChar $ enumFromTo 0 128
 
 charStr :: Char -> String
-charStr c = MkString (c :. Nil)
+charStr (charToWord -> i) | i < 128 = ConsS i (i+1) (MkCtx Nothing charsStr) NilS
+charStr c = mkString $ B.listToString (c :. Nil)
 
------------------------------------------------ Source
+showInt :: Word -> String
+showInt i | i == 0 = charStr '0'
+showInt i = g mempty (div i 10) (mod i 10)
+ where
+  g acc 0 0 = acc
+  g acc q r = g (charStr (chr (48 + r)) <> acc) (div q 10) (mod q 10)
 
-data Handler = MkHandler {fileId :: Word, fileName :: B.String}
+showInteger :: Integer -> String
+showInteger i | i == 0 = charStr '0'
+showInteger i = g mempty (div i 10) (mod i 10)
+ where
+  g acc 0 0 = acc
+  g acc q r = g (charStr (chr $ 48 + integerToWord r) <> acc) (div q 10) (mod q 10)
+
+readInt :: String -> Word
+readInt (stringToList -> ('0' :. Nil)) = 0
+readInt (stringToList -> cs) = f 0 cs where
+  f acc Nil = acc
+  f acc (c :. cs) = f (10 * acc + ord c -. 48) cs
+
+readNat :: String -> Maybe Integer
+readNat (stringToList -> cs)
+  | all isDigit cs = Just (foldl (\i c -> 10*i + wordToInteger (digitToInt c)) 0 cs)
+  | otherwise = Nothing
+
+unlines :: List String -> String
+unlines xs = mconcat (map (<> "\n") xs)
+
+words :: String -> List String
+words (spanStr isSpace -> T2 _ bs) = g bs where
+  g NilStr = Nil
+  g (spanStr (not . isSpace) -> T2 as bs) = as :. words bs
+
+lines :: String -> List String
+lines (spanStr (/= '\n') -> T2 as xs) = as :. h xs  where
+  h (ConsChar '\n' xs) = lines xs
+  h _ = Nil
+
+stripSuffix a b
+  | T2 b1 b2 <- revSplitAtStr (lengthStr a) b
+  , a == b2
+  = Just b1
+  | otherwise = Nothing
+
+
+class IsString a where
+  fromString' :: String -> a
+
+fromString :: IsString a => [Char] -> a
+fromString cs = fromString' (mkString $ fromPreludeString cs)
+
+instance IsString String where
+  fromString' s = s
+
+instance IsString B.String where
+  fromString' (stringToList -> s) = B.listToString s
+
+instance IsString [Char] where
+  fromString' (stringToList -> s) = toList s
+
+instance IsString (List Char) where
+  fromString' (stringToList -> s) = s
+
+
+
+----------------------------------------------- String
+
+type FilePath = String
+
+data Handler = MkHandler {fileId :: Word, fileName :: FilePath}
 
 instance Eq  Handler where (==) = (==) `on` fileId
 instance Ord Handler where compare = compare `on` fileId
+
+mkLocString_ :: Maybe Handler -> B.String -> String
+mkLocString_ _ v | lengthString v == 0 = NilS
+mkLocString_ n v = ConsS 0 (lengthString v) (MkCtx n v) NilS
+
+mkString :: B.String -> String
+mkString s = mkLocString_ Nothing s
 
 mkHandler :: FilePath -> RefM Handler
 mkHandler s = do
   i <- newId
   pure (MkHandler i s)
 
-source :: (Parse a) => FilePath -> B.String -> RefM a
-source n s = do
+mkLocString :: (Parse a) => FilePath -> B.String -> RefM a
+mkLocString n s = do
   p <- mkHandler n
-  parse (source_ (Just p) s)
-
-type Vec = B.String
-
-lengthVec :: Vec -> Word
-lengthVec = numElements
-
-indexVec :: Vec -> Word -> Char
-indexVec = unsafeAt
+  parse (mkLocString_ (Just p) s)
 
 
-data CharCtx = MkCtx (Maybe Handler) Vec
+data CharCtx = MkCtx (Maybe Handler) B.String
 
 instance Eq CharCtx where
   MkCtx (Just h) _ == MkCtx (Just h') _ = h == h'
   _ == _ = False
 
-data Source
+data String
   = NilS
-  | ConsS {-# UNPACK #-} Word {-# UNPACK #-} Word CharCtx Source
+  | ConsS {-# UNPACK #-} Word {-# UNPACK #-} Word CharCtx String
 
-instance Semigroup Source where
+instance Semigroup String where
   NilS <> s = s
   ConsS a b c s <> s' = consS a b c (s <> s')
 
@@ -1288,14 +1097,131 @@ consS a b c (ConsS a' b' c' s)
   | b == a', c == c' = ConsS a b' c s
 consS a b c s = ConsS a b c s
 
-instance Monoid Source where
+instance Monoid String where
   mempty = NilS
+
+stripSource :: String -> String
+stripSource NilS = NilS
+stripSource (ConsS a b (MkCtx _ v) s) = ConsS a b (MkCtx Nothing v) (stripSource s)
+
+
+indexCtx (MkCtx _ v) i = unsafeAt v i
+
+pattern NilStr :: String
+pattern NilStr <- (getNil -> True)
+
+pattern ConsStr :: String -> String -> String
+pattern ConsStr c s <- (getConsStr -> Just (T2 c s))
+
+pattern ConsChar :: Char -> String -> String
+pattern ConsChar c s <- (getConsChar -> Just (T2 c s))
+
+{-# COMPLETE ConsStr,  NilStr #-}
+{-# COMPLETE ConsChar, NilStr #-}
+
+getNil NilS = True
+getNil _ = False
+
+getConsStr (ConsS i j ctx ss)
+  | j == i + 1 = Just (T2 (ConsS i j ctx NilS) ss)
+  | True  = Just (T2 (ConsS i (i+1) ctx NilS) (ConsS (i+1) j ctx ss))
+getConsStr _ = Nothing
+
+getConsChar (ConsS i j ctx ss)
+  | j == i + 1 = Just (T2 (indexCtx ctx i) ss)
+  | True  = Just (T2 (indexCtx ctx i) (ConsS (i+1) j ctx ss))
+getConsChar _ = Nothing
+
+spanStr, revSpanStr :: (Char -> Bool) -> String -> Tup2 String String
+spanStr p = spanCh_ \_ -> p
+revSpanStr p = revSpanCh_ \_ -> p
+
+splitAtStr, revSplitAtStr :: Word -> String -> Tup2 String String
+takeStr, dropStr, revTakeStr, revDropStr :: Word -> String -> String
+
+splitAtStr n = spanCh_ \i _ -> i < n
+takeStr n = fst . splitAtStr n
+dropStr n = snd . splitAtStr n
+
+revSplitAtStr n = revSpanCh_ \i _ -> i < n
+revTakeStr n = snd . revSplitAtStr n
+revDropStr n = fst . revSplitAtStr n
+
+groupStr p = groupCh_ \_ -> p
+
+groupCh_ :: (Word -> Char -> Char -> Bool) -> String -> Tup2 String String
+groupCh_ p ss = f' ss
+ where
+  f' NilS = T2 NilS NilS
+  f' (ConsS i j c ss) = g (indexCtx c i) (i+1)
+   where
+    g l x
+      | x == j, T2 as bs <- f (j -. i) l ss = T2 (ConsS i j c as) bs
+      | l' <- indexCtx c x, p (x -. i) l l' = g l' (x+1)
+    g _ x = T2 (ConsS i x c NilS) (ConsS x j c ss)
+
+  f _ _ NilS = T2 NilS NilS
+  f offs l s@(ConsS i j c ss) = g l i
+   where
+    g l x
+      | x == j, T2 as bs <- f (offs + j -. i) l ss = T2 (ConsS i j c as) bs
+      | l' <- indexCtx c x, p (offs + x -. i) l l' = g l' (x+1)
+      | x == i    = T2 NilS s
+    g _ x = T2 (ConsS i x c NilS) (ConsS x j c ss)
+
+spanCh_ :: (Word -> Char -> Bool) -> String -> Tup2 String String
+spanCh_ p ss = f 0 ss
+ where
+  f _ NilS = T2 NilS NilS
+  f offs s@(ConsS i j c ss) = g i
+   where
+    g x
+      | x == j, T2 as bs <- f (offs + j -. i) ss = T2 (ConsS i j c as) bs
+      | p (offs + x -. i) (indexCtx c x) = g (x+1)
+      | x == i    = T2 NilS s
+    g x = T2 (ConsS i x c NilS) (ConsS x j c ss)
 
 reverseS = f NilS where
   f acc NilS = acc
   f acc (ConsS a b c s) = f (ConsS a b c acc) s
 
-meld :: Source -> Source
+revSpanCh_ :: (Word -> Char -> Bool) -> String -> Tup2 String String
+revSpanCh_ p ss | T2 as bs <- f 0 (reverseS ss) = T2 (reverseS bs) (reverseS as)
+ where
+  f _ NilS = T2 NilS NilS
+  f offs s@(ConsS j i c ss) = g i
+   where
+    g x
+      | x == j, T2 as bs <- f (offs + i -. j) ss = T2 (ConsS j i c as) bs
+      | p (offs + i -. x) (indexCtx c (x-.1)) = g (x-.1)
+      | x == i    = T2 NilS s
+    g x = T2 (ConsS x i c NilS) (ConsS j x c ss)
+
+lengthStr = f 0 where
+   f acc NilS = acc
+   f acc (ConsS i j _ s) = f (acc + (j -. i)) s
+
+nullStr NilS = True
+nullStr _ = False
+
+headStr (ConsChar c _) = c
+headStr _ = impossible
+
+tailStr (ConsChar _ s) = s
+tailStr _ = impossible
+
+-- TODO: optimize
+lastStr s = case snd (revSplitAtStr 1 s) of
+  ConsChar c _ -> c
+  _ -> impossible
+
+initStr NilStr = impossible
+initStr s = fst (revSplitAtStr 1 s)
+
+appendLoc s = stripSource s <> "\n" <> showLoc s
+
+
+meld :: String -> String
 meld s = f (len s) s  where
 
   len NilS = 0 :: Word
@@ -1310,7 +1236,7 @@ meld s = f (len s) s  where
   f 1 (ConsS a b c _) = ConsS a b c NilS
   f l s | i <- l `div` 2 = f i s `merge` f (l -. i) (drop i s)
 
-  merge :: Source -> Source -> Source
+  merge :: String -> String -> String
   merge NilS s = s
   merge s NilS = s
   merge so@(ConsS a b c s) so'@(ConsS a' b' c' s') = case cmp c c' of
@@ -1324,279 +1250,158 @@ meld s = f (len s) s  where
   cmp (MkCtx (Just h) _) (MkCtx (Just h') _) = compare h h'
   cmp _ _ = impossible
 
-{-# INLINE chars #-}
-chars :: Source -> String
-chars s = MkString (go s)  where
-  go NilS = Nil
-  go (ConsS i j (MkCtx _ v) s) = (indexVec v <$> enumFromTo i j) ++ go s
 
-
-indexCtx (MkCtx _ v) i = indexVec v i
-
-pattern Cons :: Source -> Source -> Source
-pattern Cons c s <- (getCons -> Just (c, s))
-
-pattern Cons' :: Char -> Source -> Source
-pattern Cons' c s <- (getCons' -> Just (c, s))
-
-pattern NilCh :: Source
-pattern NilCh <- (getNil -> True)
-
-{-# COMPLETE Cons, NilCh #-}
-{-# COMPLETE Cons', NilCh #-}
-
-getNil NilS = True
-getNil _ = False
-
-getCons (ConsS i j ctx ss)
-  | j == i + 1 = Just (ConsS i j ctx NilS, ss)
-  | True  = Just (ConsS i (i+1) ctx NilS, ConsS (i+1) j ctx ss)
-getCons _ = Nothing
-
-getCons' (ConsS i j ctx ss)
-  | j == i + 1 = Just (indexCtx ctx i, ss)
-  | True  = Just (indexCtx ctx i, ConsS (i+1) j ctx ss)
-getCons' _ = Nothing
-
-spanCh, revSpanCh :: (Char -> Bool) -> Source -> (Source, Source)
-spanCh p = spanCh_ \_ -> p
-revSpanCh p = revSpanCh_ \_ -> p
-
-splitAtCh :: Word -> Source -> (Source, Source)
-splitAtCh n = spanCh_ \i _ -> i < n
-
-takeCh, dropCh, revTakeCh, revDropCh :: Word -> Source -> Source
-takeCh n = fst . splitAtCh n
-dropCh n = snd . splitAtCh n
-revTakeCh n = fst . revSpanCh_ \i _ -> i < n
-revDropCh n = snd . revSpanCh_ \i _ -> i < n
-
-groupCh p = groupCh_ \_ -> p
-
-groupCh_ :: (Word -> Char -> Char -> Bool) -> Source -> (Source, Source)
-groupCh_ p ss = f' ss
+showLoc :: String -> String
+showLoc s = splitFiles (meld s)
  where
-  f' NilS = (NilS, NilS)
-  f' (ConsS i j c@(MkCtx _ v) ss) = g (indexVec v i) (i+1)
-   where
-    g l x
-      | x == j, (as, bs) <- f (j -. i) l ss = (ConsS i j c as, bs)
-      | l' <- indexVec v x, p (x -. i) l l' = g l' (x+1)
-    g _ x = (ConsS i x c NilS, ConsS x j c ss)
+  splitFiles NilS = mempty
+  splitFiles s@(ConsS _ _ (MkCtx (Just h) v) _)
+    = matchT2 (splitFile h s) \is rest -> title (fileName h) <> hh v is <> splitFiles rest
+  splitFiles _ = impossible
 
-  f _ _ NilS = (NilS, NilS)
-  f offs l s@(ConsS i j c@(MkCtx _ v) ss) = g l i
-   where
-    g l x
-      | x == j, (as, bs) <- f (offs + j -. i) l ss = (ConsS i j c as, bs)
-      | l' <- indexVec v x, p (offs + x -. i) l l' = g l' (x+1)
-      | x == i    = (NilS, s)
-    g _ x = (ConsS i x c NilS, ConsS x j c ss)
+  splitFile h (ConsS a b (MkCtx (Just h') _) s)
+    | h' == h = matchT2 (splitFile h s) \is rest -> T2 (a :. b :. is) rest
+  splitFile _ s = T2 Nil s
 
-spanCh_ :: (Word -> Char -> Bool) -> Source -> (Source, Source)
-spanCh_ p ss = f 0 ss
+  diffs is = zipWith (-.) is (0 :. is)
+
+  splits Nil s = s .+ \_ -> Nil
+  splits (i :. is) s = matchT2 (splitAtStr i s) \as bs -> as .+ splits is bs
+
+  ((lines -> as) .+ b) i = numberWith T2 i as :. b (i + length as -. 1)
+
+  hh v is = mconcat . mapHead (hrest 0) (hrest 2) . everyNth 2 $ splits (diffs is) (mkString v) 1
+
+  hrest k (as :. bs :. Nil) = takes k 2 as <> unlines' (mapHead (highlight . snd) highlightLine bs)
+  hrest k (as :. _) = takes k 0 as
+  hrest _ _ = mempty
+
+  takes i j (splitAt i -> T2 a (revSplitAt j -> T2 b c))
+    = unlines' $ mapHead snd number a
+       ++ condCons (not $ null b) dots (map number c)
+
+  title f = invertColors (foreground green $ " " <> f <> " ") <> nl
+  number (T2 n s) = foreground green (showInt n <> " | ") <> s
+  dots = foreground green "..."
+  highlight s = background blue s
+  highlightLine (T2 i s) = number (T2 i (highlight s))
+  nl = "\n"
+
+  unlines' = mconcat . intersperse nl
+
+
+----------------------------------------------- Colored String
+
+data Color = MkColor Word
+
+black   = MkColor 0
+red     = MkColor 1
+green   = MkColor 2
+yellow  = MkColor 3
+blue    = MkColor 4
+magenta = MkColor 5
+cyan    = MkColor 6
+white   = MkColor 7
+
+endsgr i s = sgr i <> s <> sgr (MkColor 1)
  where
-  f _ NilS = (NilS, NilS)
-  f offs s@(ConsS i j c@(MkCtx _ v) ss) = g i
-   where
-    g x
-      | x == j, (as, bs) <- f (offs + j -. i) ss = (ConsS i j c as, bs)
-      | p (offs + x -. i) (indexVec v x) = g (x+1)
-      | x == i    = (NilS, s)
-    g x = (ConsS i x c NilS, ConsS x j c ss)
+  sgr (MkColor a) = "\ESC" <> charStr (wordToChar a)
 
-revSpanCh_ :: (Word -> Char -> Bool) -> Source -> (Source, Source)
-revSpanCh_ p ss | (as, bs) <- f 0 (reverseS ss) = (reverseS as, reverseS bs)
+invertColors = endsgr (MkColor 7)
+foreground (MkColor n) = endsgr (MkColor $ n + 30)
+background (MkColor n) = endsgr (MkColor $ n + 40)
+
+lengthANSI :: String -> Word
+lengthANSI s = f 0 $ stringToList s
  where
-  f _ NilS = (NilS, NilS)
-  f offs s@(ConsS j i c@(MkCtx _ v) ss) = g i
-   where
-    g x
-      | x == j, (as, bs) <- f (offs + i -. j) ss = (ConsS j i c as, bs)
-      | p (offs + i -. x) (indexVec v (x-.1)) = g (x-.1)
-      | x == i    = (NilS, s)
-    g x = (ConsS x i c NilS, ConsS j x c ss)
+  f acc = \case
+    '\ESC' :. _ :. cs -> f acc cs
+    _ :. cs -> f (acc + 1) cs
+    Nil -> acc
 
---lengthCh = length . chars
-lengthCh = f 0 where
-   f acc NilS = acc
-   f acc (ConsS i j _ s) = f (acc + (j -. i)) s
-
-lastCh   = lastStr   . chars
-headCh   = headStr   . chars
-
-lastStr (MkString s) = last s
-initStr (MkString s) = MkString (init s)
-headStr (MkString s) = head s
-tailStr (MkString s) = MkString (tail s)
-takeStr n (MkString s) = MkString (take n s)
-dropStr n (MkString s) = MkString (drop n s)
-
-mreplicate n a = mconcat (replicate n a)
-
-showSource s = chars s <> "\n" <> showLoc s
-
-stringToSource (MkString s) = source_ Nothing (listToString s)
-
-instance IsString Source where
-  fromString' = stringToSource
-
-source_ :: Maybe Handler -> B.String -> Source
-source_ _ "" = NilS
-source_ n v = ConsS 0 (numElements v) (MkCtx n v) NilS
-
-
-guard :: Bool -> List ()
-guard True = [()]
-guard _ = []
-
-showLoc_ :: Source -> List (String, String)
-showLoc_ s = split (meld s)
+fixANSI :: String -> String
+fixANSI cs = f (T2 0 (T3 39 49 False) :. Nil) cs
  where
-  split NilS = Nil
-  split s@(ConsS _ _ (MkCtx (Just h) v) _) | (as, rest) <- go s = (MkString $ stringToList $ fileName h, h_ (v, as)):. split rest
-   where
-    go (ConsS a b (MkCtx (Just h') _) s)
-      | h' == h, (is, rest) <- go s = ((a, b):. is, rest)
-    go s = (Nil, s)
-  split _ = impossible
+  f as@(T2 a (T3 x y z) :. bs) (ConsChar '\ESC' (ConsChar (charToWord -> i) cs))
+    | i == 1           = sgr a (f bs cs)
+    | i == 7           = sgr i (f (T2 (if z then 7 else 27) (T3 x y (not z)):. as) cs)
+    | 30 <= i, i <= 37 = sgr i (f (T2 x (T3 i y z):. as) cs)
+    | 40 <= i, i <= 47 = sgr i (f (T2 y (T3 x i z):. as) cs)
+  f _  NilStr = mempty
+  f as (spanStr (/= '\ESC') -> T2 bs cs) = bs <> f as cs
 
-  h1 (v, is) = ff 0 (is >>= \(i, j) -> enumFromTo i j)
-   where
-    ff i _ | i == lengthVec v = Nil
-    ff i (j :. js) | i == j = (True, indexVec v i):. ff (i+1) js
-    ff i js = (False, indexVec v i):. ff (i+1) js
-
-  lines :: List (a, Char) -> List (List (a, Char))
-  lines Nil = Nil
-  lines (span ((/= '\n') . snd) -> (as, bs)) = as:. case bs of
-    Nil -> Nil
-    [_] -> Nil:. Nil
-    _:. bs -> lines bs
-
-  groupOn :: Eq b => List (b, c) -> List (b, List c)
-  groupOn = map (\as -> (fst (head as), map snd as)) . groupBy ((==) `on` fst)
-
-  h_ = hh
-    . map groupOn
-    . lines
-    . h1
-
-  hh :: List (List (Bool, List Char)) -> String
-  hh ss = (concatStr . intersperse "\n" . map h2 . groupOn . zip (widen 1 mask)) s2
-   where
-    s2 :: List String
-    s2 = numberWith gb 1 ss
-    mask = map ga ss
-
-  widen i bs = (take (length bs) . map (or . take (2*i + 1)) . tails) (replicate i False <> bs)
-
-  h2 (True, s) = concatStr (intersperse "\n" s)
-  h2 (False, _) = foreground green "..."
-
-  ga Nil = False
-  ga [(False, _)] = False
-  ga _ = True
-
-  gb :: Word -> List (Bool, List Char) -> String
-  gb n s = foreground green (showInt n <> " | ") <> concatStr (map g s)  where
-    g (True, s) = background blue (MkString s)
-    g (_, s) = MkString s
-
-showLoc :: Source -> String
-showLoc s = concatStr $ intersperse "\n" (showLoc_ s <&> \(f, x) -> invert (foreground green $ " " <> f <> " ") <> "\n" <> x)
-
-
-------------------------------------------------
-
-importFile :: Parse a => Source -> RefM a
-importFile (listToString . unString . chars -> f) = do
-  d <- getDataDir
-  s <- readFile (d <> "/" <> f <> ".csip")
-  source f s
+  sgr a b = "\ESC[" <> showInt a <> "m" <> b
 
 
 -----------------------------------------------
 
 class Print a where
-  print :: a -> RefM Source
-
-instance Print Source where
-  print = pure
+  print :: a -> RefM String
 
 instance Print String where
-  print = pure . stringToSource
-{-
-instance Print Int where
-  print = print . show
--}
+  print = pure
+
 instance Print Word where
   print = print . showInt
 
 instance Print Void where
   print = impossible
 
+
 -----------------------------------------------
 
 class Parse a where
-  parse :: Source -> RefM a
-
-instance Parse Source where
-  parse = pure
+  parse :: String -> RefM a
 
 instance Parse String where
-  parse = pure . chars
-
+  parse = pure
 
 
 ----------------------------------------------- main exception
 
 data MainException
-  = MkMainException (RefM Source)
-  | MkTag (RefM Source) MainException
+  = MkMainException (RefM String)
+  | MkTag (RefM String) MainException
 
 instance Print MainException where
   print = \case
     MkMainException s -> s
     MkTag _ r@MkTag{} -> print r
-    MkTag s r -> s >>= \s -> print r <&> \r -> stringToSource (showSource r <> showLoc s)
+    MkTag s r -> s >>= \s -> print r <&> \r -> (stripSource r <> "\n" <> showLoc s)
 
 {-# noinline mainException #-}
 mainException :: Except MainException
 mainException = topM newExcept
 
-errorM_ :: HasCallStack => Bool -> RefM Source -> RefM a
-errorM_ cs ~s = throwError mainException (MkMainException (if cs then s <<>> "\n" <<>> pure (source_ Nothing callStack) else s))
+errorM_ :: HasCallStack => Bool -> RefM String -> RefM a
+errorM_ cs ~s = throwError mainException (MkMainException (if cs then s <<>> "\n" <<>> pure (mkString callStack) else s))
 
-errorM :: HasCallStack => RefM Source -> RefM a
+errorM :: HasCallStack => RefM String -> RefM a
 errorM = errorM_ False
 
-error' :: HasCallStack => IO Source -> a
-error' ~s = unsafePerformIO (errorM_ False s)
-
-error :: HasCallStack => Source -> a
-error ~s = error' (pure s)
+error :: HasCallStack => RefM String -> a
+error ~s = unsafePerformIO (errorM_ False s)
 
 undefined :: HasCallStack => a
 undefined = unsafePerformIO (errorM_ True "TODO")
 
 impossible :: HasCallStack => a
 impossible = unsafePerformIO (errorM_ True "impossible")
-
+{-
 assert :: HasCallStack => Bool -> a -> a
 -- assert False = error "assertion failed"
 assert ~_ = id
 
-assertM :: HasCallStack => Bool -> RefM ()
+assertM :: HasCallStack => Bool -> RefM Tup0
 -- assertM False = errorM "assertion failed"
-assertM ~_ = pure ()
+assertM ~_ = pure T0
+-}
+tagError :: Print s => s -> RefM a -> RefM a
+tagError ~s = catchError mainException (throwError mainException . MkTag (print s))
 
-tag :: Print s => s -> RefM a -> RefM a
-tag ~s = catchError mainException (throwError mainException . MkTag (print s))
-
-traceShow :: String -> RefM String -> RefM ()
---traceShow ~s m  | s `elem` ["56", "57"] {- "1","2","3","4","5","6","7"] -} = m >>= \s -> mapM_ putChar (unString s) >> putChar '\n'
-traceShow ~_ ~_ = pure ()
+traceShow :: String -> RefM String -> RefM Tup0
+--traceShow ~s m  | s `elem` [{-"56", "57"-} "1","2","3","4","5","6","7"] = m >>= \s -> mapM_ putChar (stringToList s) >> putChar '\n'
+traceShow ~_ ~_ = pure T0
 
 
 

@@ -1,0 +1,1433 @@
+{-# language CPP #-}
+module E_Parse
+  ( Phase (..)
+  , IString, Token, OpSeq
+
+  , Arity
+  , showMixfix
+  , mkIntToken
+
+  , ExpTree
+    ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, RConstructor, RBuiltin
+    , Hole, RRule, RDot, RApp, RHApp, RView, RGuard
+    , RClass, RInstance, RData, RNat, RString, REnd, RAnn, RCase, RCaseOf)
+  , zVar, Tokens(..)
+
+  , Mixfix, addPrefix, addSuffix
+  , OpSeq', ExpTree'
+  , HasArity (..), IsMixfix (..)
+
+  , Name, nameOf
+  , NameStr, nameStr, nameId
+  , mkName, mkName', rename
+  , showName
+  , PPrint (pprint)
+  ) where
+
+import D_Base
+import M8_IO (getDataDir, getDataFileName, parseFile)
+
+
+------------------------------------------------------
+
+type Arity = Int
+
+class HasArity a where
+  arity :: a -> Arity
+
+
+-- TODO: remove
+neg :: Word -> Word
+neg i = i .|. 9223372036854775808
+
+negIntHash i = neg (intHash i)
+
+
+
+
+------------------------------------------------------
+--------------- precedence calculation ---------------
+------------------------------------------------------
+
+
+data Precedences = Precs
+  { leftPrec  :: Precedence
+  , rightPrec :: Precedence
+  }
+  deriving (Eq)
+
+
+precedenceTableString :: String
+precedenceTableString = topM $ getDataFileName "precedences" >>= parseFile ""
+
+precedenceTableList :: List (Tup2 String (Tup2 (Maybe Precedence) (Maybe Precedence)))
+precedenceTableList = mkTable (lines precedenceTableString)
+ where
+  mkTable
+    = concat
+    . numberWith (\n f -> f n) 1
+    . reverse
+    . map (mconcat . map g . words)
+
+  g s | headStr s == '_' = \p -> T2 (h (tailStr s)) (T2 (Just p) Nothing) :. Nil
+  g s | lastStr s == '_' = \p -> T2 (h (initStr s)) (T2 Nothing (Just p)) :. Nil
+  g _ = impossible
+
+  h "SEMI"    = "\v"
+  h "END"     = "\r"
+  h "BEGIN"   = "\t"
+  h "NEWLINE" = "\n"
+  h "SPACE"   = " "
+  h s         = s
+
+lookupPrec :: String -> Precedences
+lookupPrec s = case map snd $ filter ((== s) . fst) precedenceTableList of
+  T2 l r :. T2 l' r' :. Nil -> Precs (fromJust (firstJust l l')) (fromJust (firstJust r r'))
+  _ -> impossible
+
+topPrec     = lookupPrec "ALPHA"
+graphicPrec = lookupPrec "GRAPHIC"
+maxPrec     = lookupPrec "MAXPREC"
+minPrec     = lookupPrec "MINPREC"
+
+defaultPrecedences (ConsChar c _) | isGraphic c = graphicPrec
+defaultPrecedences _ = topPrec
+
+isInfix :: Token a -> Bool
+isInfix (precedence -> p) = minPrec `less` p && p `less` maxPrec
+ where
+  Precs a b `less` Precs c d = a < c && b < d
+
+isAtom :: Token a -> Bool
+isAtom t = precedence t == topPrec || isInfix t
+
+isOperator :: Tokens a -> Bool
+isOperator = \case
+  _ :! NilT -> True
+  "if" :! "then" :! "else" :! NilT -> True
+  "(" :! ")"    :! NilT -> True
+  "{" :! "}"    :! NilT -> True
+  "[" :! "]"    :! NilT -> True
+  "let" :! "in" :! NilT -> True
+  "class" :!    "whereBegin" :! "whereEnd" :! NilT -> True
+  "instance" :! "whereBegin" :! "whereEnd" :! NilT -> True
+  "data" :!     "whereBegin" :! "whereEnd" :! NilT -> True
+  "case" :!        "ofBegin" :!    "ofEnd" :! NilT -> True
+  _ -> False
+
+
+---------------------------------------------------
+--------------- unindent and indent ---------------
+---------------------------------------------------
+
+
+newtype IString = MkIString {unIString :: String}
+
+instance IsString IString where
+  fromString' = MkIString . fromString'
+
+instance Parse IString where
+  parse = parse >=> pure . unindent
+
+instance Print IString where
+  print = pure . indent >=> print
+
+unindent :: String -> IString
+unindent s = MkIString $ dropNl $ h "\n" 0 $ s <> "\n"
+ where
+  dropNl (ConsChar '\n' s) = s
+  dropNl s = s
+
+  h _  n NilStr = mreplicate n "\r"
+  h nl n (spanStr (== ' ') -> T2 (lengthStr -> k) (spanStr (/= '\n') -> T2 as (ConsStr nl' cs)))
+    | NilStr <- as  = nl <> h nl' n cs
+    | True      = mreplicate (n -. k) "\r" <> nl <> mreplicate (k -. n) " " <> mreplicate (k -. n) "\t" <> fst (revSpanStr (== ' ') as) <> h nl' k cs
+  h _ _ _ = impossible
+
+indent   :: IString -> String
+indent (MkIString s_) = g 0 s_
+ where
+  g i (spanStr (== ' ') -> T2 sp (spanStr (== '\r') -> T2 ((i -.) . lengthStr -> i') cs)) = case cs of
+    ConsStr c cs | c == "\n" -> c <> g i' cs
+    cs   -> mreplicate i' " " <> sp <> f i' cs
+
+  f i (spanStr (\c -> c /= '\n' && c /= '\r' && c /= '\t') -> T2 s cs) = s <> case cs of
+    ConsStr c cs
+      | c == "\t" -> f (i+1) cs
+      | c == "\r" -> f (i-.1) cs
+      | c == "\n" -> c <> g i cs
+    NilStr | i == 0 -> ""
+    NilStr -> impossible
+    _ -> impossible
+
+
+-----------------------------------------------
+--------------- Token data type ---------------
+-----------------------------------------------
+
+
+data IdString = MkIdString {srcId :: Word, _srcString :: String}
+
+instance Eq  IdString where (==)    = (==)    `on` srcId
+instance Ord IdString where compare = compare `on` srcId
+
+
+data Phase
+  = Spaced | Stringed | Uncomment | Uncomments | Unspaced | Layout | POp | Desug
+
+data Token (a :: Phase)
+  = MkToken_ IdString (Cached Precedences)
+  | MkNat_ (Cached String) Integer
+  | StringToken_ (Cached String) String
+  deriving (Eq, Ord)
+
+pattern MkNat a b = MkNat_ (MkCached a) b
+pattern StringToken a b = StringToken_ (MkCached a) b
+
+{-# COMPLETE MkToken_, MkNat, StringToken #-}
+
+{-
+instance Semigroup (Token a) where
+  MkToken a (MkCached (T2 l _)) <> MkToken b (MkCached (T2 _ r))
+    = MkToken (a <> b) (MkCached (T2 l r))
+  _ <> _ =
+-}
+precedence = \case
+  MkToken_ _ p -> getCached p
+  _ -> topPrec
+
+showToken = \case
+    MkToken_ (MkIdString _ cs) _ -> cs
+    MkNat    s _ -> s
+    StringToken s _ -> s
+
+instance IsString (Token a) where
+  fromString' cs = mkTokenConst (fromString' cs)
+
+{-# noinline mkTokenConst #-}
+mkTokenConst :: String -> Token a
+mkTokenConst cs = topM do
+  T2 h p <- lookupSM cs tokenMap >>= \case
+    Just i -> pure i
+    Nothing -> errorM $ "not predefined: " <<>> pure cs
+  pure $ MkToken_ (MkIdString h cs) $ MkCached p
+
+mkToken cs
+  | Just n <- readNat cs = pure $ MkNat cs n
+  | otherwise = do
+   T2 h p <- lookupSM cs tokenMap >>= \case
+    Just i -> pure i
+    Nothing -> do
+      i <- newId
+      let ip = T2 i (defaultPrecedences cs)
+      insertSM cs ip tokenMap
+      pure ip
+   pure $ MkToken_ (MkIdString h cs) $ MkCached p
+
+mkIntToken (wordToInteger -> n) = MkNat (showInteger n) n
+
+{-# noinline tokenMap #-}
+tokenMap :: StringMap (Tup2 Word Precedences)
+tokenMap = topStringMap \m -> do
+  forM_ precedenceTableList \(T2 s (T2 l r)) -> lookupSM s m >>= \case
+    Nothing -> insertSM s (T2 (negIntHash s) (Precs (fromMaybe 0 l) (fromMaybe 0 r))) m
+    Just (T2 w (Precs l' r')) -> insertSM s (T2 w (Precs (fromMaybe l' l) (fromMaybe r' r))) m
+  let
+    infixr 5 .+
+    (.+) :: String -> RefM Tup0 -> RefM Tup0
+    s .+ mm = mm >> insertSM s (T2 (negIntHash s) (defaultPrecedences s)) m
+  "_" .+ "View" .+ "Guard" .+ "Dot" .+ "Fail" .+ "noreturn"
+   .+ "Ap"
+   .+ "lookupDict" .+ "superClasses" .+ "SuperClassList" .+ "SuperClassNil" .+ "SuperClassCons"
+   .+ "Bool" .+ "True" .+ "False"
+   .+ "Nat" .+ "ProdNat" .+ "PairNat" .+ "Succ" .+ "SuccOk" .+ "succView" .+ "EqNat" .+ "DecNat" .+ "AddNat" .+ "MulNat" .+ "DivNat" .+ "ModNat"
+   .+ "String" .+ "ProdStr" .+ "PairStr" .+ "Cons" .+ "ConsOk" .+ "consView" .+ "AppendStr" .+ "EqStr" .+ "TakeStr" .+ "DropStr"
+   .+ "Ty" .+ "Arr" .+ "Prod"
+   .+ "Code" .+ "Lam" .+ "App" .+ "Let" .+ "Pair" .+ "Fst" .+ "Snd"
+   .+ "Match" .+ "OBool" .+ "OTrue" .+ "OFalse" .+ "OString" .+ "MkOString" .+ "OEqStr" .+ "ONat" .+ "MkONat" .+ "OEqNat" .+ "Var"
+   .+ ">>=" .+ "caseFun" .+ "EMBEDDED"
+   .+ "___" .+ "__" .+ "ModuleEnd" .+ "Type" .+ "HPi" .+ "CPi" .+ "IPi" .+ "Pi" .+ "Constr" .+ "Dict" .+ "TopLet" .+ "Let" .+ "Funct"
+   .+ "Variable" .+ "sel" .+ "Term" .+ "Erased" .+ "noret" .+ "Meta"
+   .+ "app#" .+ "lam#" .+ "fail" .+ "return" .+ "match" .+ "ret" .+ "X"
+   .+ "c#" .+ "r#" .+ "t#" .+ "v#" .+ "m#" .+ "wF#" .+ "wG#" .+ "wS#" .+ "wR#" .+ "wD#" .+ "wH#" .+ "cS#" .+ "cR#"
+   .+ "_t#" .+ "i#" .+ "d#" .+ "ww#" .+ "w#" .+ "'" .+ "z#" .+ "???"
+   .+ pure T0
+
+
+instance Parse (Token a) where
+  parse = parse >=> mkToken
+
+instance Print (Token a) where
+  print = pure . showToken
+
+type OpSeq' a = OpSeq (Token a)
+
+sing :: Token a -> OpSeq' a
+sing a@(precedence -> Precs l r) = singOpSeq (T3 l a r)
+
+filterOpSeq p = mapOpSeq c where
+      c s | p s = sing s
+      c _ = mempty
+{-
+instance IsString (OpSeq' a) where
+  fromString' = sing . fromString'
+-}
+
+
+---------------------------------------------
+--------------- lex and unlex ---------------
+---------------------------------------------
+
+
+glueChars :: Char -> Char -> Bool
+glueChars c d
+   = isAlphaNum c && isAlphaNum d
+  || isGraphic  c && isGraphic  d
+  || c == '{' && d == '-'
+  || c == '-' && d == '}'
+
+lex :: IString -> RefM (List (Token Spaced))
+lex = mapM mkToken . f . unIString
+ where
+  f NilStr = Nil
+  f (groupStr glueChars -> T2 as bs) = as:. f bs
+
+unlex :: List (Token Spaced) -> IString
+unlex = MkIString . mconcat . map showToken
+
+instance Parse (List (Token Spaced)) where
+  parse = parse >=> lex
+
+instance Print (List (Token Spaced)) where
+  print = pure . unlex >=> print
+
+
+---------------------------------------------------------
+--------------- structure and unstructure ---------------
+---------------------------------------------------------
+
+
+structure   :: List (Token Spaced) -> OpSeq' Spaced
+structure = foldMap sing
+
+unstructure :: OpSeq' Spaced -> List (Token Spaced)
+unstructure = fromOpSeq
+
+instance Parse (OpSeq' Spaced) where
+  parse = parse >=> pure . structure
+
+instance Print (OpSeq' Spaced) where
+  print = pure . unstructure >=> print
+
+
+---------------------------------------------------
+--------------- string and unstring ---------------
+---------------------------------------------------
+
+
+string   :: (OpSeq' Spaced) -> (OpSeq' Stringed)
+string = \case
+  Node2 l a@"\"" (Node2 s b@"\"" r)
+    | not (hasNl s), ss <- foldMap showToken $ fromOpSeq s
+    -> coerce l <> sing (StringToken (showToken a <> ss <> showToken b) ss) <> string r
+  Node2 _ s@"\"" _ -> error $ print s <&> \r -> "Unterminated string\n" <> r
+  a -> coerce a
+ where
+  hasNl (Node2 _ "\n" _) = True
+  hasNl _ = False
+
+unstring :: (OpSeq' Stringed) -> (OpSeq' Spaced)
+unstring = coerce -- TODO
+
+instance Parse ((OpSeq' Stringed)) where
+  parse = fmap string . parse
+
+instance Print ((OpSeq' Stringed)) where
+  print = print . unstring
+
+
+-----------------------------------------------------
+--------------- uncomment and comment ---------------
+-----------------------------------------------------
+
+
+uncomment :: (OpSeq' Stringed) -> (OpSeq' Uncomment)
+uncomment = \case
+    Node2 (Node2 l "--" c) "\n" r -> coerce l <> comm c <> sing "\v" <> uncomment r
+    Node2 l                "\n" r -> coerce l <> sing "\v" <> uncomment r
+    a -> coerce a
+
+comment :: (OpSeq' Uncomment) -> (OpSeq' Stringed)
+comment = mapOpSeq c  where
+  c "\v" = sing "\n"
+  c s = sing (coerce s)
+
+instance Parse ((OpSeq' Uncomment)) where
+  parse = fmap uncomment . parse
+
+instance Print ((OpSeq' Uncomment)) where
+  print = print . comment
+
+comm s = coerce (filterOpSeq (`elem` ("\t" :. "\r" :. "\v" :. Nil)) s)
+
+
+-------------------------------------------------------
+--------------- uncomments and comments ---------------
+-------------------------------------------------------
+
+
+uncomments :: OpSeq' Uncomment -> OpSeq' Uncomments
+uncomments = \case
+    Node3 l "{-" c "-}" r -> coerce l <> comm c <> uncomments r
+    Node2 _ s@"{-" _ -> error $ print s <&> \r -> "Unterminated comment\n" <> r
+    Node2 _ s@"-}" _ -> error $ print s <&> \r -> "Unterminated comment\n" <> r
+    a -> coerce a
+
+comments :: OpSeq' Uncomments -> OpSeq' Uncomment
+comments = coerce
+
+instance Parse (OpSeq' Uncomments) where
+  parse = fmap uncomments . parse
+
+instance Print (OpSeq' Uncomments) where
+  print = print . comments
+
+
+-------------------------------------------------
+--------------- unspace and space ---------------
+-------------------------------------------------
+
+
+unspace :: (OpSeq' Uncomments) -> (OpSeq' Unspaced)
+unspace = \case
+    Node2 l " " r -> coerce l <> unspace r
+    a -> coerce a
+
+space :: (OpSeq' Unspaced) -> (OpSeq' Uncomments)
+space = error "TODO: implement space"
+
+instance Parse (OpSeq' Unspaced) where
+  parse = fmap unspace . parse
+
+instance Print (OpSeq' Unspaced) where
+  print = print . space
+
+
+--------------------------------------
+--------------- layout ---------------
+--------------------------------------
+
+
+instance Parse (OpSeq' Layout) where
+  parse = fmap layout . parse
+
+instance Print (OpSeq' Layout) where
+  print = print . spaceLayout
+
+layout  :: OpSeq' Unspaced -> OpSeq' Layout
+layout = g True
+   where
+    g :: Bool -> OpSeq' Unspaced -> OpSeq' Layout
+    g top = \case
+      Node2 l "\v" r -> semi top (g top l) (g top r)
+      Node3 l "\t" a "\r" r
+        | Node2 l "\v" Empty <- l, Node2 l "do" Empty <- l
+        -> g top l <> brace True (g True a) <> g top r
+        | Node2 l "\v" Empty <- l, Node2 l "where" Empty <- l
+        -> g top l <> sing "whereBegin" <> g True a <> sing "whereEnd" <> g top r
+        | Node2 l "\v" Empty <- l, Node2 l    "of" Empty <- l
+        -> g top l <> sing    "ofBegin" <> g True a <> sing    "ofEnd" <> g top r
+        | Node2 l "\v" Empty <- l
+        -> g top l <> f a <> g top r
+        | True
+        -> g top l <> g top a <> g top r
+      Node2 _ t@"do"    _ -> error $ "Illegal " <> print t
+      Node2 a "where" Empty -> g top a <> sing "whereBegin" <> sing "ModuleEnd" <> sing "whereEnd"
+      Node2 a "of"    Empty -> g top a <> sing    "ofBegin" <> sing "ModuleEnd" <> sing    "ofEnd"
+      Node2 _ t _  | t `elem` ("where" :. "of" :. Nil) -> error $ "Illegal " <<>> print t
+      a -> coerce a
+
+    f (Node3 Empty "\t" a "\r" Empty) = f a
+    f a = g False a
+
+    semi _     a Empty = a
+    semi _     Empty a = a
+    semi True  a b = a <> sing ";" <> b
+    semi False a b = a <> b
+
+    brace _ Empty = Empty
+    brace True  a = sing "(" <> a <> sing ")"
+    brace False a = a
+
+
+--------------------
+
+data DocShape a
+  = SingleLine a
+  | MultiLine a a
+  deriving (Eq)
+
+firstLine (SingleLine i)  = i
+firstLine (MultiLine i _) = i
+
+lastLine  (SingleLine i)  = i
+lastLine  (MultiLine _ i) = i
+
+instance Semigroup a => Semigroup (DocShape a) where
+  SingleLine a  <> SingleLine b  = SingleLine (a <> b)
+  SingleLine a  <> MultiLine b c = MultiLine (a <> b) c
+  MultiLine a b <> SingleLine c  = MultiLine a (b <> c)
+  MultiLine a _ <> MultiLine _ d = MultiLine a d
+
+instance Monoid a => Monoid (DocShape a) where
+  mempty = SingleLine mempty
+
+--------------------
+
+data Nesting = MkPC (List Word) Word (List Word)
+
+instance Semigroup Nesting where
+  MkPC a x Nil      <> MkPC Nil y d      = MkPC a (max x y) d
+  MkPC a x Nil      <> MkPC (c:. cs) y d = MkPC (a ++ (max x c):. cs) y d
+  MkPC a x (c:. cs) <> MkPC Nil y d      = MkPC a x (d ++ (max y c):. cs)
+  MkPC a x (b:. bs) <> MkPC (c:. cs) y d = MkPC a x bs <> MkPC Nil (max b c + 1) Nil <> MkPC cs y d
+
+instance Monoid Nesting where
+  mempty = MkPC Nil 0 Nil
+
+--------------------
+
+newtype Length = MkLength Word
+  deriving (Eq, Ord)
+
+instance Semigroup Length where
+  MkLength a <> MkLength b = MkLength (a + b)
+
+instance Monoid Length where
+  mempty = MkLength 0
+
+
+data Complexity = MkComplexity Nesting Length
+
+instance Semigroup Complexity where
+  MkComplexity a b <> MkComplexity a' b' = MkComplexity (a <> a') (b <> b')
+
+instance Monoid Complexity where
+  mempty = MkComplexity mempty mempty
+
+maxComplexity :: Complexity -> Bool
+maxComplexity (MkComplexity (MkPC a b c) l) = l < MkLength 80 && b < 2 && (null a && all (< 1) c || null c && all (< 2) a)
+
+mkDocShape :: Token a -> DocShape Complexity
+mkDocShape "\v" = MultiLine mempty mempty
+mkDocShape s    = SingleLine (MkComplexity mempty (MkLength $ lengthStr $ showToken s))
+
+--------------------
+
+data Doc = MkDoc (Maybe (Interval (Token Uncomments))) (DocShape Complexity) (OpSeq' Uncomments)
+
+instance Semigroup Doc where
+  MkDoc a b c <> MkDoc a' b' c' = MkDoc (a <> a') (b <> b') (c <> c')
+
+instance Monoid Doc where
+  mempty = MkDoc mempty mempty mempty
+
+mkDoc :: (Token Uncomments) -> Doc
+mkDoc s = MkDoc (Just $ mkInterval s s) (mkDocShape s) (sing s)
+
+hang1, hang :: Doc -> Doc
+hang2 :: Word -> Doc -> Doc
+
+hang1 (MkDoc a b c) = MkDoc a (mk (MkPC Nil 0 (0 :. Nil)) <> b <> mk (MkPC (0 :. Nil) 0 Nil)) c
+ where
+  mk c = SingleLine (MkComplexity c mempty)
+
+hang2 n (MkDoc a b c) = MkDoc a b (mreplicate n (sing "\t") <> c <> mreplicate n (sing "\r"))
+
+hang (MkDoc a b c)
+  | MultiLine{} <- b = hang2 2 (MkDoc a b c)
+hang (MkDoc a b c) = MkDoc a b c
+
+sep :: (Complexity -> Bool) -> Doc -> Doc -> Doc
+sep w a@(MkDoc ia da _) b@(MkDoc ib db _) = a <> op <> b
+ where
+  op1
+    | Just (MkInterval _ a) <- ia
+    , Just (MkInterval b _) <- ib
+    , glueChars (lastStr $ showToken a) (headStr $ showToken b)
+    || not (a `elem` ("(" :. "[" :. "{" :. "\\" :. Nil)
+         || b `elem` ("." :. "," :. ":" :. ";" :. "}" :. ")" :. "]" :. Nil)
+           )
+    = mkDoc " "
+    | otherwise = mempty
+
+  op
+    | MkDoc _ s _ <- op1
+    , w $ lastLine da <> firstLine s <> firstLine db
+    = op1
+    | otherwise = mkDoc "\v"
+
+--------------------
+
+seqToDoc :: (Complexity -> Bool) -> OpSeq' Layout -> Doc
+seqToDoc w = f1
+ where
+  (<+>) = sep w
+
+  g tok = mkDoc $ coerce tok
+
+  f1, f2 :: OpSeq' Layout -> Doc
+  f1 = \case
+    (getSemis -> es@(_:._:._)) -> hang $ mkDoc "do" <> mkDoc "\v" <> foldl1 (<+>) (map ff es)
+    Empty ->  mempty
+    l := r ->  hang1 $ hang $ g l <+> f2 r
+    l :> r ->                 g l <+> f1 r
+    (l :< "###" :> Empty) :< r -> f1 l <> f1 r
+    l :< r ->                f1 l <+> f1 r
+
+  ff x = hang1 $ hang1 $ hang2 2 $ f1 x
+
+  f2 = \case
+    l := r ->  g  l <+> f2 r
+    l :> r ->  g  l <+> f1 r
+    l :< r ->  f1 l <+> f2 r
+    Empty -> impossible
+
+getSemis = \case
+  Node2 l ";" r -> l:. getSemis r
+  x -> x :. Nil
+
+spaceLayout :: OpSeq' Layout -> OpSeq' Uncomments
+spaceLayout x  | MkDoc _ _ a <- seqToDoc maxComplexity x = a
+
+
+--------------------------------------------
+--------------- mixfix names ---------------
+--------------------------------------------
+
+
+data Tokens a
+  = Token a :! Tokens a
+  | NilT
+  deriving (Eq, Ord)
+
+infixr 5 :!
+
+instance Semigroup (Tokens a) where
+  NilT <> xs = xs
+  (x :! xs) <> ys = x :! (xs <> ys)
+
+splitAt' :: Word -> Tokens a -> Tup2 (Tokens a) (Tokens a)
+splitAt' 0 xs = T2 NilT xs
+splitAt' _ NilT = T2 NilT NilT
+splitAt' i (x :! xs) | T2 as bs <- splitAt' (i-.1) xs = T2 (x :! as) bs
+
+replicate' :: Word -> Token a -> Tokens a
+replicate' 0 _ = NilT
+replicate' i t = t :! replicate' (i -. 1) t
+
+
+instance IntHash (Token a) where
+  intHash = \case
+    MkToken_ (MkIdString h _) _ -> h
+    MkNat_ _ n -> intHash (showInteger n)
+    StringToken_ _ s -> intHash s
+
+instance HasId (Token a) where
+  getId = \case
+    MkToken_ (MkIdString h _) _ -> h
+    _ -> impossible
+
+
+instance IntHash (Tokens a) where
+  intHash = f 0 where
+    f acc NilT = acc
+    f acc (t :! ts) = f (33 * acc + intHash t) ts
+
+
+
+data Mixfix a = MkM_ (Cached Arity) (Tokens a)
+
+tokens (MkM_ _ ts) = ts
+
+instance Eq  (Mixfix a) where (==) = (==) `on` tokens
+instance Ord (Mixfix a) where compare = compare `on` tokens
+
+pattern MkM a <- MkM_ _ a
+  where MkM a =  mkM (MkCached $ arity a) a
+
+pattern MSing a = MkM (a :! NilT)
+
+mkM :: Cached Arity -> Tokens a -> Mixfix a
+mkM ar ts = MkM_ ar ts
+
+{-# COMPLETE MkM #-}
+
+{-
+instance Semigroup (Mixfix a) where
+  MkM a <> MkM b = MkM (a <> b)
+-}
+
+instance IntHash (Mixfix a) where
+  intHash (MkM_ _ ts) = intHash ts
+
+
+instance HasId (Mixfix a) where
+  getId m = negIntHash m
+
+
+-- strip os = filter (/= "___") os
+
+enrich :: Tokens a -> List (Token a)
+enrich os = g os
+ where
+  g (o:! os)
+    = condCons (leftPrec (precedence o) /= leftPrec topPrec) "___"
+      (o:. f (rightPrec (precedence o) /= rightPrec topPrec) os)
+  g NilT = impossible
+
+  f p (o:! os)
+    = condCons (p && leftPrec (precedence o) /= leftPrec topPrec) "___"
+      (condCons (not p && leftPrec (precedence o) == leftPrec topPrec) "###"
+      (o:. f (rightPrec (precedence o) /= rightPrec topPrec) os))
+  f p NilT = condCons p "___" Nil
+
+showMixfix :: Mixfix a -> String
+showMixfix (MkM ts) = mconcat $ map showToken $ map (\case "___" -> "_"; a -> a) $ filter (/= "###") $ enrich ts
+
+instance Print (Mixfix a) where
+  print = pure . showMixfix
+
+instance IsString (Mixfix a) where
+  fromString' = MSing . fromString'
+
+class Eq t => IsMixfix t where
+  fromMixfix :: Mixfix a -> t
+
+instance IsMixfix (Mixfix a) where
+  fromMixfix = coerce
+
+instance IsMixfix (ExpTree (Mixfix a)) where
+  fromMixfix a = RVar (fromMixfix a)
+
+zVar l = RVar (fromMixfix $ MkM l)
+
+cmp l a = fromMixfix (MkM l) == a
+
+#define MM(n, l) pattern n <- (cmp (l) -> True) where n = fromMixfix (MkM (l))
+
+MM(NTy    , ":":!NilT)
+MM(NLetTy , ":":!";":!NilT)
+MM(NExpl  , "(":!":":!")":!NilT)
+MM(NImpl  , "{":!":":!"}":!NilT)
+
+MM(NImport         , "import":!NilT)
+MM(NLetImport      , "import":!";":!NilT)
+MM(NConstructor    , "constructor":!NilT)
+MM(NConstructorTy  , "constructor":!":":!NilT)
+MM(NLetConstructor , "constructor":!":":!";":!NilT)
+MM(NBuiltin        , "builtin":!NilT)
+MM(NBuiltinTy      , "builtin":!":":!NilT)
+MM(NLetBuiltin     , "builtin":!":":!";":!NilT)
+MM(NLetArr         , "<-":!";":!NilT)
+
+MM(NClass       , "class":!"whereBegin":!"whereEnd":!NilT)
+MM(NLetClass    , "class":!"whereBegin":!"whereEnd":!";":!NilT)
+MM(NInstance    , "instance":!"whereBegin":!"whereEnd":!NilT)
+MM(NLetInstance , "instance":!"whereBegin":!"whereEnd":!";":!NilT)
+MM(NData        , "data":!"whereBegin":!"whereEnd":!NilT)
+MM(NLetData     , "data":!"whereBegin":!"whereEnd":!";":!NilT)
+
+MM(NCaseOf      , "case":!"ofBegin":!"ofEnd":!NilT)
+MM(NCaseArr     , "--->":!NilT)
+MM(NCase        , "--->":!";":!NilT)
+
+
+MM(NGuard , "|":!NilT)
+MM(NEnd   , "ModuleEnd":!NilT)
+
+MM(NEq    , "=":!NilT)
+MM(NLet   , "=":!";":!NilT)
+MM(NTEq   , ":":!"=":!NilT)
+MM(NTLet  , ":":!"=":!";":!NilT)
+MM(NOEq   , ":=":!NilT)
+MM(NOLet  , ":=":!";":!NilT)
+MM(NOTEq  , ":":!":=":!NilT)
+MM(NOTLet , ":":!":=":!";":!NilT)
+
+MM(NLambda, "\\":!NilT)
+MM(NLam   , "\\":!"->":!NilT)
+--MM(NTLam  , "\\":!"(":!":":!")":!"->":!NilT)
+
+MM(NTLam, "\\":!"(":!":":!")":!"->":!NilT)
+
+MM(NTHLam , "\\":!"{":!":":!"}":!"->":!NilT)
+MM(NHLam  , "\\":!"{":!"}":!"->":!NilT)
+
+MM(NSemi  , ";":!NilT)
+MM(NParens, "(":!")":!NilT)
+MM(NBraces, "{":!"}":!NilT)
+MM(NEmpty , "__":!NilT)
+MM(NAny   , "_":!NilT)
+
+MM(NHole    , "_":!NilT)
+MM(NLeftArr , "<-":!NilT)
+MM(NArr     , "->":!NilT)
+MM(NIArr    , "~>":!NilT)
+MM(NView    , "-->":!NilT)
+MM(NPi      , "(":!":":!")":!"->":!NilT)
+MM(NHPi     , "{":!":":!"}":!"->":!NilT)
+MM(NCPi     , "=>":!NilT)
+MM(NHArr    , "{":!"}":!"->":!NilT)
+MM(NRule    , "==>":!NilT)
+MM(NLetRule , "==>":!";":!NilT)
+MM(NDot     , "[":!"]":!NilT)
+
+instance HasArity (Mixfix t) where
+  arity (MkM_ (MkCached a) _) = a
+instance HasArity (Tokens i) where
+  arity ("_" :! NilT) = 0
+  arity (t :! NilT) | isInfix t = 0
+  arity os = wordToInt . length . filter (== "___") $ enrich os
+
+
+
+------------------------------------------------
+--------------- expression trees ---------------
+------------------------------------------------
+
+
+data ExpTree a
+  = RVar a
+  | RNat_ (Cached String) Integer
+  | RString_ (Cached String) String
+  | EApp Arity (ExpTree a) (ExpTree a)
+  deriving (Eq)
+
+instance Functor ExpTree where
+  fmap f (RVar a) = RVar (f a)
+  fmap _ (RNat_ a b) = RNat_ a b
+  fmap _ (RString_ a b) = RString_ a b
+  fmap f (EApp ar a b) = EApp ar (fmap f a) (fmap f b)
+
+instance HasArity a => HasArity (ExpTree a) where
+  arity (RVar a) = arity a
+  arity (EApp a _ _) = a
+  arity _ = 0
+
+pattern (:@) :: HasArity a => ExpTree a -> ExpTree a -> ExpTree a
+pattern f :@ e <- EApp _ f e
+  where f :@ e =  EApp (arity f - 1) f e
+
+pattern Apps :: HasArity a => a -> List (ExpTree a) -> ExpTree a
+pattern Apps a es <- (getApps Nil -> Just (T2 a es))
+  where Apps a es = foldl (:@) (RVar a) es
+
+getApps es (RVar a) = Just (T2 a es)
+getApps es (f :@ e) = getApps (e:. es) f
+getApps _ _ = Nothing
+
+
+pattern Saturated a <- (dup -> T2 ((== 0) . arity -> True) a)
+
+pattern a :@@ b <- (dup -> T2 ((<0) . arity -> True) (a :@ b))
+
+{-# COMPLETE RVar, (:@), RNat_, RString_ #-}
+
+instance (IsString a) => IsString (ExpTree a) where
+  fromString' = RVar . fromString'
+
+type ExpTree' a = ExpTree (Mixfix a)
+
+
+-------------------------------------------
+--------------- unop and op ---------------
+-------------------------------------------
+
+
+instance Parse (ExpTree' Layout) where
+  parse = fmap unop . parse
+
+instance Print (ExpTree' Layout) where
+  print = print . op
+
+fromListTokens Nil = NilT
+fromListTokens (a :. b) = a :! fromListTokens b
+
+unop :: OpSeq' Layout -> ExpTree' Layout
+unop Empty = RVar NEmpty
+unop (topOp -> T4 (fromListTokens -> os) l ts r) = case os of
+  NilT -> RVar NEmpty
+  os | not $ isOperator os -> error $ "Mismatched operator: " <<>> print (MkM os)
+  "(" :! ")" :! NilT | (t :> Empty) :. Nil <- ts, isInfix t -> lf $ rf $ RVar $ MSing t           -- TODO: implement inverse of this in op
+  _ -> lf $ rf $ Apps (MkM os) $ map unop $ fs ts
+ where
+  f Empty a = a
+  f l a = unop l :@ a
+
+  head_os = case os of
+    x :! _ -> x
+    _      -> impossible
+
+  last xs = case xs of
+    x :! NilT -> x
+    _ :! xs -> last xs
+    _ -> impossible
+
+  T2 lf fs = if leftPrec (precedence $ head_os) == leftPrec topPrec
+             then T2 (f l) id
+             else T2 id (l :.)
+  rf x | rightPrec (precedence (last os)) == rightPrec topPrec, Empty <- r = x
+  rf x = x :@ unop r
+
+op :: ExpTree' Layout -> OpSeq' Layout
+op = addParens . opt
+ where
+  opt e = case e of
+    NEmpty -> Empty
+    Apps (MkM os) args -> alter mempty (enrich os) (map opt args)
+    RNat{}    -> impossible
+    RString{} -> impossible
+    _ -> impossible
+
+  alter acc         Nil      Nil   =        parens acc
+  alter acc         Nil  (a:. as)  = alter (parens acc <> a) Nil as
+  alter acc ("___":. os) (a:. as)  = alter (       acc <> a) os as
+  alter acc ("___":. os)     Nil   = alter         acc       os Nil
+  alter acc (o:.     os)     as    = alter   (acc <> sing o) os as
+
+allJoin ((l :< "###" :> _) :< _ :> _) = allJoin l
+allJoin (Empty :< _ :> Empty) = True
+allJoin _ = False
+
+parens a | allJoin a = a
+parens a = sing "<!" <> a <> sing "!>"
+
+addParens :: OpSeq' Layout -> OpSeq' Layout
+addParens = flr Nothing Nothing
+ where
+  flr x y = \case
+    Empty -> Empty
+    Node3 a@Empty "<!"           b  "!>" Empty | p a b -> flr x y $ a <> b
+    Node3 a       "<!" (Empty :< b) "!>" Empty | p a b -> flr x y $ a <> b
+    Node3 a       "<!"           b  "!>" Empty -> flr x y $ a <> sing "(" <> b <> sing ")"
+    a       :< b                               -> flr x (Just b) a <> gg b
+   where
+    gg = \case
+      (sing -> b) :> c       -> b <> flr (Just b)       y  c
+      (sing -> b) := c :< d  -> b <> flr (Just b) (Just d) c <> gg d
+      _ -> impossible
+
+    p a b = a > b && maybe True (< a) x && maybe True (< b) x && maybe True (b >) y
+{-
+isEmpty Empty = True
+isEmpty _ = False
+-}
+
+
+-------------------------------------------------
+--------------- patch and unpatch ---------------
+-------------------------------------------------
+
+
+instance Parse (ExpTree' POp) where
+  parse = fmap (defEnd . patch) . parse
+
+joinAtN i n (Apps (MkM (splitAt' i -> T2 xs zs))
+                  (splitAt n -> T2 as (Apps (MkM ys) bs:. cs))
+            )
+  = Apps (MkM $ xs <> ys <> zs) (as <> bs <> cs)
+joinAtN _ _ _ = impossible
+
+infixl 9 .@
+
+dup a = T2 a a
+
+pattern RApp a b <- a :@@ b
+  where RApp a b =  a :@  b
+
+a .@ b = norm (a :@ b)
+
+norm r = case r of
+  _ | arity r /= 0 -> r
+  "#" :@ a :@ _ -> a
+  NSemi :@ NEmpty :@ a -> a
+  NSemi :@ a :@ NEmpty -> a
+  _ | Apps tt@(MkM as') (Saturated (Apps bs' _) :. _) <- r
+    , match <- \a b -> a == tt && b == bs'
+    ,  match NParens   NTy       
+    || match NBraces   NTy       
+    || match NEq       NTy       
+    || match NOEq      NTy       
+    || match NLet      NTy       
+    || match NOLet     NTy       
+    || match NSemi     NTy       
+    || match NHArr     NTy       
+    || match NHLam     NTy       
+    || match NConstructor NTy    
+    || match NBuiltin     NTy    
+    || match NSemi     NEq       
+    || match NSemi     NTEq      
+    || match NSemi     NOEq      
+    || match NSemi     NOTEq     
+    || match NSemi     NImport   
+    || match NSemi     NConstructorTy
+    || match NSemi     NBuiltinTy
+    || match NSemi     NLeftArr  
+    || match NSemi     NClass    
+    || match NSemi     NInstance 
+    || match NSemi     NData     
+    || match NSemi     NRule     
+    || match NSemi     NCaseArr  
+    || match NLambda   NArr      
+    || match NLambda   NHArr     
+    || match NLambda   NPi       
+    || match NLambda   NHPi      
+    || match NLam      NExpl     
+    || match NLam      NImpl     
+    || match NLam      NBraces   
+    || match NArr      NExpl     
+    || match NArr      NImpl     
+    || match NArr      NBraces
+    , ii <- length $ takeWhile (/= "___") $ filter (/= "###") $ enrich as'
+    -> joinAtN ii 0 r
+  NParens :@ a -> a
+  r -> r
+
+patch :: ExpTree' Layout -> ExpTree' POp
+patch = \case
+  a :@ b -> patch a .@ patch b
+  t -> coerce t
+
+-- TODO: move to separate phase
+defEnd :: ExpTree' POp -> ExpTree' POp
+defEnd = addEnd . \case
+  a :@ b -> defEnd a :@ defEnd b
+  t -> t
+ where
+  addEnd = \case
+    e@(Saturated (Apps l _)) | l `elem` (NTy :. NEq :. NTEq :. NOEq :. NOTEq :. NImport :. NConstructorTy :. NBuiltinTy :. NClass :. NInstance :. NData :. NCaseArr :. Nil)
+      -> NSemi :@ e .@ REnd
+    e -> e
+
+instance Print (ExpTree' POp) where
+  print = print . unpatch
+
+unpatch  :: ExpTree' POp -> ExpTree' Layout
+unpatch = coerce
+
+
+
+-------------------------------------------------------
+--------------- Raw syntax constructors ---------------
+-------------------------------------------------------
+
+
+-- TODO: make it distinct from RApp?
+pattern RHApp a b = RApp a (RVar NBraces :@ b)
+
+pattern Hole           = RVar NHole
+
+pattern Lam    n     e = RVar NLam   :@ RVar n :@       e
+pattern RLam   n t   e = RVar NTLam  :@ RVar n :@ t :@    e
+pattern RHLam  n t   e = RVar NTHLam :@ RVar n :@ t :@    e
+pattern RPi    n t   e = RVar NPi    :@ RVar n :@ t :@    e
+pattern RHPi   n t   e = RVar NHPi   :@ RVar n :@ t :@    e
+pattern RCPi     t   e = RVar NCPi   :@         t :@    e
+pattern RIPi     t   e = RVar NIArr  :@         t :@    e
+pattern RLet   n t d e = RVar NTLet  :@ RVar n :@ t :@ d :@ e
+pattern ROLet  n t d e = RVar NOTLet :@ RVar n :@ t :@ d :@ e
+pattern RLetTy n t   e = RVar NLetTy :@ RVar n :@ t :@    e
+pattern RConstructor n t e = RVar NLetConstructor :@ RVar n :@ t :@ e
+pattern RBuiltin     n t e = RVar NLetBuiltin     :@ RVar n :@ t :@ e
+pattern RRule  a b   e = RVar NLetRule :@ a :@ b :@ e
+pattern RDot   a       = RVar NDot   :@ a       -- .a   (in lhs)
+pattern RView  a b     = RVar NView  :@ a :@ b
+pattern RGuard a b     = RVar NGuard :@ a :@ b
+pattern RImport     n e = RVar NLetImport      :@ RVar n :@ e
+pattern RClass    a b c = RVar NLetClass    :@ a :@ b :@ c
+pattern RInstance a b c = RVar NLetInstance :@ a :@ b :@ c
+pattern RData     a b c = RVar NLetData     :@ a :@ b :@ c
+pattern RCase     a b c = RVar NCase        :@ a :@ b :@ c
+pattern RCaseOf   a b   = RVar NCaseOf      :@ a :@ b
+pattern REnd            = RVar NEnd
+pattern RAnn e t        = RVar NExpl :@ e :@ t
+
+unGLam = \case
+  _ :@@ _ -> Nothing
+  Apps a (RVar n:. es) :@ e
+    | a `elem` (NLam :. NHLam :. NTLam :. NTHLam :. NPi :. NHPi :. NLetTy :. NLetConstructor :. NLetBuiltin :. NTLet :. NOTLet :. Nil)
+    -> Just (T3 (RVar a:. es) n e)
+  _ -> Nothing
+
+pattern GLam :: (HasArity a, IsMixfix a) => List (ExpTree a) -> a -> ExpTree a -> ExpTree a
+pattern GLam es n e <- (unGLam -> Just (T3 es n e))
+  where GLam (RVar a:. es) n e = Apps a (RVar n:. es) :@ e
+        GLam _ _ _ = impossible
+
+getBIcit = \case
+  n@NExpl -> Just n
+  n@NImpl -> Just n
+  _ -> Nothing
+
+pattern Bind a b c <- RVar (getBIcit -> Just a) :@ b :@ c
+
+getHArr = \case
+  n@NLam -> Just n
+  n@NArr -> Just n
+  _ -> Nothing
+
+pattern Arr  a b c <- RVar (getHArr -> Just a) :@ b :@ c
+
+
+
+---------------------------------------------
+--------------- import module ---------------
+---------------------------------------------
+
+
+importModule :: String -> RefM (ExpTree' Desug -> ExpTree' Desug)
+importModule f = do
+  d <- getDataDir
+  t <- parseFile d $ f <> ".csip"
+  pure $ include t
+
+include :: ExpTree' Desug -> ExpTree' Desug -> ExpTree' Desug
+include t s = f t
+   where
+    f :: ExpTree' Desug -> ExpTree' Desug
+    f = \case
+      RLet  n t a b -> RLet  n t a $ f b
+      RRule   a b c -> RRule   a b $ f c
+      ROLet n t a b -> ROLet n t a $ f b
+      RLetTy  n a b -> RLetTy  n a $ f b
+      RConstructor n a b -> RConstructor n a $ f b
+      RBuiltin     n a b -> RBuiltin     n a $ f b
+      RImport   a b -> RImport   a $ f b
+      RClass    a b c -> RClass    a b $ f c
+      RInstance a b c -> RInstance a b $ f c
+      RData     a b c -> RData     a b $ f c
+      REnd -> s
+      _ -> undefined
+
+
+-------------------------------------------------
+--------------- desugar and sugar ---------------
+-------------------------------------------------
+
+
+isBind Bind{} = True
+isBind _ = False
+
+desugar :: ExpTree' POp -> RefM (ExpTree' Desug)
+desugar e = pure $ coerce $ etr3 $ etr2 $ etr e where
+
+  etr :: ExpTree' POp -> ExpTree' POp
+  etr = \case
+    l :@ (n :@ m) :@ a :@ b | l `elem` (NTLam :. NTHLam :. NPi :. NHPi :. Nil) -> etr $ l :@ n :@ a .@ (l :@ m :@ a .@ b)
+    l :@ (a :@ b) :@ e | l == NLam || l == NHLam || l == NArr && isBind b || l == NHArr -> etr $ l :@ a .@ (l :@ b .@ e)
+    a :@ b -> etr a :@ etr b
+    l -> l
+
+  etr2 :: ExpTree' POp -> ExpTree' POp
+  etr2 = \case
+    l@NLam  :@ a :@ b -> l :@ (NExpl :@ etr2 a .@ NHole) .@ etr2 b
+    l@NHLam :@ a :@ b -> l :@ (NTy   :@ etr2 a .@ NHole) .@ etr2 b
+    l@NHArr :@ a :@ b -> l :@ (NTy   :@ etr2 a .@ NHole) .@ etr2 b
+    l@NArr  :@ a :@ b -> l :@ (NExpl :@ NAny .@ etr2 a) .@ etr2 b
+    l@NLetTy:@ n :@ t :@ (z@NLet :@ n' :@ b :@ m) | n == n'
+      -> etr2 $ z :@ (del 1 1 l :@ n' .@ t) :@ b .@ m
+    l@NLetTy:@ n :@ t :@ (z@NOLet :@ n' :@ b :@ m) | n == n'
+      -> etr2 $ z :@ (del 1 1 l :@ n' .@ t) :@ b .@ m
+    z@NOLet :@ n :@ b :@ m
+      | RVar{} <- n -> z :@ (NTy :@ etr2 n .@ NHole) :@ etr2 b .@ etr2 m
+    z@NLet  :@ n :@ b :@ m
+      | RVar{} <- n -> z :@ (NTy :@ etr2 n .@ NHole) :@ etr2 b .@ etr2 m
+      | a <- etr2 n -> del 0 1 z :@ (NRule :@ a .@ etr2 b) .@ etr2 m
+    a :@ b -> etr2 a :@ etr2 b
+    l -> l
+
+  etr3 :: ExpTree' POp -> ExpTree' POp
+  etr3 = \case
+    Saturated (Apps l es) | l `elem`
+         (NGuard :. NDot :. NHole :. NLetImport :. NLetClass :. NLetInstance :. NLetData :. NLetTy :. NLetConstructor :. NLetBuiltin :. NTLet :. NOTLet
+         :. NPi :. NHPi :. NCPi :. NIArr :. NTLam :. NTHLam :. NBraces :. NLetRule :. NView :. NExpl :. NCaseOf :. NCase :. Nil)
+      -> Apps l $ map etr3 es
+    NLetArr :@ a :@ b :@ c -> ">>=" :@ etr3 b .@ (NTLam :@ etr3 a :@ NHole .@ etr3 c)
+    NSemi :@ b :@ c -> ">>=" :@ etr3 b .@ (NTLam :@ NAny :@ NHole .@ etr3 c)
+--    NSemi :@ a :@ _ -> error $ print a <&> \r -> "Definition expected\n" <> r
+    a :@ b  -> etr3 a :@ etr3 b
+    n@(RVar (MSing t)) | isAtom t   -> n
+    e -> error $ print ({- pprint $ op $ unpatch -} e) <&> \r -> "Expression expected\n" <> r
+
+
+
+del i j (RVar (MkM (splitAt' i -> T2 as (splitAt' j -> T2 _ bs)))) = RVar $ MkM $ as <> bs
+del _ _ _ = impossible
+
+sugar :: ExpTree' Desug -> ExpTree' POp
+sugar = coerce . sug . sug0
+ where
+  sug0 :: ExpTree' Desug -> ExpTree' Desug
+  sug0 = \case
+    l@NTLam :@ RVar n :@ Hole :@ b
+      -> del 1 3 l :@ RVar (coerce n) :@ sug0 b
+    l@NPi :@ NAny :@ a :@ b
+      -> del 0 3 l :@ sug0 a :@ sug0 b
+    l@NLetRule :@ a :@ b :@ c
+      -> del 0 1 l :@ (del 1 1 l :@ sug0 a :@ sug0 b) :@ sug0 c
+    l@NTLet :@ RVar n :@ Hole :@ b :@ c
+      -> del 0 1 l :@ RVar n :@ sug0 b :@ sug0 c
+    l@NOTLet :@ RVar n :@ Hole :@ b :@ c
+      -> del 0 1 l :@ RVar n :@ sug0 b :@ sug0 c
+    a :@ b -> sug0 a :@ sug0 b
+    a -> coerce a
+
+  sug :: ExpTree' Desug -> ExpTree' Desug
+  sug = \case
+    l@NArr :@ a :@ b
+      -> arrow l (sug a) (sug b)
+    l :@ RVar n :@ a :@ b | l `elem` (NPi :. NHPi :. Nil)
+      -> arrow (del 0 3 l) (del 3 1 l :@ RVar n :@ sug a) (sug b)
+    l@NLam :@ RVar n :@ b
+      -> arrow l (RVar n) (sug b)           -- \x (w : t)-> \(y : t) z-> e   ~>  \x (w y: t) z-> e
+    l :@ RVar n :@ a :@ b | l `elem` (NTLam :. NTHLam :. Nil)
+      -> arrow (del 1 3 l) (del 3 1 (del 0 1 l) :@ RVar n :@ sug a) (sug b)
+    a :@ b -> sug a :@ sug b
+    a -> a
+
+  arrow :: ExpTree' Desug -> ExpTree' Desug -> ExpTree' Desug -> ExpTree' Desug
+  arrow arr n (Arr arr' m e) | arr == RVar arr', Just nm <- n +@ m = arr :@ nm :@ e
+   where
+    a +@ (b :@@ c) | arr == NLam, Just ab <- a +@ b = Just $ ab :@ c
+    Bind pl n t +@ Bind pl' m t' | pl == pl', t == t' = Just $ RVar pl :@ (n ++@ m) :@ t
+    a +@ b | arr == NLam || isBind a && isBind b = Just $ a :@ b
+    _ +@ _ = Nothing
+
+    n ++@ (a :@ b) = (n ++@ a) :@ b
+    n ++@ m = n :@ m
+  arrow arr n e = arr :@ n :@ e
+
+
+instance Parse (ExpTree' Desug) where
+  parse = parse >=> desugar
+    >=> preprocess{-TODO: do in separate phase-}
+    >=> pure . preprocess2{-TODO: do in separate phase-}
+
+preprocess   :: ExpTree' Desug -> RefM (ExpTree' Desug)
+preprocess t = f t  where
+    f = \case
+      RImport (MSing m) e -> print m >>= \m -> importModule m >>= \fm -> f $ fm e
+      RVar n -> pure $ RVar n
+      a :@ b -> (:@) <$> f a <*> f b
+      RNat_ a b -> pure $ RNat_ a b
+      RString_ a b -> pure $ RString_ a b
+
+preprocess2 t = f t  where
+    f = \case
+      RVar (MSing (MkNat s n)) -> RNat_ (MkCached s) n
+      RVar (MSing (StringToken s n)) -> RString_ (MkCached s) n
+      RVar n -> RVar n
+      a :@ b -> f a :@ f b
+      RNat_ a b -> RNat_ a b
+      RString_ a b -> RString_ a b
+
+instance Print (ExpTree' Desug) where
+  print = print . sugar . unembed
+
+unembed :: ExpTree' a -> ExpTree' a
+unembed = f where
+  f = \case
+    RNat_    (MkCached a) b -> RVar $ MSing (MkNat a b)
+    RString_ (MkCached a) b -> RVar $ MSing (StringToken a b)
+    a :@ b -> f a :@ f b
+    RVar n -> RVar n
+
+
+----------------------------------------------
+
+pattern RNat n <- RNat_ _ n
+  where RNat n =  RNat_ (MkCached $ showInteger n) n
+
+pattern RString n <- RString_ _ n
+  where RString n =  RString_ (MkCached ("\"" <> n <> "\"")) n
+
+addPrefix :: Token a -> Mixfix a -> Mixfix a
+addPrefix s (MkM_ ar a) = mkM ar (s :! a)
+
+addSuffix :: Mixfix a -> Token a -> Mixfix a
+addSuffix (MkM_ ar a) s = mkM ar $ a <> (s :! NilT)
+
+
+----------------------------------------------
+--------------- Name data type ---------------
+----------------------------------------------
+
+
+type NameStr = Mixfix Desug
+
+data Name = MkName
+  { nameStr :: NameStr
+  , nameId  :: Word
+  }
+
+instance HasId Name where getId = nameId
+
+showName = showMixfix . nameStr
+
+instance IsMixfix Name where
+  fromMixfix (fromMixfix -> n) = MkName n (getId n)
+
+instance HasArity Name where
+  arity = arity . nameStr
+
+
+rename a (MkName _ b) = MkName a b
+
+instance Eq  Name where (==)    = (==)    `on` nameId
+instance Ord Name where compare = compare `on` nameId
+
+instance Print Name where
+  print = print . nameStr
+
+instance IsString Name where
+  fromString' t = case fromString' t of
+    MkNat{}    -> impossible
+    StringToken{} -> impossible
+    n -> fromMixfix $ MSing n
+
+mkName :: NameStr -> RefM Name
+mkName s = newId <&> MkName s
+
+mkName' s = mkName s <&> \n -> rename (addSuffix (nameStr n) $ mkIntToken $ nameId n) n
+
+nameOf :: NameStr -> RefM Name
+nameOf n@(MSing (MkToken_ (MkIdString h _) _)) | neg h == h = pure $ MkName n h
+nameOf n = mkName n
+
+
+-------------------------------------------------
+--------------- scope and unscope ---------------
+-------------------------------------------------
+
+
+instance Print (ExpTree Name) where
+  print = unscope >=> print
+
+unscope :: ExpTree Name -> RefM (ExpTree' Desug)
+unscope t = runReader (T2 (mempty :: IntMap Name Word) (emptyMap :: Map NameStr Word)) ff where
+
+  addIndex n Nothing = nameStr n
+  addIndex (nameStr -> n) (Just i) = addSuffix (addSuffix n "_") $ mkIntToken i
+
+--  addIndex n _i = addSuffix (addSuffix (nameStr n) "_") $ mkIntToken (nameId n)
+
+  ff r = f t where
+
+    f :: ExpTree Name -> RefM (ExpTree' Desug)
+    f = \case
+      RVar "Pi"  :@ a :@ Lam n e -> f $ RPi  n a e
+      RVar "HPi" :@ a :@ Lam n e -> f $ RHPi n a e
+      RVar "CPi" :@ a :@       e -> f $ RCPi   a e
+      RVar "IPi" :@ a :@       e -> f $ RIPi   a e
+      RVar v -> do
+        k <- asks r (lookupIM v . fst)
+        let m = addIndex v k
+        pure $ RVar m
+      GLam es v a
+        | n@"_" <- v -> GLam <$> mapM f es <*> pure (nameStr n) <*> f a
+        | n <- nameStr v -> asks r (lookupIM v . fst) >>= \case
+          _ -> do
+            k <- asks r (lookupMap n . snd)
+            let m = addIndex v k
+            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insert n (1 + fromMaybe 0 k)) (f a)
+      a :@ b -> (:@) <$> f a <*> f b
+      RNat_ (MkCached a) b -> pure $ RVar $ MSing (MkNat a b)
+      RString_ (MkCached a) b -> pure $ RVar $ MSing (StringToken a b)
+
+
+
+--------------------------------------
+--------------- PPrint ---------------
+--------------------------------------
+
+class PPrint a where
+  pprint :: a -> ExpTree Name
+
+
+instance (PPrint a, PPrint b) => PPrint (Tup2 a b) where
+  pprint (T2 a b) = zVar ("(" :! "," :! ")" :! NilT) :@ pprint a :@ pprint b
+
+instance PPrint a => PPrint (List a) where
+  pprint Nil = zVar ("[":!"]":!NilT)
+  pprint as = Apps (fromMixfix $ MkM $ "[" :! replicate' (length as -. 1) "," <> ("]" :! NilT)) $ map pprint as
+
+instance PPrint Tup0 where
+  pprint T0 = RVar "Unit"   -- TODO: zVar ["(",")"], without "_"
+{-
+instance PPrint Int where
+  pprint i = RVar $ fromString' $ showInteger i
+-}
+instance PPrint Word where
+  pprint i = RVar $ fromMixfix $ fromString' $ showInt i
+{-
+instance PPrint String where
+  pprint s = pprint (fromString' s :: String)
+
+instance PPrint Char where
+  pprint c = pprint (fromString' [c] :: String)
+-}
+instance PPrint String where
+  pprint = \case
+    NilStr -> res ""
+    ConsChar c s
+      | c == '\n' -> co (r "newline") s
+      | c == '\t' -> co (r "begin")   s
+      | c == '\r' -> co (r "end")     s
+      | c == '\v' -> co (r "nl")      s
+      | c == '\"' -> co (r "quote")   s    -- co (res c) s
+    (spanStr (\c -> not $ c `elem` ('\n' :. '\t' :. '\r' :. '\"' :. '\v' :. Nil)) -> T2 as bs)
+      -> co (res as) bs
+   where
+    r s = pprintToken $ StringToken s s
+    res s = pprintToken $ StringToken ("\"" <> s <> "\"") s
+    co a NilStr = a
+    co a b = RVar "<>" :@ a :@ pprint b
+
+pprintToken :: Token Desug -> ExpTree Name
+pprintToken t = RVar $ fromMixfix (MSing t)
+
+instance PPrint IString where
+  pprint = pprint . unIString
+
+instance PPrint Void where
+  pprint = impossible
+
+instance (PPrint a) => PPrint (OpSeq a) where
+  pprint Empty = RVar "_"
+  pprint (a :> Empty) = pprint a
+  pprint (sl :< b) = zVar ("[":!"]":!NilT) :@ foldl (:@) (pprint sl) (f b)  where
+    f (b := c :< d) = pprint b:. pprint c:. f d
+    f (b :> c) = pprint b:. pprint c:. Nil
+    f _ = impossible
+
+instance PPrint (Token a) where
+  pprint = \case
+    t | precedence t == topPrec -> pprintToken $ coerce t
+    t -> pprint $ showToken t
+
+instance PPrint (Mixfix a) where
+  pprint (MSing t) | precedence t == topPrec = pprint t
+  pprint s = pprintToken $ StringToken x x where x = showMixfix s
+
+instance PPrint Name where
+  pprint = RVar --pprint . nameStr
+
+instance (Eq a, PPrint a, HasArity a) => PPrint (ExpTree a) where
+  pprint = f where
+    f = \case
+      RVar n     -> pprint n
+      a :@ b     -> RVar "@" :@ f a :@ f b
+      RNat_ a b   -> RNat_ a b
+      RString_ a b -> RString_ a b
+

@@ -1,0 +1,16 @@
+# eval
+
+data Bool : Type where
+  True  : Bool
+  False : Bool
+
+data P : Type where
+  MkP : Bool -> Bool -> Bool -> Bool -> P
+
+eqBool = \a b -> case a of
+  True  ---> b
+  False ---> case b of
+    True  ---> a
+    False ---> True
+
+MkP (eqBool False False) (eqBool False True) (eqBool True False) (eqBool True True)

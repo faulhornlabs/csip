@@ -157,8 +157,9 @@ applications, lambdas and lets to raw applications, lambdas and lets.
 
 The following limitations and bugs are planned to be lifted:
 
-- errors: check that no meta-level constructs remain in staged output
+- errors: check that no meta-level constructs remains in staged output
 - errors: pattern matching should not be allowed on object language constructors
+- errors: dedicated error message for missing type class instances
 - staging feature: eta-expansion is needed on functions with object-level pattern matching only
 - feature: deriving for Eq and Ord classes
 - feature: only builtin modules can be imported
@@ -198,7 +199,6 @@ The following limitations and bugs are planned to be lifted:
 - feature: support closed data types
 - feature: support closed functions
 - feature: support multi-parameter type classes
-- feature: support local definitions
 - feature: only simple guards are supported
 
 - errors: infinite evaluation is not catched (by "gas", for example)

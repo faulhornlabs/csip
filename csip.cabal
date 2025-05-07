@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          csip
-version:       0.3.0.0
+version:       0.4.0.0
 
 category:      Compiler
 synopsis:      compiler for writing efficient programs with high-level abstractions
@@ -44,18 +44,21 @@ executable csip
       Paths_csip
   other-modules:
       Paths_csip
+    -- base libraries
     , A_Builtins
     , B_Prelude
-    , M0_Map
-    , M0_IntMap
-    , M0_StringMap
-    , M1_Base
-    , M2_OpSeq
-    , M3_Parse
-    , M4_Eval
-    , M5_Unify
-    , M6_Elab
-    , M7_Stage
+    , C_Map
+    , C_IntMap
+    , C_StringMap
+    , C_OpSeq
+    , D_Base
+    -- compiler modules
+    , E_Parse
+    , F_Eval
+    , G_Unify
+    , H_Elab
+    , I_Stage
+    -- I/O base library
     , M8_IO
   main-is:
       M9_Main.hs
@@ -65,7 +68,6 @@ executable csip
   default-extensions:
       RebindableSyntax
     , OverloadedStrings
-    , OverloadedLists
     , BlockArguments
     , LambdaCase
     , Strict
@@ -79,7 +81,6 @@ executable csip
     , FlexibleInstances
     , FlexibleContexts
     , GeneralizedNewtypeDeriving
-    , TypeFamilies
     , ConstraintKinds
 
   ghc-options:

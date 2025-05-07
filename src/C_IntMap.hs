@@ -1,4 +1,4 @@
-module M0_IntMap
+module C_IntMap
   ( HasId(getId)
   , IntMap, insertIM, lookupIM, fromListIM, toListIM, singletonIM, assocsIM, unionWithIM, nullIM
   , walkIM, downUpIM, topDownIM, bottomUpIM
@@ -6,7 +6,7 @@ module M0_IntMap
   , nubIS
   ) where
 
-import B_Prelude hiding (null, toList, fromList)
+import B_Prelude
 
 -------------------
 
@@ -38,16 +38,16 @@ instance Functor (IntMap a) where
 
 singleton i a b = insert i a b Empty
 
-null m = case m of
+nullIM m = case m of
   Empty -> True
   _     -> False
 
 getNode = \case
-    n@Empty -> (n, n)
-    n@Zero{} -> (n, Empty)
-    Node l r -> (l, r)
+    n@Empty -> T2 n n
+    n@Zero{} -> T2 n Empty
+    Node l r -> T2 l r
 
-pattern ENode l r <- (getNode -> (l, r))
+pattern ENode l r <- (getNode -> T2 l r)
   where ENode l@Zero{} Empty = l
         ENode Empty Empty = Empty
         ENode l r = Node l r
@@ -77,27 +77,27 @@ insert 0 x y Zero{} = Zero x y
 insert i x y (ENode l r) | even i = ENode (insert (half i) x y l) r
 insert i x y (ENode l r)          = ENode l (insert (half i) x y r)
 
-lookup :: Word -> IntMap a b -> Maybe (a, b)
-lookup 0 (Zero a b) = Just (a, b)
+lookup :: Word -> IntMap a b -> Maybe (Tup2 a b)
+lookup 0 (Zero a b) = Just (T2 a b)
 lookup i (Node l _) | even i = lookup (half i) l
 lookup i (Node _ r)          = lookup (half i) r
 lookup _ _ = Nothing
 
-toList :: IntMap a b -> List (a, b)
+toList :: IntMap a b -> List (Tup2 a b)
 toList = map snd . go (1 :: Word) 0 where
   go _ _ Empty = Nil
-  go _ o (Zero a b) = (o, (a, b)) :. Nil
+  go _ o (Zero a b) = T2 o (T2 a b) :. Nil
   go i o (Node l r) | i' <- shiftL i 1 = merge (go i' o l) (go i' (o+i') r)
 
   merge Nil xs = xs
   merge xs Nil = xs
-  merge (x@(i, _):. xs') ys@((j, _):. _)
+  merge (x@(T2 i _):. xs') ys@(T2 j _ :. _)
     | i < j  = x:. merge xs' ys
   merge xs (y:. ys')
     = y:. merge xs ys'
 
-fromList :: HasId a => List (a, b) -> IntMap a b
-fromList = foldl (\m (a, b) -> insert (getId a) a b m) Empty
+fromListIM :: HasId a => List (Tup2 a b) -> IntMap a b
+fromListIM = foldl (\m (T2 a b) -> insert (getId a) a b m) Empty
 
 
 
@@ -115,10 +115,7 @@ lookupIM a m = fmap snd (lookup (getId a) m)
 memberIM :: HasId k => k -> IntMap k a -> Bool
 memberIM a m = isJust (lookup (getId a) m)
 
-fromListIM :: HasId k => List (k, a) -> IntMap k a
-fromListIM xs = (fromList xs)
-
-assocsIM :: IntMap a b -> List (a, b)
+assocsIM :: IntMap a b -> List (Tup2 a b)
 assocsIM m = toList m
 
 toListIM :: IntMap a b -> List b
@@ -129,19 +126,17 @@ keysIM m = map fst (assocsIM m)
 
 singletonIM a b = singleton (getId a) a b
 
-nullIM m = null m
-
 unionWithIM :: HasId a => (b -> b -> b) -> IntMap a b -> IntMap a b -> IntMap a b
 unionWithIM = unionWith
 
 -----
 
-type IntSet a = IntMap a ()
+type IntSet a = IntMap a Tup0
 
 insertIS :: HasId k => k -> IntSet k -> IntSet k
-insertIS a m = insertIM a () m
+insertIS a m = insertIM a T0 m
 
-singletonIS a = singletonIM a ()
+singletonIS a = singletonIM a T0
 
 nullIS :: IntSet a -> Bool
 nullIS = nullIM
@@ -153,7 +148,7 @@ deleteIS :: HasId k => k -> IntSet k -> IntSet k
 deleteIS = deleteIM
 
 fromListIS :: HasId k => List k -> IntSet k
-fromListIS = foldl (\m a -> insert (getId a) a () m) Empty
+fromListIS = foldl (\m a -> insert (getId a) a T0 m) Empty
 
 toListIS :: IntSet a -> List a
 toListIS = keysIM
@@ -172,24 +167,24 @@ nubIS = f mempty  where
 -- top-down & bottom-up  graph walking;  sharing and cycle friendly
 walkIM
   :: HasId a
-  => (a -> RefM (b, List a))              -- down
+  => (a -> RefM (Tup2 b (List a)))              -- down
   -> (a -> b -> RefM b)                -- shared try
-  -> (a -> b -> List (a, b) -> RefM b)
+  -> (a -> b -> List (Tup2 a b) -> RefM b)
   -> List a
   -> RefM (IntMap a b)
 walkIM children  down up xs = fmap snd (runState mempty go) where
   go st = walk (map Left xs)  where
-    walk Nil = pure ()
+    walk Nil = pure T0
     walk (Left v:. ts) = gets st (lookupIM v) >>= \case
       Nothing -> do
-        (r, ch) <- children v
+        T2 r ch <- children v
         modify st (insertIM v r)
-        walk (map Left ch ++ Right (v, ch):. ts)
+        walk (map Left ch ++ Right (T2 v ch):. ts)
       Just r -> do
         r' <- down v r
         modify st (insertIM v r')
         walk ts
-    walk (Right (e, ch):. ts) = do
+    walk (Right (T2 e ch):. ts) = do
       m <- gets st (fromMaybe impossible . lookupIM e)
       ms <- forM ch \v -> gets st (fromMaybe impossible . lookupIM v)
       r <- up e m (zip ch ms)
@@ -199,8 +194,8 @@ walkIM children  down up xs = fmap snd (runState mempty go) where
 
 downUpIM
   :: HasId a
-  => (a -> RefM (b, List a))              -- down
-  -> (a -> b -> List (a, c) -> RefM c)
+  => (a -> RefM (Tup2 b (List a)))              -- down
+  -> (a -> b -> List (Tup2 a c) -> RefM c)
   -> List a
   -> RefM (IntMap a c)
 downUpIM down up as = walkIM down' (\_ -> pure) up' as <&> fmap g
@@ -213,7 +208,7 @@ downUpIM down up as = walkIM down' (\_ -> pure) up' as <&> fmap g
 
 topDownIM
   :: HasId a
-  => (a -> RefM (b, List a))
+  => (a -> RefM (Tup2 b (List a)))
   -> List a
   -> RefM (IntMap a b)
 topDownIM down
@@ -223,10 +218,10 @@ bottomUpIM
   :: HasId a
   => b
   -> (a -> RefM (List a))
-  -> (a -> List (a, b) -> RefM b)
+  -> (a -> List (Tup2 a b) -> RefM b)
   -> a
   -> RefM (IntMap a b)
 bottomUpIM init children up x
-  = walkIM (\v -> (,) init <$> children v) (\_ -> pure) (\a _ b -> up a b) (x :. Nil)
+  = walkIM (\v -> T2 init <$> children v) (\_ -> pure) (\a _ b -> up a b) (x :. Nil)
 
 

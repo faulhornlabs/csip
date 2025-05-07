@@ -59,67 +59,67 @@ Tm : Con -> Ty -> Type
    (snd   : {G A B} -> Tm G (prod A B) -> Tm G B)
    (left  : {G A B} -> Tm G A -> Tm G (sum A B))
    (right : {G A B} -> Tm G B -> Tm G (sum A B))
-   (case  : {G A B C} -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C)
+   (case' : {G A B C} -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C)
    (zero  : {G} -> Tm G nat)
    (suc   : {G} -> Tm G nat -> Tm G nat)
    (rec   : {G A} -> Tm G nat -> Tm G (arr nat (arr A A)) -> Tm G A -> Tm G A)
  -> Tm G A
 
 var : {G A} -> Var G A -> Tm G A
- = \x Tm var lam app tt pair fst snd left right case zero suc rec->
+ = \x Tm var lam app tt pair fst snd left right case' zero suc rec->
      var x
 
 lam : {G A B} -> Tm (snoc G A) B -> Tm G (arr A B)
- = \t Tm var lam app tt pair fst snd left right case zero suc rec->
-     lam (t Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t Tm var lam app tt pair fst snd left right case' zero suc rec->
+     lam (t Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 app : {G A B} -> Tm G (arr A B) -> Tm G A -> Tm G B
- = \t u Tm var lam app tt pair fst snd left right case zero suc rec->
-     app (t Tm var lam app tt pair fst snd left right case zero suc rec)
-         (u Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t u Tm var lam app tt pair fst snd left right case' zero suc rec->
+     app (t Tm var lam app tt pair fst snd left right case' zero suc rec)
+         (u Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 tt : {G} -> Tm G top
- = \Tm var lam app tt pair fst snd left right case zero suc rec-> tt
+ = \Tm var lam app tt pair fst snd left right case' zero suc rec-> tt
 
 pair : {G A B} -> Tm G A -> Tm G B -> Tm G (prod A B)
- = \t u Tm var lam app tt pair fst snd left right case zero suc rec->
-     pair (t Tm var lam app tt pair fst snd left right case zero suc rec)
-          (u Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t u Tm var lam app tt pair fst snd left right case' zero suc rec->
+     pair (t Tm var lam app tt pair fst snd left right case' zero suc rec)
+          (u Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 fst : {G A B} -> Tm G (prod A B) -> Tm G A
- = \t Tm var lam app tt pair fst snd left right case zero suc rec->
-     fst (t Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t Tm var lam app tt pair fst snd left right case' zero suc rec->
+     fst (t Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 snd : {G A B} -> Tm G (prod A B) -> Tm G B
- = \t Tm var lam app tt pair fst snd left right case zero suc rec->
-     snd (t Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t Tm var lam app tt pair fst snd left right case' zero suc rec->
+     snd (t Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 left : {G A B} -> Tm G A -> Tm G (sum A B)
- = \t Tm var lam app tt pair fst snd left right case zero suc rec->
-     left (t Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t Tm var lam app tt pair fst snd left right case' zero suc rec->
+     left (t Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 right : {G A B} -> Tm G B -> Tm G (sum A B)
- = \t Tm var lam app tt pair fst snd left right case zero suc rec->
-     right (t Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t Tm var lam app tt pair fst snd left right case' zero suc rec->
+     right (t Tm var lam app tt pair fst snd left right case' zero suc rec)
 
-case : {G A B C} -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C
- = \t u v Tm var lam app tt pair fst snd left right case zero suc rec->
-     case (t Tm var lam app tt pair fst snd left right case zero suc rec)
-          (u Tm var lam app tt pair fst snd left right case zero suc rec)
-          (v Tm var lam app tt pair fst snd left right case zero suc rec)
+case' : {G A B C} -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C
+ = \t u v Tm var lam app tt pair fst snd left right case' zero suc rec->
+     case' (t Tm var lam app tt pair fst snd left right case' zero suc rec)
+          (u Tm var lam app tt pair fst snd left right case' zero suc rec)
+          (v Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 zero  : {G} -> Tm G nat
- = \Tm var lam app tt pair fst snd left right case zero suc rec-> zero
+ = \Tm var lam app tt pair fst snd left right case' zero suc rec-> zero
 
 suc : {G} -> Tm G nat -> Tm G nat
- = \t Tm var lam app tt pair fst snd left right case zero suc rec->
-   suc (t Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t Tm var lam app tt pair fst snd left right case' zero suc rec->
+   suc (t Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 rec : {G A} -> Tm G nat -> Tm G (arr nat (arr A A)) -> Tm G A -> Tm G A
- = \t u v Tm var lam app tt pair fst snd left right case zero suc rec->
-     rec (t Tm var lam app tt pair fst snd left right case zero suc rec)
-         (u Tm var lam app tt pair fst snd left right case zero suc rec)
-         (v Tm var lam app tt pair fst snd left right case zero suc rec)
+ = \t u v Tm var lam app tt pair fst snd left right case' zero suc rec->
+     rec (t Tm var lam app tt pair fst snd left right case' zero suc rec)
+         (u Tm var lam app tt pair fst snd left right case' zero suc rec)
+         (v Tm var lam app tt pair fst snd left right case' zero suc rec)
 
 v0 : {G A} -> Tm (snoc G A) A
  = var vz
@@ -142,7 +142,7 @@ tfalse : {G} -> Tm G tbool
  = right tt
 
 ifthenelse : {G A} -> Tm G (arr tbool (arr A (arr A A)))
- = lam (lam (lam (case v2 (lam v2) (lam v1))))
+ = lam (lam (lam (case' v2 (lam v2) (lam v1))))
 
 times4 : {G A} -> Tm G (arr (arr A A) (arr A A))
   = lam (lam (app v1 (app v1 (app v1 (app v1 v0)))))

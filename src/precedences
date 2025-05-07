@@ -1,5 +1,5 @@
-     ALPHA_ )_ ]_ }_ !>_ whereEnd_ ###_
-    _ALPHA _( _[ _{ _<! _if _let _\ _import _builtin _constructor _class _instance _data _###
+     ALPHA_ )_ ]_ }_ !>_ whereEnd_ ###_ ofEnd_
+    _ALPHA _( _[ _{ _<! _if _let _\ _import _builtin _constructor _class _instance _data _### _case
      @_
     _@
     _MAXPREC MAXPREC_
@@ -31,8 +31,8 @@
      else_
     _<-
      <-_
-    _-> _~> _:-> _|-> _: _** _=> _==> _-->
-     ->_ ~>_ :->_ |->_ :_ **_ =>_ ==>_ -->_
+    _-> _~> _:-> _|-> _: _** _=> _==> _--> _--->
+     ->_ ~>_ :->_ |->_ :_ **_ =>_ ==>_ -->_ --->_
      in_
      \_
     _|
@@ -46,11 +46,12 @@
      import_ builtin_ constructor_
     _;
      ;_
+     case_ _ofBegin ofBegin_ _ofEnd
      class_ instance_ data_ _whereBegin whereBegin_ _whereEnd
      let_ _in if_ _then then_ _else
      [_ _] {_ _} (_ _) <!_ _!>
-     END_   SEMI_ do_ where_
-    _BEGIN _SEMI _do _where
+     END_   SEMI_ do_ where_ of_
+    _BEGIN _SEMI _do _where _of
      BEGIN_ _END
     _SPACE
      SPACE_

@@ -28,17 +28,17 @@ import qualified Paths_csip as P
 type Word = P.Word
 
 andWord, orWord, addWord, mulWord, subWord, divWord, modWord :: Word -> Word -> Word
-andWord = (P..&.)
-orWord  = (P..|.)
-addWord = (P.+)
-mulWord = (P.*)
-subWord = (P.-)
-divWord = P.div
-modWord = P.mod
+andWord a b = (P..&.) a b
+orWord  a b = (P..|.) a b
+addWord a b = (P.+) a b
+mulWord a b = (P.*) a b
+subWord a b = (P.-) a b
+divWord a b = P.div a b
+modWord a b = P.mod a b
 
 shiftRWord, shiftLWord :: Word -> Int -> Word
-shiftRWord = P.shiftR
-shiftLWord = P.shiftL
+shiftRWord a b = P.shiftR a b
+shiftLWord a b = P.shiftL a b
 
 
 -------------------------------------------------- Int
@@ -46,21 +46,21 @@ shiftLWord = P.shiftL
 type Int = P.Int
 
 intToWord :: Int -> Word
-intToWord = P.fromIntegral
+intToWord a = P.fromIntegral a
 
 wordToInt :: Word -> Int
-wordToInt = P.fromIntegral
+wordToInt a = P.fromIntegral a
 
 andInt, orInt, addInt, mulInt, subInt :: Int -> Int -> Int
-addInt = (P.+)
-mulInt = (P.*)
-subInt = (P.-)
-andInt = (P..&.)
-orInt = (P..|.)
+addInt a b = (P.+) a b
+mulInt a b = (P.*) a b
+subInt a b = (P.-) a b
+andInt a b = (P..&.) a b
+orInt  a b = (P..|.) a b
 
 shiftRInt, shiftLInt :: Int -> Int -> Int
-shiftRInt = P.shiftR
-shiftLInt = P.shiftL
+shiftRInt a b = P.shiftR a b
+shiftLInt a b = P.shiftL a b
 
 
 -------------------------------------------------- Char
@@ -79,26 +79,26 @@ wordToChar w = P.chr (wordToInt w)
 type Integer = P.Integer
 
 integerToInt :: Integer -> Int
-integerToInt = P.fromIntegral
+integerToInt a = P.fromIntegral a
 
 wordToInteger :: Word -> Integer
-wordToInteger = P.fromIntegral
+wordToInteger a = P.fromIntegral a
 
 integerToWord :: Integer -> Word
-integerToWord = P.fromIntegral
+integerToWord a = P.fromIntegral a
 
 andInteger, orInteger, addInteger, mulInteger, subInteger, divInteger, modInteger :: Integer -> Integer -> Integer
-andInteger = (P..&.)
-orInteger = (P..|.)
-addInteger = (P.+)
-mulInteger = (P.*)
-subInteger = (P.-)
-divInteger = P.div
-modInteger = P.mod
+andInteger a b = (P..&.) a b
+orInteger  a b = (P..|.) a b
+addInteger a b = (P.+) a b
+mulInteger a b = (P.*) a b
+subInteger a b = (P.-) a b
+divInteger a b = P.div a b
+modInteger a b = P.mod a b
 
 shiftRInteger, shiftLInteger :: Integer -> Int -> Integer
-shiftRInteger = P.shiftR
-shiftLInteger = P.shiftL
+shiftRInteger a b = P.shiftR a b
+shiftLInteger a b = P.shiftL a b
 
 
 -------------------------------------------------- Bool
@@ -106,7 +106,7 @@ shiftLInteger = P.shiftL
 type Bool = P.Bool
 
 pattern False = P.False
-pattern True = P.True
+pattern True  = P.True
 
 {-# COMPLETE False, True #-}
 
@@ -130,53 +130,58 @@ pattern GT = P.GT
 
 -------------------------------------------------- List
 
-data List a = Nil | Cons a ~(List a)
+data List a = Nil | Cons a (List a)
   deriving (P.Eq, P.Ord, P.Show)
 
-fl :: [a] -> List a
-fl (a: ~as) = Cons a (fl as)
-fl _ = Nil
+fromList :: [a] -> List a
+fromList (a: as) = Cons a (fromList as)
+fromList _ = Nil
 
-tl :: List a -> [a]
-tl (Cons a ~as) = a: tl as
-tl Nil = []  where
-  fromListN _ x = x
+toList :: List a -> [a]
+toList (Cons a as) = a: toList as
+toList Nil = []
 
 
 -------------------------------------------------- String
 
-type String = P.UArray Word Char
+newtype String = MkStr (P.UArray Int Char)
+  deriving (P.Eq, P.Ord, P.Show)
 
 unsafeAt :: String -> Word -> Char
-unsafeAt v i = P.unsafeAt v (wordToInt i)
+unsafeAt (MkStr v) i = P.unsafeAt v (wordToInt i)
 
-numElements :: String -> Word
-numElements v = intToWord (P.numElements v)
+lengthString :: String -> Word
+lengthString (MkStr v) = intToWord (P.numElements v)
 
-nullString :: String
-nullString = P.unsafeCoerce (P.listArray (0, P.negate 1) [] :: P.UArray Int Char)
+emptyString :: String
+emptyString = MkStr (P.listArray (0, P.negate 1) [])
  where
   fromInteger = P.fromInteger
-  fromListN _ x = x
 
 listToString :: List Char -> String
-listToString Nil = nullString
-listToString (tl -> es) = P.listArray (0, intToWord (P.length es P.- 1)) es
+listToString Nil = emptyString
+listToString (toList -> es) = MkStr (P.listArray (0, P.length es P.- 1) es)
  where
   fromInteger = P.fromInteger
 
 stringToList :: String -> List Char
-stringToList s = go 0 (numElements s) where
+stringToList s = go 0 (lengthString s) where
   fromInteger = P.fromInteger
 
   go i j | i P.== j = Nil
   go i j = Cons (unsafeAt s i) (go (i P.+ 1) j)
 
 fromPreludeString :: P.String -> String
-fromPreludeString s = listToString (fl s)
+fromPreludeString s = listToString (fromList s)
 
 toPreludeString :: String -> P.String
-toPreludeString s = tl (stringToList s)
+toPreludeString s = toList (stringToList s)
+
+
+-------------------------------------------------- Tup0
+
+data Tup0 = T0
+  deriving (P.Eq, P.Ord)
 
 
 -------------------------------------------------- IO
@@ -184,22 +189,22 @@ toPreludeString s = tl (stringToList s)
 type IO = P.IO
 
 pureIO :: a -> IO a
-pureIO = P.pure
+pureIO a = P.pure a
 
 bindIO :: IO a -> (a -> IO b) -> IO b
-bindIO = (P.>>=)
-
-bindIO' :: IO a -> IO b -> IO b
-bindIO' = (P.>>)
+bindIO a f = a P.>>= f
 
 failIO :: String -> IO a
 failIO s = P.fail (toPreludeString s)
 
 finally :: IO a -> IO b -> IO a
-finally = P.finally
+finally a b = P.finally a b
 
 unsafePerformIO :: IO a -> a
-unsafePerformIO = P.unsafePerformIO
+unsafePerformIO a = P.unsafePerformIO a
+
+void :: IO a -> IO Tup0
+void m = m P.>> P.pure T0
 
 
 -------------------------------------------------- IORef
@@ -207,29 +212,30 @@ unsafePerformIO = P.unsafePerformIO
 type IORef = P.IORef
 
 newIORef :: a -> IO (IORef a)
-newIORef = P.newIORef
+newIORef a = P.newIORef a
 
 readIORef :: IORef a -> IO a
-readIORef = P.readIORef
+readIORef r = P.readIORef r
 
-writeIORef :: IORef a -> a -> IO ()
-writeIORef = P.writeIORef
+writeIORef :: IORef a -> a -> IO Tup0
+writeIORef r a = void (P.writeIORef r a)
 
 
 -------------------------------------------------- IOArray
 
 type IOArray = P.IOArray Word
 
+-- size /= 0
 unsafeNewArray_ :: Word -> IO (IOArray e)
-unsafeNewArray_ s = P.unsafeNewArray_ (0, s P.- 1)   -- TODO: s /= 0
+unsafeNewArray_ s = P.unsafeNewArray_ (0, s P.- 1)
  where
   fromInteger = P.fromInteger
 
 unsafeRead :: IOArray e -> Word -> IO e
 unsafeRead ar i = P.unsafeRead ar (wordToInt i)
 
-unsafeWrite :: IOArray e -> Word -> e -> IO ()
-unsafeWrite ar i e = P.unsafeWrite ar (wordToInt i) e
+unsafeWrite :: IOArray e -> Word -> e -> IO Tup0
+unsafeWrite ar i e = void (P.unsafeWrite ar (wordToInt i) e)
 
 
 -------------------------------------------------- exceptions
@@ -283,10 +289,10 @@ callStack = fromPreludeString (printCallStack (P.getCallStack P.callStack))
 -------------------------------------------------- program I/O
 
 versionBranch :: List Word
-versionBranch = fl (P.map intToWord (P.versionBranch P.version))
+versionBranch = fromList (P.map intToWord (P.versionBranch P.version))
 
 getArgs :: IO (List String)
-getArgs = P.fmap (fl P.. P.fmap fromPreludeString) P.getArgs
+getArgs = P.fmap (fromList P.. P.fmap fromPreludeString) P.getArgs
 
 die :: String -> IO a
 die s = P.die (toPreludeString s)
@@ -297,8 +303,8 @@ die s = P.die (toPreludeString s)
 getChar :: IO Char
 getChar = P.getChar
 
-putChar :: Char -> IO ()
-putChar = P.putChar
+putChar :: Char -> IO Tup0
+putChar c = void (P.putChar c)
 
 
 -------------------------------------------------- terminal I/O
@@ -315,11 +321,11 @@ hReady = P.hReady
 hIsTerminalDevice :: Handle -> IO Bool
 hIsTerminalDevice = P.hIsTerminalDevice
 
-hFlush :: Handle -> IO ()
-hFlush = P.hFlush
+hFlush :: Handle -> IO Tup0
+hFlush h = void (P.hFlush h)
 
-hSetEcho :: Handle -> Bool -> IO ()
-hSetEcho = P.hSetEcho
+hSetEcho :: Handle -> Bool -> IO Tup0
+hSetEcho h b = void (P.hSetEcho h b)
 
 type BufferMode = P.BufferMode
 
@@ -327,8 +333,8 @@ noBuffering, lineBuffering :: BufferMode
 noBuffering = P.NoBuffering
 lineBuffering = P.LineBuffering
 
-hSetBuffering :: Handle -> BufferMode -> IO ()
-hSetBuffering = P.hSetBuffering
+hSetBuffering :: Handle -> BufferMode -> IO Tup0
+hSetBuffering h b = void (P.hSetBuffering h b)
 
 
 -------------------------------------------------- file I/O
@@ -338,8 +344,8 @@ type FilePath = String
 readFile :: FilePath -> IO String
 readFile f = P.fmap fromPreludeString (P.readFile (toPreludeString f))
 
-writeFile :: FilePath -> String -> IO ()
-writeFile f s = P.writeFile (toPreludeString f) (toPreludeString s)
+writeFile :: FilePath -> String -> IO Tup0
+writeFile f s = void (P.writeFile (toPreludeString f) (toPreludeString s))
 
 doesFileExist, doesDirectoryExist :: FilePath -> IO Bool
 doesFileExist f = P.doesFileExist (toPreludeString f)
@@ -352,17 +358,17 @@ getDataDir = P.fmap fromPreludeString P.getDataDir
 getDataFileName :: FilePath -> IO FilePath
 getDataFileName f = P.fmap fromPreludeString (P.getDataFileName (toPreludeString f))
 
-createDirectoryIfMissing :: Bool -> FilePath -> IO ()
-createDirectoryIfMissing b f = P.createDirectoryIfMissing b (toPreludeString f)
+createDirectoryIfMissing :: Bool -> FilePath -> IO Tup0
+createDirectoryIfMissing b f = void (P.createDirectoryIfMissing b (toPreludeString f))
 
-removeDirectoryRecursive :: FilePath -> IO ()
-removeDirectoryRecursive f = P.removeDirectoryRecursive (toPreludeString f)
+removeDirectoryRecursive :: FilePath -> IO Tup0
+removeDirectoryRecursive f = void (P.removeDirectoryRecursive (toPreludeString f))
 
 listDirectory :: FilePath -> IO (List FilePath)
-listDirectory f = P.fmap (fl P.. P.fmap fromPreludeString) (P.listDirectory (toPreludeString f))
+listDirectory f = P.fmap (fromList P.. P.fmap fromPreludeString) (P.listDirectory (toPreludeString f))
 
 
 -------------------------------------------------- misc
 
-coerce = P.coerce
+coerce a = P.coerce a
 

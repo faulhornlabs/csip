@@ -6,9 +6,9 @@ lookup : (a : Type) -> a
 
 -- class Functor m  where
 --   fmap : (a -> b) -> m a -> m b
-data Functor : (Type -> Type) -> Type where
+data Functor : (Type ~> Type) -> Type where
  MkFunctor
-  :  {m}
+  :  {m : Type ~> Type}
   -> ({a b} -> (a -> b) -> m a -> m b)
   -> Functor m
 
@@ -19,7 +19,7 @@ fmap {m} (MkFunctor f) = f
 -- class Functor m => Applicative m  where
 --   pure  : a -> m a
 --   (<*>) : m (a -> b) -> m a -> m b
-data Applicative : (Type -> Type) -> Type where
+data Applicative : (Type ~> Type) -> Type where
  MkApplicative
   :  {m}
   -> Functor m
@@ -27,27 +27,27 @@ data Applicative : (Type -> Type) -> Type where
   -> ({a b : Type} -> m (a -> b) -> m a -> m b)
   -> Applicative m
 
-pure : {m : Type -> Type} -> Applicative m -> {a} -> a -> m a
+pure : {m : Type ~> Type} -> Applicative m -> {a} -> a -> m a
 pure {m} (MkApplicative _ p _) = p
 
-app : {m : Type -> Type} -> Applicative m -> {a b} -> m (a -> b) -> m a -> m b
+app : {m : Type ~> Type} -> Applicative m -> {a b} -> m (a -> b) -> m a -> m b
 app {m} (MkApplicative _ _ f) = f
 
 
 -- class Applicative m => Monad m where
 --   join : m (m a) -> m a
-data Monad : (Type -> Type) -> Type where
+data Monad : (Type ~> Type) -> Type where
  MkMonad
   : {m}
   -> Applicative m
   -> ({a} -> m (m a) -> m a)
   -> Monad m
 
-join : {m : Type -> Type} -> Monad m -> {a} -> m (m a) -> m a
+join : {m : Type ~> Type} -> Monad m -> {a} -> m (m a) -> m a
 join {m} (MkMonad d f) = f
 
 
-data Maybe : Type -> Type where
+data Maybe : Type ~> Type where
   Nothing : {a : Type} -> Maybe a
   Just : {a : Type} -> a -> Maybe a
 

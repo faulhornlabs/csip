@@ -1,7 +1,8 @@
-module M0_StringMap
+module C_StringMap
   ( StringMap, lookupSM, insertSM, topStringMap
   ) where
 
+import A_Builtins (IOArray, unsafeRead, unsafeWrite, unsafeNewArray_)
 import B_Prelude
 
 -----------------------------------------------
@@ -28,17 +29,17 @@ newStringMap = MkSM <$> unsafeNewArray_ itemsMask'
 resetStringMap (MkSM m) = do
   forM_ (enumFromTo 0 itemsMask') \i -> unsafeWrite m i NilHM
 
-topStringMap :: (StringMap a -> RefM ()) -> StringMap a
+topStringMap :: (StringMap a -> RefM Tup0) -> StringMap a
 topStringMap init = top_ do
   m@(MkSM hm) <- newStringMap
   resetStringMap m
   init m
   elems <- forM (enumFromTo 0 itemsMask') \i -> unsafeRead hm i
-  let reset = forM_ (zip (enumFromTo 0 itemsMask') elems) \(i, e) -> unsafeWrite hm i e
-  pure (m, reset)
+  let reset = forM_ (zip (enumFromTo 0 itemsMask') elems) \(T2 i e) -> unsafeWrite hm i e
+  pure (T2 m reset)
 
 lookupSM_ :: String -> StringMap a -> RefM (HItem a)
-lookupSM_ (unString -> s) (MkSM hm) | h <- hashString s = unsafeRead hm h <&> f s
+lookupSM_ (stringToList -> s) (MkSM hm) | h <- hashString s = unsafeRead hm h <&> f s
    where
     f Nil = \case
       ConsHM _ _ t -> f Nil t
@@ -55,8 +56,8 @@ lookupSM s sm = lookupSM_ s sm <&> \case
   NilHM   -> Nothing
   _ -> impossible
 
-updateSM :: String -> HItem a -> StringMap a -> RefM ()
-updateSM (unString -> s) x (MkSM hm) | h <- hashString s = do
+updateSM :: String -> HItem a -> StringMap a -> RefM Tup0
+updateSM (stringToList -> s) x (MkSM hm) | h <- hashString s = do
     t <- unsafeRead hm h
     unsafeWrite hm h $ ins s t
    where
@@ -69,7 +70,7 @@ updateSM (unString -> s) x (MkSM hm) | h <- hashString s = do
         | True -> ConsHM c' a (ins (c:.cs) b)
       z -> ConsHM c (ins cs NilHM) z
 
-insertSM :: String -> a -> StringMap a -> RefM ()
+insertSM :: String -> a -> StringMap a -> RefM Tup0
 insertSM s a sm = updateSM s (YesHM a) sm
 
 {-

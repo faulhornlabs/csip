@@ -1,17 +1,17 @@
-module M4_Eval
+module F_Eval
   ( Combinator, varName
 
-  , Tm_ (TGen, TVar, TApp, TApps, TLet, TVal, TView, TGuard, TDot,  TRet, TSel, TMatch, TSup, TNoRet)
+  , Tm_ (TGen, TVar, TApp, (:@.), TApps, TLet, TVal, TView, TGuard, TDot,  TRet, TMatch, TSup, TNoRet)
   , Tm, tLam, tMeta, tLets
   , Raw, Scoped
   , ConInfo
 
-  , Val ( WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta,  WSel, WMatch, WRet, WNoRet
+  , Val ( WLam, WApp, WMeta, WMetaApp_, WMetaApp, WVar, WCon, WFun, WTm, WDelta, WMatch, WRet, WNoRet
         , CFail, CSuperClassCons, CSuperClassNil, CMkStr, CMkNat, CTopLet
         )
   , name
   , vNat, vString, mkFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
-  , mkCon, mkBuiltin, RuleRef
+  , mkBuiltin, RuleRef
   , rigid, closed
   , lamName
   , force_, force', force
@@ -21,10 +21,10 @@ module M4_Eval
   , quoteNF   -- Val -> Raw
   , quoteNF'
 
-  , addRule_, getGens
+  , compileRule, replaceMetas
 
   , spine', matchCon, matchCon'
-  , Embedded (MkEmbedded)
+  , Embedded (..)
   , MetaRef, MetaDep(..)
   , updateMeta
 
@@ -32,10 +32,11 @@ module M4_Eval
   , deepForce, strictForce, metaArgNum
   , closedTm
   , update
+  , unWTm
   ) where
 
-import M1_Base
-import M3_Parse
+import D_Base
+import E_Parse
 
 -------------
 
@@ -65,23 +66,23 @@ instance Eq  Combinator where (==)    = (==)    `on` combName
 instance Ord Combinator where compare = compare `on` combName
 
 evalCombinator :: Combinator -> List Val -> RefM Val
-evalCombinator (MkCombinator _ _ ns t) vs = eval (fromListIM $ zip (numberWith MkDB 0 ns) vs) t
+evalCombinator (MkCombinator _ _ ns t) vs = eval "combinator" (fromListIM $ zip (numberWith MkDB 0 ns) vs) t
 
 evalCombinatorTm :: Combinator -> List Tm -> RefM Tm
 evalCombinatorTm (MkCombinator _ _ ns t) vs = evalTm (fromListIM $ zip (numberWith MkDB 0 ns) vs) t
 
-mkCombinator :: Name -> Tm_ Name -> RefM (Combinator, List Name)
+mkCombinator :: Name -> Tm_ Name -> RefM (Tup2 Combinator (List Name))
 mkCombinator n t = do
   n <- mkName "c#"
-  pure (MkCombinator n (rigidTm t') (map nameStr nsA) t', ns_)
+  pure (T2 (MkCombinator n (rigidTm t') (map nameStr nsA) t') ns_)
  where
 
-  t' = f (length nsA, fromListIM $ numberWith (flip (,)) 0 nsA) t
+  t' = f (T2 (length nsA) (fromListIM $ numberWith (flip T2) 0 nsA)) t
 
   ns' = fvs t
   isconst = not $ memberIS n ns'
   ns_ = filter (/= n) $ toListIS ns'
-  nsA = ns_ ++ [if isconst then rename "_" n else n]
+  nsA = ns_ ++ (if isconst then rename "_" n else n) :. Nil
 
   fvs = \case
     TGen e -> fvs e
@@ -91,11 +92,10 @@ mkCombinator n t = do
     TLet n a b -> fvs a <> deleteIS n (fvs b)
     TSup _ ts -> mconcat (map fvs ts)
     TMatch _ a b c -> fvs a <> fvs b <> fvs c
-    TSel _ _ e -> fvs e
     TRet e -> fvs e
     TNoRet e -> fvs e
 
-  ins a b (n, e) = (maybe (n+1) (const n) (lookupIM a e), insertIM a b e)
+  ins a b (T2 n e) = T2 (maybe (n+1) (const n) (lookupIM a e)) (insertIM a b e)
 
   f env = \case
     TVar n -> TVar $ MkDB (fromJust $ lookupIM n $ snd env) (nameStr n)
@@ -105,7 +105,6 @@ mkCombinator n t = do
     TLet n a b | i <- fst env -> TLet (MkDB i $ nameStr n) (f env a) (f (ins n i env) b)
     TSup c ts -> TSup c $ map (f env) ts
     TMatch n a b c -> TMatch n (f env a) (f env b) (f env c)
-    TSel i j e -> TSel i j $ f env e
     TRet e -> TRet $ f env e
     TNoRet e -> tNoRet $ f env e
 
@@ -134,7 +133,6 @@ data Tm_ a
   | TLet a (Tm_ a) (Tm_ a)  -- x = t; u
 
   | TMatch ConInfo (Tm_ a) (Tm_ a) (Tm_ a)
-  | TSel Word Word (Tm_ a)  -- unused
   | TRet (Tm_ a)
   | TNoRet (Tm_ a)
 
@@ -142,13 +140,16 @@ data Tm_ a
   | TVal Val                -- closed value
  deriving (Eq, Ord)
 
+infixl 9 :@.
+pattern a :@. b = TApp a b
+
 instance PPrint a => PPrint (Tm_ a) where
   pprint = \case
     TVar n -> "Var" :@ pprint n
     TApp a b -> "@" :@ pprint a :@ pprint b
     TSup c ts -> foldl (:@) (pprint c) $ map pprint ts
-    TLet n a b -> zVar ["=",";"] :@ pprint n :@ pprint a :@ pprint b
-    TVal v -> zVar ["{","}"] :@ pprint v
+    TLet n a b -> zVar ("=":!";":!NilT) :@ pprint n :@ pprint a :@ pprint b
+    TVal v -> zVar ("{":!"}":!NilT) :@ pprint v
     TGen n -> "Gen" :@ pprint n
     _ -> undefined
 
@@ -165,19 +166,19 @@ pattern TGuard a b = TApp (TApp (TVal (WCon 2 "Guard")) a) b
 pattern TDot :: Tm_ a -> Tm_ a
 pattern TDot a = TApp (TVal (WCon 1 "Dot")) a
 
-getTApps (TApp (getTApps -> (a, es)) e) = (a, e:. es)
-getTApps e = (e, Nil)
+getTApps (TApp (getTApps -> T2 a es) e) = T2 a (e:. es)
+getTApps e = T2 e Nil
 
 pattern TApps :: Tm_ a -> List (Tm_ a) -> Tm_ a
-pattern TApps e es <- (getTApps -> (e, reverse -> es))
+pattern TApps e es <- (getTApps -> T2 e (reverse -> es))
   where TApps e es = foldl TApp e es
 
 tLam :: Name -> Tm -> RefM Tm
 tLam n t = do
-  traceShow "57" $ "tLam begin " <<>> showM n <<>> "  -->  " <<>> showM t
-  (c, ns') <- mkCombinator n t
+  traceShow "57" $ "tLam begin " <<>> print n <<>> "  -->  " <<>> print t
+  T2 c ns' <- mkCombinator n t
   let r = TSup c $ map TVar ns'
-  traceShow "57" $ "tLam end " <<>> showM r
+  traceShow "57" $ "tLam end " <<>> print r
   pure r
 
 tLams :: List Name -> Tm -> RefM Tm
@@ -185,7 +186,7 @@ tLams Nil t = pure t
 tLams (n:. ns) t = tLam n =<< tLams ns t
 
 tOLam :: Name -> Tm -> RefM Tm
-tOLam n t = tLam n t <&> \t -> TApps (TVal COLam) [tErased, tErased, t]
+tOLam n t = tLam n t <&> \t -> TVal COLam :@. tErased :@. tErased :@. t
 
 tOLams :: List Name -> Tm -> RefM Tm
 tOLams Nil t = pure t
@@ -194,9 +195,9 @@ tOLams (n:. ns) t = tLams ns t >>= tOLam n
 tOLet :: Name -> Tm -> Tm -> RefM Tm
 tOLet n a b = do
   f <- tLam n b
-  pure $ TApps (TVal COLet) [tErased, tErased, a, f]
+  pure $ TVal COLet :@. tErased :@. tErased :@. a :@. f
 
-tOApp a b = TApps (TVal COApp) [tErased, tErased, a, b]
+tOApp a b = TVal COApp :@. tErased :@. tErased :@. a :@. b
 
 tErased = TVal CErased
 
@@ -216,7 +217,6 @@ rigidTm = f where
     TLet _ a b -> f a && f b
     TSup c ts -> rigidCombinator c && all f ts
     TMatch _ a b c -> f a && f b && f c
-    TSel _ _ e -> f e
     TRet e -> f e
     TNoRet e -> f e
 
@@ -230,13 +230,10 @@ closedTm = f where
     TLet _ a b -> f a && f b
     TSup _ ts -> all f ts
     TMatch _ a b c -> f a && f b && f c
-    TSel _ _ e -> f e
     TRet e -> f e
     TNoRet e -> f e
 
 ---------
-
-notDefined x = errorM $ "not defined: " <<>> print x
 
 eval_
   :: (Print a, Ord a, HasId a)
@@ -247,13 +244,12 @@ eval_
   -> (Combinator -> List b -> RefM b)
   -> (a -> RefM b)
   -> (ConInfo -> b -> b -> b -> RefM b)
-  -> (Word -> Word -> b -> RefM b)
   -> (b -> RefM b)
   -> (b -> RefM b)
   -> IntMap a b
   -> Tm_ a
   -> RefM b
-eval_ val box vDot vApp vSup var match sel ret noret = go
+eval_ val box vDot vApp vSup var match ret noret = go
  where
   go env = \case
     TVal v     -> val v
@@ -264,7 +260,6 @@ eval_ val box vDot vApp vSup var match sel ret noret = go
     TSup c ts  -> join $ vSup c <$> mapM (go env) ts
     TLet x t u -> go env t >>= \v -> go (insertIM x v env) u
     TMatch n a b c -> join $ match n <$> go env a <*> go env b <*> go env c
-    TSel i j e -> join $ sel i j <$> go env e
     TRet e     -> join $ ret <$> go env e
     TNoRet e   -> join $ noret <$> go env e
 
@@ -275,9 +270,8 @@ evalTm  = eval_
   (pure . TDot)
   (\a b -> pure $ TApp a b)
   (\a b -> pure $ TSup a b)
-  notDefined
+  (\x -> errorM $ "not defined(1): " <<>> print x)
   (\n a b c -> pure $ TMatch n a b c)
-  (\i j -> pure . TSel i j)
   (pure . TRet)
   (pure . tNoRet)
 
@@ -293,19 +287,19 @@ type HH = H (Either Val Tm)
 
 tmToRaw :: Tm -> RefM Scoped
 tmToRaw t = do
-  (r, ds) <- basic t
+  T2 r ds <- basic t
   ma <- topDownIM down (mkH ds)
-  foldM (\r (n, v) -> pure $ RLet n Hole v r) r $ reverse $ assocsIM $ mconcat $ toListIM ma
+  foldM (\r (T2 n v) -> pure $ RLet n Hole v r) r $ reverse $ assocsIM $ mconcat $ toListIM ma
  where
-  mkH ds = assocsIM ds <&> \(n, v) -> MkH n v
+  mkH ds = assocsIM ds <&> \(T2 n v) -> MkH n v
 
-  down :: HH -> RefM (IntMap Name Scoped, List HH)
+  down :: HH -> RefM (Tup2 (IntMap Name Scoped) (List HH))
   down (MkH n v) = do
     t <- either quoteTm pure v
-    (r, ds) <- basic t
-    pure $ (singletonIM n r, mkH ds)
+    T2 r ds <- basic t
+    pure (T2 (singletonIM n r) (mkH ds))
 
-  basic :: Tm -> RefM (Scoped, IntMap Name (Either Val Tm))
+  basic :: Tm -> RefM (Tup2 Scoped (IntMap Name (Either Val Tm)))
   basic t = runWriter ff where
     ff wst = f mempty t  where
       add n env = insertIM n (vVar n) env
@@ -318,10 +312,9 @@ tmToRaw t = do
         TLet n a b -> RLet n Hole <$> f env a <*> f (add n env) b
         TSup c ts -> do
           n <- varName c
-          t <- evalCombinatorTm c $ ts <> [TVar n]
+          t <- evalCombinatorTm c $ ts ++ TVar n :. Nil
           Lam n <$> f (add n env) t
         TMatch n a b c -> rMatch n <$> f env a <*> f env b <*> f env c
-        TSel i j a -> rSel i j <$> f env a
         TRet a -> rRet <$> f env a
         TNoRet a -> rNoRet <$> f env a
 
@@ -343,20 +336,57 @@ instance Print Tm where
 
 -------------------------------
 
-data Embedded = MkEmbedded Tm Val
+data Embedded
+  = MkEmbedded Tm Val
+  | EVarStr NameStr
+  | EVar    Name
+
+instance Eq Embedded where
+  EVarStr a == EVarStr b = a == b
+  EVar    a == EVar    b = a == b
+  -- TODO:  MkEmbedded a == MkEmbedded b = ...
+  _ == _ = False
+
+instance IsString Embedded where
+  fromString' = EVarStr . fromString'
+
+instance HasArity Embedded where
+  arity (EVarStr n) = arity n
+  arity (EVar n) = arity n
+  arity _ = 0
+
+instance IsMixfix Embedded where
+  fromMixfix m = EVarStr $ fromMixfix m
+
+instance Print Embedded where
+  print (MkEmbedded _ _) = "EMBEDDED" -- TODO
+  print (EVarStr n) = print n
+  print (EVar n) = print n
 
 instance PPrint Embedded where
-  pprint (MkEmbedded r _) = zVar ["[","]"] :@ pprint r
+  pprint (MkEmbedded r _) = zVar ("[":!"]":!NilT) :@ pprint r
+  pprint (EVarStr n) = pprint n
+  pprint (EVar n) = pprint n
 
-type Raw = Raw_ Embedded
-type Scoped = Scoped_ Embedded
+type Raw = ExpTree Embedded
+
+instance Print Raw where
+  print = print . fmap f where
+    f (EVarStr s) = s
+    f (EVar s) = nameStr s
+    f MkEmbedded{} = "EMBEDDED"
+
+instance Parse Raw where
+  parse = fmap (fmap EVarStr) . parse
+
+type Scoped = ExpTree Name
 
 -------------------------------
 
-type ConInfo = (Name, Maybe Val)
+type ConInfo = Name
 
 data View
-  = VCon Arity (Maybe Val){-type-}
+  = VCon Arity
   | VVar
   | VMeta MetaRef
   | VFun RuleRef   -- function
@@ -367,9 +397,7 @@ data View
   | VApp_ Val Val {-# UNPACK #-} AppKind
   | VSup Combinator (List Val)     -- lambda
 
-  | VSel Word Word Val       -- Sel appears only behind the "then" branch of Match       -- meta dependency needed?
-                           -- unused
-  | VMatch ConInfo Val Val Val (Maybe (MetaRef, MetaDep))
+  | VMatch ConInfo Val Val Val (Maybe (Tup2 MetaRef MetaDep))
   | VRet Val
   | VNoRet Val
 
@@ -397,7 +425,6 @@ pattern WVar n <- MkVal n _ _ VVar
 pattern WMeta_ n r <- MkVal n _ _ (VMeta r)
 pattern WSup n a b <- MkVal n _ _ (VSup a b)
 pattern WTm n a b <- MkVal n _ _ (VTm a b)
-pattern WSel a b c <- (view -> VSel a b c)
 pattern WMatch a b c d e <- (view -> VMatch a b c d e)
 pattern WRet n <- (view -> VRet n)
 pattern WNoRet n <- (view -> VNoRet n)
@@ -428,14 +455,12 @@ instance Eq Val where
 instance Ord Val where
   compare = compare `on` name
 
-vCon a n t
-  {- | maybe True rigid t-} = MkVal n True True $ VCon a t
+vCon a n
+  {- | maybe True rigid t-} = MkVal n True True $ VCon a
 --  | True      = undefined
 
-pattern WCon_ n a ty <- MkVal n _ _ (VCon a ty)
-
-pattern WCon a n <- WCon_ n a _
-  where WCon a n =  MkVal n True True (VCon a Nothing)
+pattern WCon a n <- MkVal n _    _    (VCon a)
+  where WCon a n =  MkVal n True True (VCon a)
 
 pattern WDelta i ar f <- MkVal i _    _    (VDelta ar f)
   where WDelta i ar f =  MkVal i True True (VDelta ar f)
@@ -449,13 +474,9 @@ vString i = mkName "i#" <&> \n -> MkVal n True True $ VString i
 pattern WFun i f <- MkVal i _    _    (VFun f)
   where WFun i f =  MkVal i True True (VFun f)
 
-vFun :: Name -> Val -> RefM Val
-vFun i f = do
-  r <- newRef f
-  pure $ WFun i r
 {-
 instance IsString Val where
-  fromString s = vCon (fromString s) Nothing
+  fromString s = vCon (fromString s)
 -}
 vVar :: Name -> Val
 vVar n = MkVal n True False VVar
@@ -469,7 +490,7 @@ mkMetaRef = MkMetaRef <$> newRef Nothing
 lookupMeta :: MetaRef -> RefM (Maybe Val)
 lookupMeta (MkMetaRef r) = readRef r
 
-updateMeta :: MetaRef -> Val -> RefM ()
+updateMeta :: MetaRef -> Val -> RefM Tup0
 updateMeta (MkMetaRef r) b = writeRef r $ Just b
 
 data MetaDep = MkMetaDep {metaDepName :: Name, metaRef :: MetaRef}
@@ -504,29 +525,26 @@ vTm n t v
 --  | not (rigidTm t) = pure v
   = mkValue n (rigid v {- TODO: && rigidTm t -}) (closed v) $ VTm t v
 
-mkBuiltin :: Arity -> Name -> Maybe Val -> Val
-mkBuiltin ar n ty = case n of
-  "AppendStr" -> f 2 \d -> \case [WString va, WString vb] -> vString $ va <> vb; _ -> d
-  "EqStr"     -> f 2 \d -> \case [WString va, WString vb] -> if va == vb then pure CTrue else pure CFalse; _ -> d
-  "TakeStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ takeStr (integerToWord va) vb; _ -> d
-  "DropStr"   -> f 2 \d -> \case [WNat va, WString vb] -> vString $ dropStr (integerToWord va) vb; _ -> d
-  "DecNat"    -> f 1 \d -> \case [WNat va] -> vNat $ max 0 $ va -. 1; _ -> d
-  "AddNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va + vb; _ -> d
-  "MulNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va * vb; _ -> d
-  "DivNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va `div` vb; _ -> d
-  "ModNat"    -> f 2 \d -> \case [WNat va, WNat vb] -> vNat $ va `mod` vb; _ -> d
-  "EqNat"     -> f 2 \d -> \case [WNat va, WNat vb] -> if va == vb then pure CTrue else pure CFalse; _ -> d
-  n -> vCon ar n ty
--- TODO:  n -> error $ "Unknown builtin: " <> showName n
+mkBuiltin :: Arity -> Name -> Val
+mkBuiltin ar n = case n of
+  "AppendStr" -> f 2 \d -> \case WString va :. WString vb :. Nil -> vString $ va <> vb; _ -> d
+  "EqStr"     -> f 2 \d -> \case WString va :. WString vb :. Nil -> if va == vb then pure CTrue else pure CFalse; _ -> d
+  "TakeStr"   -> f 2 \d -> \case WNat va :. WString vb :. Nil -> vString $ takeStr (integerToWord va) vb; _ -> d
+  "DropStr"   -> f 2 \d -> \case WNat va :. WString vb :. Nil -> vString $ dropStr (integerToWord va) vb; _ -> d
+  "DecNat"    -> f 1 \d -> \case WNat va :. Nil -> vNat $ max 0 $ va -. 1; _ -> d
+  "AddNat"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va + vb; _ -> d
+  "MulNat"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va * vb; _ -> d
+  "DivNat"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va `div` vb; _ -> d
+  "ModNat"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va `mod` vb; _ -> d
+  "EqNat"     -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> if va == vb then pure CTrue else pure CFalse; _ -> d
+  n -> vCon ar n
+-- TODO:  n -> error $ "Unknown builtin: " <<>> print n
  where
   f ar g = WDelta n ar g
 
-mkCon :: Arity -> Name -> Maybe Val -> Val
-mkCon ar n ty = vCon ar n ty
-
 vApp :: Val -> Val -> RefM Val
 vApp a_ u = do
-  (aa, a) <- force' a_
+  T2 aa a <- force' a_
   let mkApp_ aa u l = mkValue "app#" (rigid aa && rigid u && rigidAppKind l) (closed aa && closed u) $ VApp_ aa u l
       mkApp d u = do
         ad <- case snd <$> metaDep d of
@@ -547,8 +565,8 @@ vApp a_ u = do
       _ | ar < 1     -> impossible
         | not (closed u && rigid u) -> mkApp u u
         | ar > 1     -> mkApp_ a u $ DeltaApp (ar - 1)
-      _              -> evalDelta (mkApp u u) a [u]
-    WSup _ c vs      -> evalCombinator c $ vs ++ [u]
+      _              -> evalDelta (mkApp u u) a (u :. Nil)
+    WSup _ c vs      -> evalCombinator c $ vs ++ u :. Nil
     WFun _ r      -> lookupRule r >>= funApp
     WFunApp _ _ f  -> funApp f
     WMeta{}        -> mkApp a u
@@ -593,7 +611,7 @@ vSup c vs = mkValue "lam#" (rigidCombinator c && all rigid vs) (all closed vs) $
 
 vLam_ :: Name -> Tm -> RefM Val
 vLam_ n t = do
-  (c, ns) <- mkCombinator n t
+  T2 c ns <- mkCombinator n t
   vSup c (map vVar ns)
 
 vLam :: Name -> Val -> RefM Val
@@ -601,7 +619,7 @@ vLam n v = force v >>= \case
   WApp a b -> force b >>= \case
     WVar vn | vn == n -> do
       ta <- quoteTm' a
-      (c, _) <- mkCombinator n ta
+      T2 c _ <- mkCombinator n ta
       if isConstComb c
         then pure a
         else def   -- TODO: optimize this
@@ -635,25 +653,36 @@ type RuleRef = Ref Val
 lookupRule :: RuleRef -> RefM Val
 lookupRule r = readRef r
 
-updateRule :: NameStr -> RuleRef -> Val -> RefM ()
+updateRule :: Name -> RuleRef -> Val -> RefM Tup0
 updateRule fn _ b
-  | not (rigid b), fn /= "lookupDict", fn /= "superClasses" = errorM $ (("rule body is not rigid:\n" <> showMixfix fn <> " = ") <>) <$> print b
+  | not (rigid b), fn /= "lookupDict", fn /= "superClasses" = errorM $ (("rule body is not rigid:\n" <> showName fn <> " = ") <>) <$> print b
 updateRule _ r b
   = writeRef r b
 
 type NameSet = IntSet Name
 
-addRule_ :: NameStr -> Tm -> Tm -> RefM ()
-addRule_ fn lhs rhs = do
-  () <- runState mempty (linear lhs) >>= \case
-    (Just a, _) -> error $ "non-linear lhs: " <> showName a
-    _ -> pure ()
-  let r = ruleName lhs
+unWTm (WTm _ _ v) = unWTm v
+unWTm v = v
+
+compileRule :: Tm -> Tm -> RefM Tup0
+compileRule lhs rhs = do
+  T0 <- runState mempty (linear lhs) >>= \case
+    T2 (Just a) _ -> errorM $ "non-linear lhs: " <<>> print a
+    _ -> pure T0
   old <- lookupRule r
-  new <- compileLHS lhs old \_ -> pure $ TRet rhs
+  new <- compileLHS lhs (TVal old) \_ -> pure $ TRet rhs
   updateRule fn r =<< evalClosed new
-  pure ()
+  pure T0
  where
+  T2 fn r = getFun lhs
+
+  getFun = \case
+    TVal (unWTm -> WFun fn r) -> T2 fn r
+    TGuard a _ -> getFun a
+    TVal (unWTm -> WCon _ "App") :@. _ :@. _ :@. a :@. _ -> getFun a
+    TApp a _ -> getFun a
+    _ -> impossible
+
   linear t st = f t  where
     f :: Tm -> RefM (Maybe Name)
     f = \case
@@ -667,21 +696,14 @@ addRule_ fn lhs rhs = do
       TApp a b -> firstJust <$> f a <*> f b
       _ -> undefined
 
-  ruleName :: Tm -> RuleRef
-  ruleName = \case
-    TVal (WFun _ r) -> r
-    TGuard a _ -> ruleName a
-    TApps (TVal (WCon _ "App")) [_, _, a, _] -> ruleName a
-    TApp a _ -> ruleName a
-    t -> error' $ "TODO (11): " <<>> print t
-
+  compileLHS :: Tm -> Tm -> (Tm -> RefM Tm) -> RefM Tm
   compileLHS e old rhs = go e rhs where
    go :: Tm -> (Tm -> RefM Tm) -> RefM Tm
    go e rhs = case e of
     TGuard a e -> go a \fail -> do
       tx <- tLazy fail
       compilePat tx (TVal CTrue) e =<< rhs fail
-    TApps (TVal (WCon _ "App")) [_, _, a, b] -> go a \fail -> do
+    TVal (unWTm -> WCon _ "App") :@. _ :@. _ :@. a :@. b -> go a \fail -> do
       n <- mkName $ case b of
         TVar m -> nameStr m
         _ -> "v#"
@@ -701,25 +723,24 @@ addRule_ fn lhs rhs = do
       tx <- tLazy $ TApp fail $ TVar n
       ee <- pure $ TLet fn tx e
       tLam n ee
-    TVal WFun{} -> rhs $ TVal old
-    _ -> impossible
+    _ -> rhs old
 
   compilePat :: Tm -> Tm -> Tm -> Tm -> RefM Tm
   compilePat f p e m = case p of
     TDot{} -> pure m
     TVar n -> pure $ TLet n e m
     TView g p -> compilePat f p (TApp g e) m
-    TApps (TVal (WCon_ c _ ct)) ps -> do
+    TApps (TVal (unWTm -> WCon _ c)) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "wF#"   -- TODO: better naming
-      x <- foldr (\(a, b) m -> m >>= \x -> compilePat f a b x) (pure m) $ zip ps $ map TVar ns
+      x <- foldr (\(T2 a b) m -> m >>= \x -> compilePat f a b x) (pure m) $ zip ps $ map TVar ns
       tx <- tLazy x
       ne <- mkName "wG#"   -- TODO: better naming
       mok <- tLams ns tx
-      pure $ TLet ne e $ TMatch (c, ct) (TVar ne) mok f
+      pure $ TLet ne e $ TMatch c (TVar ne) mok f
     TApps (TVal _) (_:._) -> undefined
     TApps v (_:._) -> errorM (print (pprint v))
---    TVal WString{} -> compilePat f (TView (TVal (mkBuiltin 2 "EqStr" Nothing) `TApp` p) (TVal CTrue)) e m
+--    TVal WString{} -> compilePat f (TView (TVal (mkBuiltin 2 "EqStr") `TApp` p) (TVal CTrue)) e m
     TGen{} -> undefined
     TVal{} -> undefined
     TSup{} -> undefined
@@ -731,14 +752,14 @@ addRule_ fn lhs rhs = do
     TDot{} -> pure m
     TVar n -> tOLet n e m
     TView g p -> compilePat' f p (TApp g e) m
-    TApps (TVal con@WCon{}) ps -> do
+    TApps (TVal (unWTm -> con@WCon{})) ps -> do
       let len = length ps
       ns <- sequence $ replicate len $ mkName "w#"   -- TODO: better naming
-      x <- foldr (\(a, b) m -> m >>= \x -> compilePat' f a b x) (pure m) $ zip ps $ map TVar ns
+      x <- foldr (\(T2 a b) m -> m >>= \x -> compilePat' f a b x) (pure m) $ zip ps $ map TVar ns
       tx <- tOLazy x
       ne <- mkName "w#"   -- TODO: better naming
       mok <- tOLams ns tx
-      tOLet ne e $ TApps (TVal COMatch) [TVal con, TVar ne, mok, f]
+      tOLet ne e $ TVal COMatch :@. TVal con :@. TVar ne :@. mok :@. f
     TApps (TVal _) (_:._) -> undefined
     TApps v (_:._) -> errorM (print (pprint v))
 --    TVal WString{} -> compilePat f (TView (TVal COEqStr `TApp` p) (TVal COTrue)) e m
@@ -750,17 +771,17 @@ addRule_ fn lhs rhs = do
 
 tLets ds e = foldr (uncurry TLet) e ds
 
-addDictSelector :: Val -> ConInfo -> Word -> Word -> RefM ()
-addDictSelector (WFun _ r) dict args i = do
+addDictSelector :: Tm -> ConInfo -> Word -> Word -> RefM Tup0
+addDictSelector (TVal (unWTm -> WFun _ r)) dict args i = do
   old <- lookupRule r
   w <- mkName "_"
   d <- mkName "d#"
-  lold <- tLazy $ TApps (TVal old) [TVar w, TVar d]
+  lold <- tLazy $ TVal old :@. TVar w :@. TVar d
   ns <- mapM mkName $ replicate args "ww#" -- TODO: better naming
   body <- tLams ns =<< tLazy (TRet $ TVar $ ns !! i)
   f <- tLam d $ TMatch dict (TVar d) body lold
   new <- tLam w f
-  updateRule (nameStr $ fst dict) r =<< evalClosed new
+  updateRule dict r =<< evalClosed new
 addDictSelector _ _ _ _ = impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
@@ -768,55 +789,52 @@ vNoRet v_ = force v_ >>= \case
   WRet v -> pure v
   v -> mkValue "noret" (rigid v) (closed v) $ VNoRet v
 
-vSel :: Word -> Word -> Val -> RefM Val
-vSel i j v_ = force v_ >>= \v -> case headCon v of
-  Just (_{-TODO: 0-}, _) -> case spineCon v of
-    vs | length vs == i -> pure $ vs !! j
-    _ -> mkValue "sel" (rigid v) (closed v) $ VSel i j v
-  _ -> mkValue "sel" (rigid v) (closed v) $ VSel i j v
-
 vMatch :: ConInfo -> Val -> Val -> Val -> RefM Val
 vMatch n v_ ok fail = force v_ >>= \v -> case headCon v of
-  Just (_{-TODO: 0-}, c)
-    | c == fst n -> vForce =<< vApps ok (spineCon v)
-  Just (_{-TODO: 0-}, _)
+  Just (T2 _{-TODO: 0-} c)
+    | c == n -> vForce =<< vApps ok (spineCon v)
+  Just (T2 _{-TODO: 0-} _)
                   -> vForce fail
   _ -> do
     dep <- case snd <$> metaDep v of
       Nothing -> pure Nothing
       Just d  -> do
         r <- mkMetaRef
-        pure $ Just (r, d)
+        pure $ Just (T2 r d)
     mkValue "match" (rigid v && rigid ok && rigid fail) (closed v && closed ok && closed fail) $ VMatch n v ok fail dep
 
-metaDep :: Val -> Maybe (MetaRef, MetaDep)
+metaDep :: Val -> Maybe (Tup2 MetaRef MetaDep)
 metaDep = \case
-  WMeta m -> Just (metaRef m, m)
-  WMetaApp_ _ _ r m -> Just (r, m)
+  WMeta m -> Just (T2 (metaRef m) m)
+  WMetaApp_ _ _ r m -> Just (T2 r m)
   WMatch _ _ _ _ rm -> rm
   _ -> Nothing
 
 -----------
 
 headCon = \case
-  WCon a n -> Just (a, n)
-  WConApp _ _ a n -> Just (a, n)
+  WCon a n -> Just (T2 a n)
+  WConApp _ _ a n -> Just (T2 a n)
+  WTm _ _ v -> headCon v
   _ -> Nothing
 
 matchCon' n v = force v <&> matchCon n
-matchCon n v | headCon v == Just (0, n) = Just $ spineCon v
+
+matchCon n v | headCon v == Just (T2 0 n) = Just $ spineCon v
 matchCon _ _ = Nothing
 
 spineCon = f Nil
  where
   f acc WCon{} = acc
   f acc (WConApp a b _ _) = f (b:. acc) a
-  f _ _ = impossible
+  f acc (WTm _ _ v) = f acc v
+  f _ e = error $ print $ pprint e
 
 spine' v = force v <&> spine
-spine v = case headCon v of
-  Just (0, n) -> Just (n, spineCon v)
-  _ -> Nothing
+ where
+  spine v = case headCon v of
+    Just (T2 0 n) -> Just (T2 n (spineCon v))
+    _ -> Nothing
 
 force, force_ :: Val -> RefM Val
 force_ v = force__ v pure
@@ -827,7 +845,7 @@ force__ v changed = case v of
     Just w_ -> force__ w_ \w -> do
       updateMeta ref w
       changed w
-  _ | Just (ref, i) <- metaDep v -> lookupMeta ref >>= \case
+  _ | Just (T2 ref i) <- metaDep v -> lookupMeta ref >>= \case
     Just w_ -> force__ w_ \w -> do
       updateMeta ref w
       changed w
@@ -844,15 +862,15 @@ force__ v changed = case v of
 
 force' v_ = force_ v_ >>= \case
     v@(WTm _ _ z) -> f v z
-    v -> pure (v, v)
+    v -> pure (T2 v v)
  where
   f w v_ = force_ v_ >>= \case
     WTm _ _ z -> f w z
-    v -> pure (w, v)
+    v -> pure (T2 w v)
 
 force v = force' v <&> snd
 
-vVal v = force' v >>= \(a, b) -> case b of
+vVal v = force' v >>= \(T2 a b) -> case b of
   -- hack?
   WFun _ ref -> lookupRule ref >>= \case
     WRet x -> vVal x
@@ -863,40 +881,26 @@ vVal v = force' v >>= \(a, b) -> case b of
 
 -------------
 
-eval :: (Print a, Ord a, HasId a) => IntMap a Val -> Tm_ a -> RefM Val
-eval = eval_ vVal pure pure vApp vSup notDefined vMatch vSel vRet vNoRet
+eval :: (Print a, Ord a, HasId a) => RefM String -> IntMap a Val -> Tm_ a -> RefM Val
+eval ~err = eval_ vVal pure pure vApp vSup (\x -> errorM $ "not defined(" <<>> err <<>> "): " <<>> print x) vMatch vRet vNoRet
 
 eval' :: IntMap Name Val -> Tm -> RefM Val
-eval' = eval_ vVal pure pure vApp vSup (pure . vVar) vMatch vSel vRet vNoRet
+eval' = eval_ vVal pure pure vApp vSup (pure . vVar) vMatch vRet vNoRet
 
-evalClosed = eval mempty
+evalClosed = eval "closed" mempty
 evalClosed' v = evalClosed v >>= strictForce
 
-quoteNF :: Val -> RefM (Scoped, IntMap Name Scoped)
-quoteNF v = runWriter g where
- g wst = f v where
+quoteNF :: Val -> RefM Scoped
+quoteNF = f where
   f v_ = force v_ >>= \case
     WNat n   -> pure $ RNat n
     WString n-> pure $ RString n
     WDelta n _ _ -> pure $ RVar $ n
-    WCon_ n _ ty -> do
-      case ty of
-        Nothing -> pure ()
-        Just ty -> do
-          t <- f ty
-          tell wst $ singletonIM n t
-      pure (RVar n)
+    WCon _ n -> pure (RVar n)
     WVar n    -> pure $ RVar n
     WMeta_ n _    -> pure $ RVar n
     WFun n _  -> pure $ RVar n --lookupRule n r >>= f
-    WSel i j e -> rSel i j <$> f e
-    WMatch n@(n', ty) a b c _ -> do
-      case ty of
-        Nothing -> pure ()
-        Just ty -> do
-          t <- f ty
-          tell wst $ singletonIM n' t
-      rMatch n <$> f a <*> f b <*> f c
+    WMatch n a b c _ -> rMatch n <$> f a <*> f b <*> f c
     WRet a -> rRet <$> f a
     WNoRet a -> rNoRet <$> f a
     WApp t u -> (:@) <$> f t <*> f u
@@ -907,8 +911,7 @@ quoteNF v = runWriter g where
       pure $ Lam (name n) q
     _ -> impossible
 
-rMatch n a b c = "match" :@ RVar (fst n) :@ a :@ b :@ c
-rSel i j e = "sel" :@ RNat (wordToInteger i) :@ RNat (wordToInteger j) :@ e
+rMatch n a b c = "match" :@ RVar n :@ a :@ b :@ c
 rRet e = "return" :@ e
 rNoRet e = "noreturn" :@ e
 
@@ -921,11 +924,11 @@ quoteTm  = quoteTm_ True True False
 quoteTm' = quoteTm_ True True True
 
 quoteTm_ lets vtm opt v =
-  quoteTm__ lets vtm opt v <&> \(vs, x) -> tLets (reverse vs) x
+  quoteTm__ lets vtm opt v <&> \(T2 vs x) -> tLets (reverse vs) x
 
 quoteTm__ lets vtm opt v_ = do
   v <- force__ v_
-  (ma_, vs_) <- runWriter $ go v  -- writer is needed for the right order
+  T2 ma_ vs_ <- runWriter $ go v  -- writer is needed for the right order
   let
     ma v = fromMaybe False $ lookupIM v ma_
     vs = filter ma vs_
@@ -948,7 +951,6 @@ quoteTm__ lets vtm opt v_ = do
       WMeta_ n _ -> pure $ TVar n
 --      WFun n r  -> lookupRule n r >>= gg
       WFun n _  -> pure $ TVar n
-      WSel i j e -> TSel i j <$> ff' e
       WMatch n a b c _ -> TMatch n <$> ff' a <*> ff' b <*> ff' c
       WRet a -> TRet <$> ff' a
       WNat{} -> pure $ TVal v
@@ -957,11 +959,11 @@ quoteTm__ lets vtm opt v_ = do
 
   x <- ff v
   vs' <- mapM gg vs
-  pure (zip (map name vs) vs', x)
+  pure (T2 (zip (map name vs) vs') x)
  where
   force__ = if vtm then force_ else force
 
-  go v wst = walkIM ch share up [v]
+  go v wst = walkIM ch share up (v :. Nil)
    where
     share v _ = case v of
        _ | not lets -> pure False
@@ -978,12 +980,12 @@ quoteTm__ lets vtm opt v_ = do
 --      WFun{} -> True
       _ -> False
 
-    up v sh _ = tell wst [v] >> pure sh
+    up v sh _ = tell wst (v :. Nil) >> pure sh
 
-    ch v = fmap ((,) (sh v)) $ mapM force__ $ case v of
+    ch v = fmap (T2 (sh v)) $ mapM force__ $ case v of
       _ | opt, closed v -> Nil
       WSup _ _ vs -> vs
-      WApp a b -> [a, b]
+      WApp a b -> a :. b :. Nil
       _ -> Nil
 
 pattern CFail = WCon 0{-?-} "Fail"
@@ -1009,30 +1011,30 @@ pattern CTopLet = WCon 5 "TopLet"
 
 type MTT = Map Tm Tm
 
-newCon n = mkName n <&> \n -> vCon 0 n Nothing
+newCon n = mkName n <&> \n -> vCon 0 n
 
-getGens :: Either (State (MTT, List Name)) MTT -> NameSet -> Tm -> RefM Tm
-getGens get_ bv tt = do
-  traceShow "" $ "getGens " <<>> showM tt
+replaceMetas :: Either (State (Tup2 MTT (List Name))) MTT -> NameSet -> Tm -> RefM Tm
+replaceMetas get_ bv tt = do
+  traceShow "" $ "replaceMetas " <<>> print tt
   runReader bv ff
  where
   ff rst = f get_ tt
    where
-    eval' t = asks rst id >>= \bv -> eval (fromListIM (toListIS bv <&> \n -> (n, vVar n))) t
+    eval' t = asks rst id >>= \bv -> eval "replaceMetas" (fromListIM (toListIS bv <&> \n -> T2 n (vVar n))) t
 
     f get t = case t of
       TView a b
         | Left st <- get -> gets st fst >>= \m -> TView <$> f (Right m) a <*> f get b
       TView _ _ -> undefined
-      TApps (TVal CSucc) [n]
+      TVal (unWTm -> CSucc) :@. n
         | Left{} <- get       -> f get n <&> \r -> TView (TVal succView) (TVal CSuccOk `TApp` r)
-      TApps (TVal CSucc) [n]
-        -> f get n >>= \r -> vNat 1 <&> \one -> TApps (TVal $ mkBuiltin 2 "AddNat" Nothing) [TVal one, r]
-      TApps (TVal CCons) [a, b] | Left{} <- get -> f get a >>= \a -> f get b <&> \b -> TView (TVal consView) (TApps (TVal CConsOk) [a, b])
-      TVal WNat{}    | Left{} <- get -> pure $ TView (TVal (mkBuiltin 2 "EqNat" Nothing) `TApp` t) $ TVal CTrue
-      TVal WString{} | Left{} <- get -> pure $ TView (TVal (mkBuiltin 2 "EqStr" Nothing) `TApp` t) $ TVal CTrue
-      TApps (TVal CMkStr) [_] | Left{} <- get -> pure $ TView (TVal COEqStr `TApp` t) $ TVal COTrue
-      TApps (TVal CMkNat) [_] | Left{} <- get -> pure $ TView (TVal COEqNat `TApp` t) $ TVal COTrue
+      TVal (unWTm -> CSucc) :@. n
+        -> f get n >>= \r -> vNat 1 <&> \one -> TVal (mkBuiltin 2 "AddNat") :@. TVal one :@. r
+      TVal (unWTm -> CCons) :@. a :@. b | Left{} <- get -> f get a >>= \a -> f get b <&> \b -> TView (TVal consView) (TVal CConsOk :@. a :@. b)
+      TVal (unWTm -> WNat{})    | Left{} <- get -> pure $ TView (TVal (mkBuiltin 2 "EqNat") `TApp` t) $ TVal CTrue
+      TVal (unWTm -> WString{}) | Left{} <- get -> pure $ TView (TVal (mkBuiltin 2 "EqStr") `TApp` t) $ TVal CTrue
+      TVal (unWTm -> CMkStr) :@. _ | Left{} <- get -> pure $ TView (TVal COEqStr `TApp` t) $ TVal COTrue
+      TVal (unWTm -> CMkNat) :@. _ | Left{} <- get -> pure $ TView (TVal COEqNat `TApp` t) $ TVal COTrue
 
       TVal v_ -> deepForce v_ >>= \case
         v {- | rigid v -} -> pure $ TVal v
@@ -1045,14 +1047,14 @@ getGens get_ bv tt = do
       TSup c ts | rigidCombinator c  -> TSup c <$> mapM (f get) ts
       TSup c ts  -> do 
           n <- varName c
-          t <- evalCombinatorTm c $ ts <> [TVar n]
+          t <- evalCombinatorTm c $ ts ++ TVar n :. Nil
           tLam n =<< local rst (insertIS n) (f get t)
       TGen t -> eval' t >>= force >>= \vns -> case get of
         Left st -> case vns of
            WMeta d -> do
              n <- mkName "wS#"
              c <- newCon "cS#"
-             traceShow "" $ "meta->var " <<>> showM c <<>> "\n := " <<>> showM n
+             traceShow "" ("meta->var " <<>> print c <<>> "\n := " <<>> print n)
              update d c
              modify st $ first $ insert (TVal c) $ TVar n
              modify st $ second (n:.)
@@ -1060,7 +1062,7 @@ getGens get_ bv tt = do
            WMetaApp_ _ _ _ d -> do
              n <- mkName "wR#"
              c <- newCon "cR#"
-             traceShow "" $ "meta->var2 " <<>> showM c <<>> "\n := " <<>> showM n
+             traceShow "" ("meta->var2 " <<>> print c <<>> "\n := " <<>> print n)
              num <- metaArgNum vns
              ns <- mapM mkName $ replicate num "wD#"
              update d =<< vLams ns c
@@ -1071,7 +1073,7 @@ getGens get_ bv tt = do
              t <- metaToVar True (("TODO (22):\n" <>) <$> print vns) vns
              n <- mkName "wH#"
              modify st $ first $ insert t $ TVar n
-             traceShow "" $ "addSuperClasses " <<>> showM d
+             traceShow "" $ "addSuperClasses " <<>> print d
              addSuperClasses st (vVar n) d
              pure $ TVar n
            _ -> do
@@ -1083,24 +1085,24 @@ getGens get_ bv tt = do
             let lo = lookupMap ns m
             case lo of
               Nothing -> traceShow "" ("missed lookup: " <<>> showM' ns)
-              _ -> pure ()
+              _ -> pure T0
             pure $ TGen $ fromMaybe ns lo
       t -> errorM $ "TODO(8): " <<>> print t
      where
       addSuperClasses st v d = do
                 r <- getProjections =<< vApp superClassesFun d
-                forM_ r \(a, b) -> do
+                forM_ r \(T2 a b) -> do
                   a' <- quote =<< vApp lookupDictFun a
                   vv <- vApp b v
                   b' <- quote vv
-                  traceShow "" ("superClass " <<>> showM' a' <<>> "\n  --> " <<>> showM b')
+                  traceShow "" ("superClass " <<>> showM' a' <<>> "\n  --> " <<>> print b')
                   modify st $ first $ insert a' b'
                   addSuperClasses st vv a
 
       quote = metaToVar False (pure "TODO (21)")
 
-      metaToVar :: Bool -> RefM Source -> Val -> RefM Tm
-      metaToVar pat err = f where
+      metaToVar :: Bool -> RefM String -> Val -> RefM Tm
+      metaToVar pat ~err = f where
        f v_ = force v_ >>= \w -> case w of
         WMeta _d | pat -> do
           pure $ TVal w
@@ -1114,15 +1116,15 @@ getGens get_ bv tt = do
         WSup _ c vs | rigidCombinator c -> TSup c <$> mapM f vs
         WSup _ c vs -> do
                 n <- varName c
-                t <- evalCombinator c $ vs <> [vVar n]
+                t <- evalCombinator c $ vs ++ vVar n :. Nil
                 tLam n =<< f t
         _ | closed w && rigid w -> pure $ TVal w
         w -> errorM $ "TODO(1): " <<>> print w
 
-getProjections :: Val -> RefM (List (Val, Val))
+getProjections :: Val -> RefM (List (Tup2 Val Val))
 getProjections v = spine' v >>= \case
-    Just ("SuperClassCons", [_, a, b, tl]) -> ((a, b):.) <$> getProjections tl
-    Just ("SuperClassNil", [_]) -> pure Nil
+    Just (T2 "SuperClassCons" (_ :. a :. b :. tl :. Nil)) -> (T2 a b :.) <$> getProjections tl
+    Just (T2 "SuperClassNil" (_ :. Nil)) -> pure Nil
     _ -> undefined
 
 metaArgNum v_ = force v_ >>= \case
@@ -1139,8 +1141,8 @@ instance Print Val where
 -- TODO
 instance PPrint Val where
   pprint = \case
-    WNat n -> pprint (RNat n :: Raw)
-    WString n -> pprint (RString n :: Raw)
+    WNat n -> pprint (RNat n :: ExpTree NameStr)
+    WString n -> pprint (RString n :: ExpTree NameStr)
     WVar n -> "Variable" :@ pprint n
     WSup _ c vs -> "WSup" :@ pprint c :@ pprint vs
     WCon _ n -> "Constr" :@ pprint n
@@ -1172,8 +1174,7 @@ mkFun = \case
   "consView"     -> pure consView
   "lookupDict"   -> pure lookupDictFun
   "superClasses" -> pure superClassesFun
-  n -> vFun n CFail
-
+  n -> WFun n <$> newRef CFail
 
 -------------------
 
@@ -1185,12 +1186,12 @@ strictForce v = deepForce v >>= \case
 deepForce :: Val -> RefM Val
 deepForce v_ = do
   v <- force_ v_
-  m <- go [v]
+  m <- go (v :. Nil)
   pure $ fromJust $ lookupIM v m
  where
   go sv = downUpIM down up sv
    where
-    down :: Val -> RefM (Maybe Name, List Val)
+    down :: Val -> RefM (Tup2 (Maybe Name) (List Val))
     down v = case v of
       _ | rigid v  -> ret Nothing Nil
       WMeta{}      -> ret Nothing Nil
@@ -1199,28 +1200,27 @@ deepForce v_ = do
       WLam _ c -> do
         u <- c
         b <- vApp v $ vVar u
-        ret (Just u) [b]
-      WApp a b     -> ret Nothing [a, b]
-      WTm _ _ b    -> ret Nothing [b]
-      WNoRet a     -> ret Nothing [a]
-      WSel{}       -> undefined
+        ret (Just u) (b :. Nil)
+      WApp a b     -> ret Nothing (a :. b :. Nil)
+      WTm _ _ b    -> ret Nothing (b :. Nil)
+      WNoRet a     -> ret Nothing (a :. Nil)
       WMatch{}     -> undefined
       WRet{}       -> undefined
       _ -> impossible
      where
-      ret mn es = (,) mn <$> mapM force_ es
+      ret mn es = T2 mn <$> mapM force_ es
 
-    up :: Val -> Maybe Name -> List (Val, Val) -> RefM Val
+    up :: Val -> Maybe Name -> List (Tup2 Val Val) -> RefM Val
     up v mn (map snd -> ts) = case v of
       _ | rigid v -> pure v
       WMetaApp{}  -> pure v
       WMeta{}     -> pure v
       WFun{}     -> pure v
-      WLam{}  | Just n <- mn, [body] <- ts -> vLam n body
-      WApp{}  | [a, b] <- ts -> vApp a b
-      WNoRet{}| [a] <- ts -> vNoRet a
---      WTm n a _ | [b] <- ts -> if rigidTm a then vTm (nameStr n) a b else pure b
-      WTm n a _ | [b] <- ts -> vTm (nameStr n) a b
+      WLam{}  | Just n <- mn, body :. _ <- ts -> vLam n body
+      WApp{}  | a :. b :. _ <- ts -> vApp a b
+      WNoRet{}| a :. _ <- ts -> vNoRet a
+--      WTm n a _ | b :. _ <- ts -> if rigidTm a then vTm (nameStr n) a b else pure b
+      WTm n a _ | b :. _ <- ts -> vTm (nameStr n) a b
       _ -> undefined
 
 
@@ -1230,12 +1230,12 @@ deepForce v_ = do
 {-
 updatable v _e = lookupMeta (metaRef v) >>= \case
   Just{}  -> impossible
-  Nothing -> pure ()
+  Nothing -> pure T0
 -}
-update :: MetaDep -> Val -> RefM ()
+update :: MetaDep -> Val -> RefM Tup0
 update v e = do
---  () <- updatable v e
-  traceShow "1" $ "update " <<>> showM v <<>> "\n ::= " <<>> showM e
+--  T0 <- updatable v e
+  traceShow "1" $ "update " <<>> print v <<>> "\n ::= " <<>> print e
   updateMeta (metaRef v) e
 
-showM' a = showM (pprint a)
+showM' a = print (pprint a)

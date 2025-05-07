@@ -1,4 +1,4 @@
-module M7_Stage
+module I_Stage
   ( stage
   , stageHaskell
   , stage_eval
@@ -6,36 +6,67 @@ module M7_Stage
 
 import qualified Prelude as P (String, Show, show)
 
-import A_Builtins (tl, fl)
-import M1_Base
-import M3_Parse hiding (Lam)
-import qualified M3_Parse as E
-import M4_Eval hiding (TVar, TApp, name)
-import qualified M4_Eval as E
+import A_Builtins (toList)
+import D_Base
+import E_Parse hiding (Lam)
+import qualified E_Parse as E
+import F_Eval hiding (TVar, TApp, name)
+import qualified F_Eval as E
+import H_Elab
 
-stage_ :: Val -> RefM (Scoped, List (Name, Scoped))
+infoTable :: Scoped -> RefM (IntMap Name Scoped)
+infoTable s = snd <$> runState mempty go
+ where
+  go st = f s
+   where
+    f = \case
+      a :@ b -> f a >> f b
+      RVar n | not $ elem (nameStr n) $ "App" :. "Arr" :. "Lam" :. "Let" :. "TopLet" :. Nil -> gets st (lookupIM n) >>= \case
+        Just{} -> pure T0
+        Nothing -> lookupDefs n >>= \case
+          Just (MkDefData True (MkTmTy _ t) _) -> do
+            s <- quoteNF t
+            modify st (insertIM n s)
+          _ -> pure T0
+      _ -> pure T0
+
+isCN n = lookupDefs n <&> \case
+  Just (MkDefData True _ _) -> True
+  _ -> False
+
+
+stage_ :: Val -> RefM (Tup2 Scoped (List (Tup2 Name Scoped)))
 stage_ t = do
-  (r, m) <- quoteNF t
+  r <- quoteNF t
+  m <- infoTable r
   r' <- unquote r
-  pure (r', do (n, r) <- assocsIM m; t <- maybeToList (unquoteTy r); pure (n, t))
+  pure (T2 r' (do T2 n r <- assocsIM m; t <- maybeToList (unquoteTy r); pure (T2 n t)))
 
 stage :: Val -> RefM Scoped
-stage t = stage_ t <&> \(a, ds) -> foldr (\(n, t) -> RLetTy n t) a ds
+stage t = stage_ t <&> \(T2 a ds) -> foldr (\(T2 n t) -> RLetTy n t) a ds
 
 
-pShow = {- f 10 . -} MkString . fl . P.show  where
-{-
+pShow = f 10 . fromString . P.show  where
+
   f :: Word -> String -> String
   f n = g n  where
-    g 0 (' ':. cs) = '\n':. g n cs
-    g i (c@' ':. cs) = c:. g (i-.1) cs
-    g i (c:. cs) = c:. g i cs
-    g _ Nil = Nil
--}
+    g 0 (ConsStr " " cs) = "\n" <> g n cs
+    g i (ConsStr c@" " cs) = c <> g (i-.1) cs
+    g i (ConsStr c@"\"" cs) = c <> skipString cs  where
+      skipString (ConsStr c@"\"" cs) = c <> g i cs
+      skipString (ConsStr "\\" cs) = error $ "TODO: " <<>> print cs
+      skipString NilStr = impossible
+      skipString (spanStr (\c -> c /= '\\' && c /= '\"') -> T2 as cs) = as <> skipString cs
+
+    g _ NilStr = mempty
+    g i (spanStr (\c -> c /= ' ' && c /= '\"') -> T2 as cs) = as <> g i cs
+
 
 stageHaskell v = do
-  (r, ts) <- stage_ v
-  pure $ stringToSource $ pShow (tl $ groupData $ map (name *** convertTy) ts, convert r)
+  T2 r ts <- stage_ v
+  r' <- convert r
+  ts' <- mapM (\(T2 a b) -> T2 (name a) <$> convertTy b) ts
+  pure $ pShow ((,) (toList $ groupData ts') r')
 
 unquoteTy :: Scoped -> Maybe Scoped
 unquoteTy = f where
@@ -55,14 +86,13 @@ stage_eval :: Val -> RefM Scoped
 stage_eval v = do
   t <- quoteTm_ True True False v
   v' <- evalClosed =<< unquoteTm t
-  (s, _) <- quoteNF v'
-  pure s
+  quoteNF v'
 
 unquoteTm :: Tm -> RefM Tm
 unquoteTm t = runReader mempty (g t) where
  g t st = f t  where
   f = \case
-    TApps (TVal CTopLet) [_, _, TVal (E.name -> n), d, e] -> TLet n <$> f d <*> local st (insertIS n) (f e)
+    TVal CTopLet :@. _ :@. _ :@. TVal (E.name -> n) :@. d :@. e -> TLet n <$> f d <*> local st (insertIS n) (f e)
     TVal CTopLet -> impossible
     E.TApp a b -> E.TApp <$> f a <*> f b
 --    TVal 
@@ -72,7 +102,6 @@ unquoteTm t = runReader mempty (g t) where
     TGen{} -> impossible
     E.TVar{} -> impossible
     TMatch{} -> impossible
-    TSel{} -> impossible
     TRet{} -> impossible
     TNoRet{} -> impossible
 
@@ -85,12 +114,12 @@ unquote = f mempty
     RVar "Pair" :@ _ :@ _ :@ a :@ b -> pure "Pair" .@ f e a .@ f e b
     RVar "Fst"  :@ _ :@ _ :@ a -> pure "Fst" .@ f e a
     RVar "Snd"  :@ _ :@ _ :@ a -> pure "Snd" .@ f e a
-    RVar "App" :@ _ :@ _ :@ (RVar "Lam" :@ _ :@ _ :@ b) :@ a -> getLam b >>= \(n, b) -> rLet' n a b
+    RVar "App" :@ _ :@ _ :@ (RVar "Lam" :@ _ :@ _ :@ b) :@ a -> getLam b >>= \(T2 n b) -> rLet' n a b
+    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
     RVar "App" :@ _ :@ _ :@ a -> f e a
---    RVar "App" :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
-    RVar "Lam" :@ _ :@ _ :@ a -> getLam a >>= \(n, a) -> E.Lam n <$> f e a
-    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a :@ b -> rLet' n a b
-    RVar "Let"    :@ _ :@ _           :@ a :@ b -> getLam b >>= \(n, b) -> rLet' n a b
+    RVar "Lam" :@ _ :@ _ :@ a -> getLam a >>= \(T2 n a) -> E.Lam n <$> f e a
+    RVar "TopLet" :@ _ :@ _ :@ RVar n :@ a :@ b -> rLet'' n a b
+    RVar "Let"    :@ _ :@ _           :@ a :@ b -> getLam b >>= \(T2 n b) -> rLet'' n a b
     RVar "noreturn" :@ _ -> pure $ RVar "Fail"
     E.Lam n a -> E.Lam n <$> f e a
     a :@ b -> f e a .@ f e b
@@ -99,13 +128,15 @@ unquote = f mempty
    where
     rLet' :: Name -> Scoped -> Scoped -> RefM Scoped
     rLet' n a b = f e a >>= \case
-      RVar a | isVarName a -> f (insertIM n a e) b
+      RVar a -> f (insertIM n a e) b
       a -> rLet n (pure a) (f e b)
 
-  getLam (E.Lam n a) = pure (n, a)
+    rLet'' n a b = f e a >>= \a -> rLet n (pure a) (f e b)
+
+  getLam (E.Lam n a) = pure (T2 n a)
   getLam a = do
     n <- mkName "v#"
-    pure (n, a `app` RVar n)
+    pure (T2 n (a `app` RVar n))
 
   rLet :: Name -> RefM Scoped -> RefM Scoped -> RefM Scoped
   rLet n a b = r n <$> a <*> b  where
@@ -148,7 +179,9 @@ data Data
   = Data HName Ty [(HName, Ty)]
   deriving P.Show
 
-instance IsString HName where fromString' = Builtin . fromString'
+toList' = toList . stringToList
+
+instance IsString HName where fromString' = Builtin . toList'
 instance IsString Exp   where fromString' = Con . fromString'
 instance IsString Ty    where fromString' = TCon . fromString'
 
@@ -157,38 +190,38 @@ name n = case nameId n of
     i | i >= 9223372036854775808 -> Builtin s
     i -> UserName s i
    where
-    s = tl $ unString $ chars $ showMixfix $ nameStr n
+    s = toList' $ showMixfix $ nameStr n
 
-convert :: Scoped -> Exp
+convert :: Scoped -> RefM Exp
 convert = f  where
   f = \case
-    E.Lam n e -> Lam (name n) $ f e
-    RLet n Hole a b -> Let (name n) (f a) (f b)
-    a :@ b -> App (f a) (f b)
-    RNat n    -> Nat n
-    RString s -> String (tl $ unString s)
-    RVar n -> case n of
-      m | isConName m -> Con $ name n
+    E.Lam n e -> Lam (name n) <$> f e
+    RLet n Hole a b -> Let (name n) <$> f a <*> f b
+    a :@ b -> App <$> f a <*> f b
+    RNat n    -> pure $ Nat n
+    RString s -> pure $ String (toList' s)
+    RVar n -> isCN n <&> \case
+      True  -> Con $ name n
       _ -> Var $ name n
     _ -> impossible
 
-convertTy :: Scoped -> Ty
+convertTy :: Scoped -> RefM Ty
 convertTy = f  where
   f = \case
-    RVar "Pi"  :@ a :@ E.Lam "_" b -> Pi (f a) (f b)
-    RVar "HPi" :@ a :@ E.Lam n b -> HPi (name n) (f a) (f b)
-    a :@ b -> TApp (f a) (f b)
-    RVar n -> case n of
-      m | isConName m -> TCon $ name n
+    RVar "Pi"  :@ a :@ E.Lam "_" b -> Pi <$> f a <*> f b
+    RVar "HPi" :@ a :@ E.Lam n b -> HPi (name n) <$> f a <*> f b
+    a :@ b -> TApp <$> f a <*> f b
+    RVar n -> isCN n <&> \case
+      True -> TCon $ name n
       _ -> TVar $ name n
     _ -> impossible
 
 
-groupData :: List (HName, Ty) -> List Data
+groupData :: List (Tup2 HName Ty) -> List Data
 groupData ts = do
-  (n, t) <- ts
+  T2 n t <- ts
   guard (tcon t)
-  pure (Data n t $ tl (filter (con n . snd) ts))
+  pure (Data n t $ toList $ map (\(T2 a b) -> (a, b)) (filter (con n . snd) ts))
  where
   tcon = \case
     TCon "Ty" -> True

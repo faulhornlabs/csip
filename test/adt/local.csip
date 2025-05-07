@@ -1,0 +1,15 @@
+# eval
+
+data N : Type where
+  Z : N
+  S : N -> N
+
+add : N -> N -> N
+  = \a b -> do
+    f : N -> N
+    f Z = b
+    f (S a') = S (f a')
+
+    f a
+
+add (S (S Z)) (S (S Z))

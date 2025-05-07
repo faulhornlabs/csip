@@ -1,4 +1,4 @@
-module M0_Map
+module C_Map
   ( Map, insert, emptyMap, fromListMap, lookupMap, assocsMap
   , sort
   , walk, downUp, topDown, bottomUp
@@ -48,13 +48,13 @@ n B x a a' (N R (N R y b b' z) c c' v) = N R (N B x a a' y) b b' (N B z c c' v)
 n B x a a' (N R y b b' (N R z c c' v)) = N R (N B x a a' y) b b' (N B z c c' v)
 n c l a a' r                           = N c l a a' r
 
-assocsMap :: Map a b -> List (a, b)
+assocsMap :: Map a b -> List (Tup2 a b)
 assocsMap t = f Nil t  where
     f acc E = acc
-    f acc (N _ l a b r) = f ((a, b):. f acc r) l
+    f acc (N _ l a b r) = f (T2 a b :. f acc r) l
 
 
-sort = map fst . assocsMap . fromListMap . map (\a -> (a, ()))
+sort = map fst . assocsMap . fromListMap . map (\a -> T2 a T0)
 
 
 ------------------------------------------------- graph algorithms
@@ -62,24 +62,24 @@ sort = map fst . assocsMap . fromListMap . map (\a -> (a, ()))
 -- top-down & bottom-up  graph walking;  sharing and cycle friendly
 walk
   :: Ord a
-  => (a -> RefM (b, List a))              -- down
+  => (a -> RefM (Tup2 b (List a)))              -- down
   -> (a -> b -> RefM b)                -- shared try
-  -> (a -> b -> List (a, b) -> RefM b)
+  -> (a -> b -> List (Tup2 a b) -> RefM b)
   -> List a
   -> RefM (Map a b)
 walk children  down up xs = fmap snd (runState emptyMap go) where
   go st = walk (map Left xs)  where
-    walk Nil = pure ()
+    walk Nil = pure T0
     walk (Left v:. ts) = gets st (lookupMap v) >>= \case
       Nothing -> do
-        (r, ch) <- children v
+        T2 r ch <- children v
         modify st (insert v r)
-        walk (map Left ch ++ Right (v, ch):. ts)
+        walk (map Left ch ++ Right (T2 v ch) :. ts)
       Just r -> do
         r' <- down v r
         modify st (insert v r')
         walk ts
-    walk (Right (e, ch):. ts) = do
+    walk (Right (T2 e ch):. ts) = do
       m <- gets st (fromJust . lookupMap e)
       ms <- forM ch \v -> gets st (fromJust . lookupMap v)
       r <- up e m (zip ch ms)
@@ -88,8 +88,8 @@ walk children  down up xs = fmap snd (runState emptyMap go) where
 
 downUp
   :: Ord a
-  => (a -> RefM (b, List a))              -- down
-  -> (a -> b -> List (a, c) -> RefM c)
+  => (a -> RefM (Tup2 b (List a)))              -- down
+  -> (a -> b -> List (Tup2 a c) -> RefM c)
   -> List a
   -> RefM (Map a c)
 downUp down up as = walk down' (\_ -> pure) up' as <&> fmap g
@@ -102,7 +102,7 @@ downUp down up as = walk down' (\_ -> pure) up' as <&> fmap g
 
 topDown
   :: Ord a
-  => (a -> RefM (b, List a))
+  => (a -> RefM (Tup2 b (List a)))
   -> List a
   -> RefM (Map a b)
 topDown down
@@ -112,9 +112,9 @@ bottomUp
   :: Ord a
   => b
   -> (a -> RefM (List a))
-  -> (a -> List (a, b) -> RefM b)
+  -> (a -> List (Tup2 a b) -> RefM b)
   -> a
   -> RefM (Map a b)
 bottomUp init children up x
-  = walk (\v -> (,) init <$> children v) (\_ -> pure) (\a _ b -> up a b) (x :. Nil)
+  = walk (\v -> T2 init <$> children v) (\_ -> pure) (\a _ b -> up a b) (x :. Nil)
 

@@ -1,4 +1,4 @@
-module M2_OpSeq
+module C_OpSeq
   ( Precedence
   , OpSeq
     ( Empty, Node
@@ -13,7 +13,7 @@ module M2_OpSeq
   , topOp
   ) where
 
-import M1_Base
+import B_Prelude
 
 ----------------------------------------
 
@@ -74,8 +74,8 @@ mkNode :: OpSeq b -> Precedence -> b -> Enclosed b -> Precedence -> OpSeq b -> O
 mkNode a b c d e f
   = Node_ (MkCached (b `minPrec` leftPrecSeq a)) a b c d e f (MkCached (e `minPrec` rightPrecSeq f))
 
-singOpSeq :: (Precedence, b, Precedence) -> OpSeq b
-singOpSeq (a, b, c) = mkNode Empty a b Nil c Empty
+singOpSeq :: Tup3 Precedence b Precedence -> OpSeq b
+singOpSeq (T3 a b c) = mkNode Empty a b Nil c Empty
 
 instance Semigroup (OpSeq b) where
   Empty <> a = a
@@ -85,7 +85,7 @@ instance Semigroup (OpSeq b) where
     GT | Node a b c d e f <- y -> mkNode (x <> a) b c d e f
     EQ | Node a b c d e f <- x
        , Node g h i j k l <- y
-      -> mkNode a b c (d <> [MkMid e (f <> g) h i] <> j) k l
+      -> mkNode a b c (d ++ MkMid e (f <> g) h i :. j) k l
 
 instance Monoid (OpSeq b) where
   mempty = Empty
@@ -95,30 +95,30 @@ instance Monoid (OpSeq b) where
 
 infixr 2 :<, :=, :>
 
-getLeft (Node a b c d e f) = Just (a, mkNode Empty b c d e f)
+getLeft (Node a b c d e f) = Just (T2 a (mkNode Empty b c d e f))
 getLeft _ = Nothing
 
 pattern (:<) :: OpSeq b -> OpSeq b -> OpSeq b
-pattern a :< b <- (getLeft -> Just (a, b))
+pattern a :< b <- (getLeft -> Just (T2 a b))
 
-getRight (Node Empty _ a Nil _ b) = Just (a, b)
+getRight (Node Empty _ a Nil _ b) = Just (T2 a b)
 getRight _ = Nothing
 
 pattern (:>) :: b -> OpSeq b -> OpSeq b
-pattern a :> b <- (getRight -> Just (a, b))
+pattern a :> b <- (getRight -> Just (T2 a b))
 
-getMid (Node Empty _ a (MkMid _ b c d:. e) f g) = Just (a, mkNode b c d e f g)
+getMid (Node Empty _ a (MkMid _ b c d:. e) f g) = Just (T2 a (mkNode b c d e f g))
 getMid _ = Nothing
 
 pattern (:=) :: b -> OpSeq b -> OpSeq b
-pattern a := b <- (getMid -> Just (a, b))
+pattern a := b <- (getMid -> Just (T2 a b))
 
 {-# COMPLETE Empty, (:<) #-}
 
 pattern Node2 a b c <- Node a _ b Nil _ c
-pattern Node3 a b c d e <- Node a _ b [MkMid _ c _ d] _ e
+pattern Node3 a b c d e <- Node a _ b (MkMid _ c _ d :. Nil) _ e
 
-toOpSeq :: List (Precedence, b, Precedence) -> OpSeq b
+toOpSeq :: List (Tup3 Precedence b Precedence) -> OpSeq b
 toOpSeq = foldMap singOpSeq
 
 fromOpSeq :: OpSeq b -> List b
@@ -137,8 +137,8 @@ mapOpSeq f = comm where
       a :< b -> comm a <> comm b
       Empty -> mempty
 
-topOp :: OpSeq b -> (List b, OpSeq b, List (OpSeq b), OpSeq b)
+topOp :: OpSeq b -> Tup4 (List b) (OpSeq b) (List (OpSeq b)) (OpSeq b)
 topOp = \case
-  Empty -> (Nil, Empty, Nil, Empty)
-  Node a _ c d _ f -> (c :. (d <&> \(MkMid _ _ _ x) -> x), a, d <&> \(MkMid _ x _ _) -> x, f)
+  Empty -> T4 Nil Empty Nil Empty
+  Node a _ c d _ f -> T4 (c :. (d <&> \(MkMid _ _ _ x) -> x)) a (d <&> \(MkMid _ x _ _) -> x) f
 

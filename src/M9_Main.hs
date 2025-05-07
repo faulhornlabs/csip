@@ -1,8 +1,8 @@
-import M1_Base
-import M3_Parse
-import M4_Eval
-import M6_Elab
-import M7_Stage
+import D_Base
+import E_Parse
+import F_Eval
+import H_Elab
+import I_Stage
 import M8_IO
 
 ----------------------------
@@ -14,46 +14,46 @@ getTmpDir = do
 
 ----------------------------
 
-getCmd :: Source -> RefM (List (List Source), Source)
+getCmd :: String -> RefM (Tup2 (List (List String)) String)
 getCmd = \case
-  Cons' '#' (Cons' ' ' (spanCh (/= '\n') -> (cmd, Cons' '\n' s))) -> do
+  ConsChar '#' (ConsChar ' ' (spanStr (/= '\n') -> T2 cmd (ConsChar '\n' s))) -> do
     cmd <- parse cmd >>= f
-    (cmds, s) <- getCmd s
-    pure (cmd:. cmds, s)
-  s -> pure (Nil, s)
+    T2 cmds s <- getCmd s
+    pure (T2 (cmd:. cmds) s)
+  s -> pure (T2 Nil s)
  where
-  f :: Raw -> RefM (List Source)
-  f (a :@ b) = print b >>= \b -> f a <&> \as -> as <> [b]
+  f :: Raw -> RefM (List String)
+  f (a :@ b) = print b >>= \b -> f a <&> \as -> as ++ b :. Nil
   f n = print n <&> (:.Nil)
 
-getSource f = parseFile' "" f >>= \case
+getString f = parseFile' "" f >>= \case
   Nothing -> pure Nothing
   Just s -> Just . first maybeElab <$> getCmd s
  where
-  maybeElab Nil = [["elab"]]
+  maybeElab Nil = ("elab" :. Nil) :. Nil
   maybeElab cmds = cmds
 
 
-showCmd :: List Source -> String
-showCmd = concatStr . intersperse " " . map chars
+showCmd :: List String -> String
+showCmd = mconcat . intersperse " "
 
-doCmds :: List Source -> Source -> RefM String
+doCmds :: List String -> String -> RefM String
 doCmds cmd s = do
- () <- reset
- catchError mainException (\e -> showSource <$> print e) (doCmds_ cmd s)
+ T0 <- reset
+ catchError mainException (\e -> appendLoc <$> print e) (doCmds_ cmd s)
 
-doCmds_ :: List Source -> Source -> RefM String
+doCmds_ :: List String -> String -> RefM String
 doCmds_ cmd s = case cmd of
-  [cmd]                       -> doCmd False cmd s <&> chars
-  [cmd, chars -> "highlight"]          -> doCmd False cmd s <&> showSource
-  [cmd, chars -> "quote"]              -> doCmd True  cmd s <&> chars
-  [cmd, chars -> "quote", chars -> "highlight"] -> doCmd True  cmd s <&> showSource
-  cmds ->  error $ "Unknown commands: " <> mconcat (intersperse " " cmds)
+  cmd :. Nil                       -> doCmd False cmd s
+  cmd :. "highlight" :. Nil          -> doCmd False cmd s <&> appendLoc
+  cmd :. "quote" :. Nil              -> doCmd True  cmd s
+  cmd :. "quote" :. "highlight" :. Nil -> doCmd True  cmd s <&> appendLoc
+  cmds ->  errorM $ pure $ "Unknown commands: " <> mconcat (intersperse " " cmds)
  where
-  doCmd :: Bool -> Source -> Source -> RefM Source
-  doCmd quote cmd s = case chars cmd of
-    "source"    -> sh =<< (parse s :: RefM Source)
-    "indent"    -> sh =<< (parse s :: RefM ISource)
+  doCmd :: Bool -> String -> String -> RefM String
+  doCmd quote cmd s = case cmd of
+    "source"    -> sh =<< (parse s :: RefM String)
+    "indent"    -> sh =<< (parse s :: RefM IString)
     "lex"       -> sh =<< (parse s :: RefM (List (Token Spaced)))
     "structure" -> sh =<< (parse s :: RefM (OpSeq' Spaced))
     "string"    -> sh =<< (parse s :: RefM (OpSeq' Stringed))
@@ -64,21 +64,21 @@ doCmds_ cmd s = case cmd of
     "op"        -> sh =<< (parse s :: RefM (ExpTree' Layout))
     "exptree"   -> sh =<< (parse s :: RefM (ExpTree' POp))
     "sugar"     -> sh =<< (parse s :: RefM (ExpTree' Desug))
-    "scope"     -> sh =<< (parse s :: RefM Raw)
+    "scope"     -> sh =<< (parse s :: RefM Raw)    -- TODO: remove
     "elab"      -> sh =<< (parse s :: RefM Tm)
-    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF <&> fst)
-    "type"      -> sh =<< (parse s >>= inferTop <&> snd >>= quoteNF')
+    "eval"      -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF)
+    "type"      -> sh =<< (parse s >>= inferTop <&> (\(MkTmTy _ t) -> t) >>= quoteNF')
     "evalquote" -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF')
     "stage"     -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage)
     "haskell_stage"
                 -> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stageHaskell)
     "stage_eval"-> sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage_eval)
-    _ -> error ("Unknown command: " <> cmd)
+    _ -> errorM $ pure ("Unknown command: " <> cmd)
    where
-    sh :: (PPrint a, Print a) => a -> RefM Source
+    sh :: (PPrint a, Print a) => a -> RefM String
     sh x = if quote then sh' x else print x
 
-  sh' :: PPrint a => a -> RefM Source
+  sh' :: PPrint a => a -> RefM String
   sh' m = print (pprint m)
 
 
@@ -86,27 +86,29 @@ doCmds_ cmd s = case cmd of
 
 listDirRec f = doesDirectoryExist f >>= \case
   True -> listDirectory f >>= mapM (listDirRec . (f </>)) <&> concat
-  False -> pure [f]
+  False -> pure (f :. Nil)
 
+testNames :: FilePath -> IO (List FilePath)
 testNames dir = do
-  ns <- listDirRec dir <&> \fs -> sort (filter (isJust . stripSuffix ".csip" . MkString . stringToList) fs)
-  if null ns then error $ "no .csip files found at " <> stringToSource (MkString $ stringToList dir)
+  ns <- listDirRec dir <&> \fs -> sort (filter (isJust . stripSuffix ".csip") fs)
+  if null ns then errorM $ "no .csip files found at " <<>> pure dir
     else pure ns
 
 
 getResult odir fn s cmd _i n = do
   r <- parseFile' odir out
-  pure (printFile' (odir </> out), r)
- where out = listToString $ unString $ hashString $ "# " <> showCmd cmd <> " # " <> MkString (stringToList fn) <> " # " <> showInt n <> " # " <> versionString <> "\n" <> chars s
+  pure (T2 (printFile' (odir </> out)) r)
+ where out = hashString $ "# " <> showCmd cmd <> " # " <> fn <> " # " <> showInt n <> " # " <> versionString <> "\n" <> s
 
 getResult' odir fn s cmd i n = do
-  (printres, r) <- getResult odir fn s cmd i n
+  T2 printres r <- getResult odir fn s cmd i n
   maybe (doCmds cmd s >>= \r -> printres r >> pure r) pure r
 
 parseFile' dir f | fn <- dir </> f = doesFileExist fn >>= \case
   False -> pure Nothing
   True  -> parseFile dir f <&> Just
 
+printFile' :: Print s => FilePath -> s -> IO Tup0
 printFile' f s = do
   createDirectoryIfMissing True (directory f)
   printFile f s
@@ -118,33 +120,32 @@ tests accept dir = do
 testFiles accept dir odir = do
  fs <- testNames dir
  forM_ fs \fn -> do
-  let fn' = MkString (stringToList fn)
-  Just (cmds, s) <- getSource fn
-  forM_ (numberWith (,) 0 cmds) \(i, cmd) -> do
+  Just (T2 cmds s) <- getString fn
+  forM_ (numberWith T2 0 cmds) \(T2 i cmd) -> do
     if accept then do
       r <- getResult' odir fn s cmd i (length cmds)
       putStr
-           $ invert (foreground cyan $ "           " <> showCmd cmd <> " " <> fn' <> "           ") <> "\n"
+           $ invertColors (foreground cyan $ "           " <> showCmd cmd <> " " <> fn <> "           ") <> "\n"
           <> r <> "\n"
      else do
-      (printres, r2) <- getResult odir fn s cmd i (length cmds)
+      T2 printres r2 <- getResult odir fn s cmd i (length cmds)
       r <- doCmds cmd s
       when (r2 /= Just r) do
         putStr
            $ maybe "" (\r -> 
-             invert (foreground cyan $ "   old     " <> showCmd cmd <> " " <> fn' <> "           ") <> "\n"
+             invertColors (foreground cyan $ "   old     " <> showCmd cmd <> " " <> fn <> "           ") <> "\n"
           <> r <> "\n") r2
-          <> invert (foreground cyan $ "   new     " <> showCmd cmd <> " " <> fn' <> "           ") <> "\n"
+          <> invertColors (foreground cyan $ "   new     " <> showCmd cmd <> " " <> fn <> "           ") <> "\n"
           <> r <> "\n"
           <> maybe "" (\r' -> if lines r' /= lines r then
-               invert (foreground red $ "    first diff    ")
-            <> (do (a, b) <- repNl (lines r') (lines r); guard (a /= b); pure ("\n" <> a <> "\n" <> b <> "\n")) !! 0
+               invertColors (foreground red $ "    first diff    ")
+            <> mconcat (take 1 do T2 a b <- repNl (lines r') (lines r); guard (a /= b); pure ("\n" <> a <> "\n" <> b <> "\n"))
             else "") r2
-        askYN "accept" >>= \b -> if b then printres r else pure ()
+        askYN "accept" >>= \b -> if b then printres r else pure T0
 
 repNl as bs = zip (as ++ replicate (c-.a) "") (bs ++ replicate (c-.b) "")
  where
-  a = length as; b = length bs; c = a + b
+  a = length as; b = length bs; c = max a b
 
 present dir odir beg = do
   fs <- testNames dir
@@ -153,20 +154,19 @@ present dir odir beg = do
    f i = do
     let fn = fs !! i
         reload  = present dir odir fn
-    let fn' = MkString (stringToList fn)
-    getSource fn >>= \case
+    getString fn >>= \case
      Nothing -> reload
-     Just (cmds, s) -> do
+     Just (T2 cmds s) -> do
 
-      rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
+      rs <- forM (numberWith T2 0 cmds) \(T2 j cmd) -> do
           r <- getResult' odir fn s cmd j (length cmds)
-          pure (showCmd cmd <> " " <> fn', r)
+          pure (T2 (showCmd cmd <> " " <> fn) r)
       let
         g = do
           let
-            nextF   = maybeList (f (i+1)) (i+1 < l) Nil
-            prevF   = maybeList (f (i-.1)) (i > 0) Nil
-            end     = [pure ()]
+            nextF   = condCons (i+1 < l) (f (i+1)) Nil
+            prevF   = condCons (i > 0)  (f (i-.1)) Nil
+            end     = pure T0 :. Nil
             wait k  = listToMaybe $ case k of
               " "         -> nextF
               "\n"        -> nextF
@@ -175,11 +175,11 @@ present dir odir beg = do
               "Right"     -> nextF
               "Esc"       -> end
               "q"         -> end
-              "r"         -> [reload]
+              "r"         -> reload :. Nil
               _           -> Nil
 
-          (w, h) <- getTerminalSize
-          disp h (mkScreen True (w, h) cyan rs) wait
+          T2 w h <- getTerminalSize
+          disp h (mkScreen True (T2 w h) cyan rs) wait
       g
 
   presentationMode $ f $ min (length fs -. 1) $ length $ filter (< beg) fs
@@ -188,22 +188,21 @@ export dir odir = do
   wh <- getTerminalSize
   fs <- testNames dir
   rs <- forM fs \fn -> do
-    let fn' = MkString (stringToList fn)
-    Just (cmds, s) <- getSource fn
-    rs <- forM (numberWith (,) 0 cmds) \(j, cmd) -> do
+    Just (T2 cmds s) <- getString fn
+    rs <- forM (numberWith T2 0 cmds) \(T2 j cmd) -> do
       r <- getResult' odir fn s cmd j (length cmds)
-      pure (showCmd cmd <> " " <> fn', r)
+      pure (T2 (showCmd cmd <> " " <> fn) r)
     pure $ mkScreen False wh cyan rs
-  pure (concatStr $ map (<> "\n") $ concat rs)
+  pure (mconcat $ map (<> "\n") $ concat rs)
 
 distribute :: Word -> Word -> List Word
 distribute ((+1) -> parts) i = zipWith (-.) is (0:.is) where
   is = enumFromTo 1 parts <&> \j -> (j * i -. 1) `div` parts
 
-mkScreen :: Bool -> (Word, Word) -> Word -> List (String, String) -> List String
-mkScreen rich (w, h) color ts
+mkScreen :: Bool -> Tup2 Word Word -> Color -> List (Tup2 String String) -> List String
+mkScreen rich (T2 w h) color ts
   = concat $ zip os tls <&> \case
-    (o, t:. ls) ->
+    T2 o (t:. ls) ->
       let o1 = o `div` 2 in
       let o2 = o -. o1   in
          t:. replicate o1 "" ++ ls ++ replicate o2 ""
@@ -213,26 +212,26 @@ mkScreen rich (w, h) color ts
   os = distribute (length tls) $ h -. mh
   tls = map f ts
 
-  f :: (String, String) -> List String
-  f (title, s) =
-    (if rich then invert . foreground color $ replicateStr t1 ' ' <> title <> replicateStr t2 ' '
+  f :: Tup2 String String -> List String
+  f (T2 title s) =
+    (if rich then invertColors . foreground color $ replicateStr t1 ' ' <> title <> replicateStr t2 ' '
              else replicateStr t1 '=' <> title <> replicateStr t2 '=')
     :. (ls <&> \s -> (if rich then cursorForward ow else replicateStr ow ' ') <> s)
    where
     ls = lines s
     mw = maximum (0:. map lengthANSI ls)
     ow = (w -. mw) `div` 2
-    t1 = (w -. lengthStr title) `div` 2
-    t2 = w -. t1 -. lengthStr title
+    t1 = (w -. lengthANSI title) `div` 2
+    t2 = w -. t1 -. lengthANSI title
 
-disp :: Word -> List String -> (String -> Maybe (IO ())) -> IO ()
+disp :: Word -> List String -> (String -> Maybe (IO Tup0)) -> IO Tup0
 disp h ls' cont = wait 0
    where
     mz = length ls' -. h
     wait z = do
       putStr
         $  clearScreen
-        <> mconcat (zip (enumFromTo 0 h) (drop z ls') <&> \(i, l) -> setCursorPosition i 0 <> l)
+        <> mconcat (zip (enumFromTo 0 h) (drop z ls') <&> \(T2 i l) -> setCursorPosition i 0 <> l)
       getKey >>= \case
         "Up"       | z > 0  -> wait (z-.1)
         "Down"     | z < mz -> wait (z+1)
