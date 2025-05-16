@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          csip
-version:       0.4.0.0
+version:       0.5.0.0
 
 category:      Compiler
 synopsis:      compiler for writing efficient programs with high-level abstractions
@@ -12,81 +12,64 @@ description:
   Csip supports staged compilation.
   Csip has no termination checking.
 
-license:       BSD-2-Clause
-license-file:  LICENSE
-author:        Peter Divianszky
-maintainer:    peter.divianszky@faulhornlabs.com
+license:              BSD-2-Clause
+license-file:         LICENSE
+author:               Peter Divianszky
+maintainer:           peter.divianszky@faulhornlabs.com
 
-extra-doc-files:
-  README.md
-extra-source-files:
-  .ghci
-  test/**/*.csip
-  perftests/**/*.csip
-data-dir: src
-data-files:
-  precedences
-  Builtins.csip
-  Prelude.csip
+extra-doc-files:      README.md
+extra-source-files:   .ghci test/**/*.csip
+data-dir:             src
+data-files:           precedences *.csip
 
 source-repository head
-  type:     git
-  location: https://github.com/faulhornlabs/csip
+  type:               git
+  location:           https://github.com/faulhornlabs/csip
 
 executable csip
-  build-depends:
-      base       >= 4.0  && < 5.0
-    , array      >= 0.5  && < 0.6
-    , directory  >= 1.3  && < 1.4
+  build-depends:      base >= 4.16 && < 4.22
 
-  hs-source-dirs: src
-  autogen-modules:
-      Paths_csip
-  other-modules:
-      Paths_csip
-    -- base libraries
-    , A_Builtins
-    , B_Prelude
-    , C_Map
-    , C_IntMap
-    , C_StringMap
-    , C_OpSeq
-    , D_Base
-    -- compiler modules
-    , E_Parse
-    , F_Eval
-    , G_Unify
-    , H_Elab
-    , I_Stage
-    -- I/O base library
-    , M8_IO
-  main-is:
-      M9_Main.hs
+  hs-source-dirs:     src
+  autogen-modules:    Paths_csip
+  other-modules:      Paths_csip
+                    , B0_Builtins
+                    , B1_Basic
+                    , B2_String
+                    , B3_RefM
+                    , B4_Partial
+                    , B5_Map
+                    , B6_IntMap
+                    , B7_StringMap
+                    , B8_OpSeq
+                    , B9_IO
+                    , B_Base
+                    , E_Parse
+                    , F_Eval
+                    , G_Unify
+                    , H_Elab
+                    , I_Stage
+  main-is:            M_Main.hs
 
-  default-language:
-      Haskell98
-  default-extensions:
-      RebindableSyntax
-    , OverloadedStrings
-    , BlockArguments
-    , LambdaCase
-    , Strict
-    , PatternGuards
-    , ViewPatterns
-    , PatternSynonyms
-    , NoMonomorphismRestriction
-    , EmptyDataDecls
-    , DataKinds
-    , KindSignatures
-    , FlexibleInstances
-    , FlexibleContexts
-    , GeneralizedNewtypeDeriving
-    , ConstraintKinds
+  default-language:   Haskell98
+  default-extensions: RebindableSyntax
+                    , OverloadedStrings
+                    , BlockArguments
+                    , LambdaCase
+                    , Strict
+                    , ViewPatterns
+                    , PatternGuards
+                    , PatternSynonyms
+                    , NoMonomorphismRestriction
+                    , EmptyDataDecls
+                    , DataKinds
+                    , KindSignatures
+                    , FlexibleInstances
+                    , FlexibleContexts
+                    , GADTs
 
-  ghc-options:
-    -fobject-code
-    -Wall
-    -Wno-missing-signatures
-    -Wno-missing-pattern-synonym-signatures
-    -Wno-name-shadowing
-    -Wno-orphans
+  ghc-options:      -fobject-code
+                    -Wall
+                    -Wno-missing-signatures
+                    -Wno-missing-pattern-synonym-signatures
+                    -Wno-name-shadowing
+                    -Wno-orphans

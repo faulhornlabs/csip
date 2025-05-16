@@ -31,7 +31,7 @@ t _ s = s
 
 t' := t TT
 
-q : Code (ONat -> ONat)
+q : Code (OWord -> OWord)
 q 12 = 13
 q 10 = 12
 q s = s

@@ -19,9 +19,9 @@ data N : Type where
   Z : N
   S : N -> N
 
-toN : Nat -> N
+toN : Word -> N
 toN 0 = Z
-toN (Succ i) = S (toN i)
+toN (WSuc i) = S (toN i)
 
 
 vec : N -> Ty -> Ty

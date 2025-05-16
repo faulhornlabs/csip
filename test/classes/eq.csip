@@ -18,8 +18,8 @@ class {a : Type} -> Eq a where
 a /= b = not (a == b)
 
 
-instance Eq Nat where
-  a == b = EqNat a b  -- TODO: (==) = EqNat
+instance Eq Word where
+  a == b = EqWord a b  -- TODO: (==) = EqWord
 
 
 data List : Type -> Type where

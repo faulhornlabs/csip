@@ -9,35 +9,35 @@ data Bool : Type where
   True  : Bool
   False : Bool
 
-data Nat : Type where
+data Word : Type where
 
-builtin DecNat    : Nat -> Nat
-builtin AddNat    : Nat -> Nat -> Nat
-builtin MulNat    : Nat -> Nat -> Nat
-builtin ModNat    : Nat -> Nat -> Nat
-builtin DivNat    : Nat -> Nat -> Nat
-builtin EqNat     : Nat -> Nat -> Bool
+builtin DecWord    : Word -> Word
+builtin AddWord    : Word -> Word -> Word
+builtin MulWord    : Word -> Word -> Word
+builtin ModWord    : Word -> Word -> Word
+builtin DivWord    : Word -> Word -> Word
+builtin EqWord     : Word -> Word -> Bool
 
-data SuccView : Type where
-  SuccOk    : Nat -> SuccView
-  SuccFail  : SuccView
+data WSucView : Type where
+  WSucOk    : Word -> WSucView
+  WSucFail  : WSucView
 
-succView : Nat -> SuccView
-succView 0 = SuccFail
-succView n = SuccOk (DecNat n)
+succView : Word -> WSucView
+succView 0 = WSucFail
+succView n = WSucOk (DecWord n)
 
-constructor Succ : Nat -> Nat
+constructor WSuc : Word -> Word
 
--- pattern Succ n <- (succView --> SuccOk n)
--- Succ = \n -> AddNat 1 n
+-- pattern WSuc n <- (succView --> WSucOk n)
+-- WSuc = \n -> AddWord 1 n
 
 
 data String : Type where
 
 builtin AppendStr : String -> String -> String
 builtin EqStr     : String -> String -> Bool
-builtin TakeStr   : Nat -> String -> String
-builtin DropStr   : Nat -> String -> String
+builtin TakeStr   : Word -> String -> String
+builtin DropStr   : Word -> String -> String
 
 data ConsView : Type where
   ConsOk    : String -> String -> ConsView
@@ -47,9 +47,17 @@ consView : String -> ConsView
 consView "" = ConsFail
 consView n = ConsOk (TakeStr 1 n) (DropStr 1 n)
 
-constructor Cons : String -> String -> String
+constructor ConsStr : String -> String -> String
+-- pattern ConsStr a b <- (consView --> ConsOk a b)
 
--- pattern Cons a b <- (consView --> ConsOk a b)
+
+data Nat : Type where
+  Zero : Nat
+  Suc  : Nat -> Nat
+
+wordToNat : Word -> Nat
+wordToNat 0 = Zero
+wordToNat (WSuc i) = Suc (wordToNat i)
 
 
 -- Object code
@@ -80,10 +88,10 @@ data OString : Ty where
 
 builtin OEqStr : OString -> OString -> OBool
 
-data ONat : Ty where
-  MkONat : Nat -> ONat
+data OWord : Ty where
+  MkOWord : Word -> OWord
 
-builtin OEqNat : ONat -> ONat -> OBool
+builtin OEqWord : OWord -> OWord -> OBool
 
 
 -- Type classes

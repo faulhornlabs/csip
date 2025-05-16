@@ -46,7 +46,7 @@ Main directives:
 
 Compilation of source files:
 
-    csip FILE|DIR
+    csip FILE...
 
 The output is written to the standard output.
 
@@ -57,7 +57,7 @@ Note that the compiler output is cached.
 
 Interactive compilation of source files:
 
-    csip show FILE|DIR
+    csip show FILE...
 
 Available commands in interactive mode:
 
@@ -71,13 +71,14 @@ Available commands in interactive mode:
 
 ## Documentation
 
-You can read the documentation of Csip (currently only about the syntactic frontend) with
+You can read the documentation of Csip with
 
-    csip show test/doc
+    csip show `find test/doc`
 
 If needed, the documentation is readable without the interactive mode:
 
-    csip export test/doc | less -R
+    csip export `find test/doc` >doc.txt
+    less -R doc.txt
 
 ## Features
 
@@ -237,35 +238,15 @@ Implemented performance improvements:
 
 
 
-## Development workflows
-
-The Csip cache can be cleaned with
-
-    csip clean
-
-The purpose of the clean command is to
-remove unconsitent cache during development when needed.
-
-### Main development workflow
-
-    cabal repl
-    > :main test
-    <<< start_loop >>>
-    <<< edit source files >>>
-    > :reload
-    > :main diff test
-    <<< goto start_loop >>>
-
-
-### Performance improvement workflow
+## Development workflow
 
     cabal install
-    csip .
-    time csip diff .
+    csip `find test`
+    time csip diff `find test`
     <<< start_loop >>>
     <<< edit source files >>>
     cabal install
-    time csip diff .
+    time csip diff `find test`
     <<< goto start_loop >>>
 
 

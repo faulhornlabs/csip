@@ -23,4 +23,4 @@ right {a} {b} x = MkSum {_} {ite a b} False x
 
 the : (a : Type) -> a -> a = \_ x -> x
 
-the (either Nat String) (left 24)
+the (either Word String) (left 24)

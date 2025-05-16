@@ -5,6 +5,6 @@
 
 id : {A : Type} -> A -> A = \x -> x
 
-f : (Nat -> Nat) -> Type = \_ -> String
+f : (Word -> Word) -> Type = \_ -> String
 
 f id

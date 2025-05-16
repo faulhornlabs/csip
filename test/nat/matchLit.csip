@@ -2,7 +2,7 @@
 # elab
 # eval
 
-f : Nat -> Nat
+f : Word -> Word
 f 3 = 1
 f 1 = 2
 f s = s

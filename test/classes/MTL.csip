@@ -82,18 +82,18 @@ instance Monad Identity where
 
 instance Functor List where
   f <$> Nil = Nil
-  f <$> LCons x xs = LCons (f x) (f <$> xs)
+  f <$> Cons x xs = Cons (f x) (f <$> xs)
 
 append : List a -> List a -> List a
 append Nil xs = xs
-append (LCons x xs) ys = LCons x (append xs ys)
+append (Cons x xs) ys = Cons x (append xs ys)
 
 joinList : List (List a) -> List a
 joinList Nil = Nil
-joinList (LCons x xs) = append x (joinList xs)
+joinList (Cons x xs) = append x (joinList xs)
 
 instance Applicative List where
-  pure x = LCons x Nil
+  pure x = Cons x Nil
 
   fs <*> xs = joinList (fs <&> \f -> f <$> xs)
 
@@ -139,27 +139,27 @@ instance MonadTrans (StateT s) where
 
 
 
-newId : Monad m => StateT Nat m Nat
--- TODO:   newId {m} = state {StateT Nat m} \s -> T2 s (1 + s)
+newId : Monad m => StateT Word m Word
+-- TODO:   newId {m} = state {StateT Word m} \s -> T2 s (1 + s)
 -- TODO:   newId = state \s -> T2 s (1 + s)
 newId = MkStateT \s -> pure (T2 s (1 + s))
 
 sum : Num a => List a -> a
-sum Nil = fromNat 0
-sum (LCons x xs) = x + sum xs
+sum Nil = fromWord 0
+sum (Cons x xs) = x + sum xs
 
-replicate : Nat -> a -> List a
+replicate : Word -> a -> List a
 replicate 0 _ = Nil
-replicate (Succ n) a = LCons a (replicate n a)
+replicate (WSuc n) a = Cons a (replicate n a)
 
 sequence : Monad m => List (m a) -> m (List a)
 sequence Nil = pure Nil
-sequence (LCons m ms) = m >>= \x -> LCons x <$> sequence ms
+sequence (Cons m ms) = m >>= \x -> Cons x <$> sequence ms
 
-replicateM : Monad m => Nat -> m a -> m (List a)
+replicateM : Monad m => Word -> m a -> m (List a)
 replicateM n m = sequence (replicate n m)
 
-main : StateT Nat (StateT Nat Identity) Nat
+main : StateT Word (StateT Word Identity) Word
   = do
     x <- lift newId <&> (*) 2
     y <- replicateM 3 newId <&> sum

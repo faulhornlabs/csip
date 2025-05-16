@@ -3,7 +3,7 @@ module G_Unify
   , deepForce
   ) where
 
-import D_Base
+import B_Base
 import E_Parse
 import F_Eval
 
@@ -51,11 +51,11 @@ closeTm v_ = do
   m <- go (sv :. Nil)
   T0 <- case fromJust $ lookupMap sv m of
     Just s -> forM_ (assocsIM s) \(T2 v s) -> pruneMeta v s
-    Nothing -> errorM $ ("could not close meta solution:\n" <>) <$> print v
+    Nothing -> fail $ ("could not close meta solution:\n" <>) <$> print v
   pure v_
  where
-  go sv = downUp down up sv
-   where
+  go sv = downUp down up sv where
+
     down :: SVal -> RefM (Tup2 Tup0 (List SVal))
     down (T2 v allowed) = case v of
       _ | closed v -> ret allowed Nil
@@ -138,4 +138,4 @@ unify aa{-actual-} bb{-expected-} = do
        vb' <- vApp fb v
        go va' vb'
      T2 (WApp f a) (WApp g b) -> go f g >> go a b
-     _ -> errorM $ "Expected type\n " <<>> expr (print =<< force_ bb) <<>> "\ninstead of\n " <<>> expr (print =<< force_ aa)
+     _ -> fail $ "Expected type\n " <<>> expr (print =<< force_ bb) <<>> "\ninstead of\n " <<>> expr (print =<< force_ aa)

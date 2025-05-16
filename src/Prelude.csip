@@ -7,8 +7,8 @@ appendStr = AppendStr
 class Eq (a : Type) where
   (==) : a -> a -> Bool
 
-instance Eq Nat where
-  a == b = EqNat a b
+instance Eq Word where
+  a == b = EqWord a b
 
 instance Eq String where
   a == b = EqStr a b
@@ -17,19 +17,19 @@ instance Eq String where
 class Num (a : Type) where
   (+)     : a -> a -> a
   (*)     : a -> a -> a
-  fromNat : Nat -> a
+  fromWord : Word -> a
 
-instance Num Nat where
-  a + b = AddNat a b
-  a * b = MulNat a b
-  fromNat n = n
+instance Num Word where
+  a + b = AddWord a b
+  a * b = MulWord a b
+  fromWord n = n
 
-even : Nat -> Bool
-  = \n -> ModNat n 2 == 0
-odd  : Nat -> Bool
-  = \n -> ModNat n 2 == 1
+even : Word -> Bool
+  = \n -> ModWord n 2 == 0
+odd  : Word -> Bool
+  = \n -> ModWord n 2 == 1
 
-div = DivNat
+div = DivWord
 
 
 the : (a : Type) -> a -> a
@@ -60,5 +60,5 @@ data Maybe : Type ~> Type where
 
 data List : Type ~> Type where
   Nil    : List a
-  LCons  : a -> List a -> List a
+  Cons  : a -> List a -> List a
 

@@ -31,27 +31,26 @@
      else_
     _<-
      <-_
-    _-> _~> _:-> _|-> _: _** _=> _==> _--> _--->
+    _-> _~> _:-> _|-> _: _** _=> _==> _--> _---> \_
      ->_ ~>_ :->_ |->_ :_ **_ =>_ ==>_ -->_ --->_
      in_
-     \_
     _|
      |_
     _= _:=
      =_ :=_
     _,
      ,_
+     import_ builtin_ constructor_
     _#
      #_
-     import_ builtin_ constructor_
     _;
      ;_
      case_ _ofBegin ofBegin_ _ofEnd
      class_ instance_ data_ _whereBegin whereBegin_ _whereEnd
      let_ _in if_ _then then_ _else
      [_ _] {_ _} (_ _) <!_ _!>
-     END_   SEMI_ do_ where_ of_
     _BEGIN _SEMI _do _where _of
+     END_   SEMI_ do_ where_ of_
      BEGIN_ _END
     _SPACE
      SPACE_

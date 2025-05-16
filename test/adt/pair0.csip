@@ -1,9 +1,9 @@
 # eval
 
 data Tup : Type where
-  MkTup : Nat -> Nat -> Tup
+  MkTup : Word -> Word -> Tup
 
-fst : Tup -> Nat
+fst : Tup -> Word
 fst (MkTup a b) = a
 
 fst

@@ -18,11 +18,11 @@ selNum2Num : Num2 a -> Num a
 selNum2Num (MkNum2 d) = d
 superClasses (Num2 a) = SuperClassCons _ _ selNum2Num (SuperClassNil _)
 
-numDict = MkNum \n -> AddNat n n
-lookupDict (Num Nat) = numDict
+numDict = MkNum \n -> AddWord n n
+lookupDict (Num Word) = numDict
 
 num2Dict = MkNum2 numDict
-lookupDict (Num2 Nat) = num2Dict
+lookupDict (Num2 Word) = num2Dict
 
 double2 : Num2 a => a -> a
 double2 = double

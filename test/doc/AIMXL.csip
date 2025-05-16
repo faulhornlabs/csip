@@ -1,0 +1,610 @@
+# source
+         ____     _
+        / ___|___(_)_ __
+       | |   / __| | '_ \
+       | |___\__ \ | |_) )
+        \____|___/_| .__/
+                   |_|
+
+
+      --------------------
+       Overview for AIMXL
+      --------------------
+
+
+
+
+space | enter | backspace | arrows
+
+            q | Ctrl+c
+
+#####
+# source
+Goals:
+
+- High performance libraries written with high level abstractions
+- (Arithmetic) circuit design
+- Experiment with staged compilation
+
+
+
+The implementation of Csip is inspired by the prototypes of András Kovács:
+
+- https://github.com/AndrasKovacs/elaboration-zoo
+- https://github.com/AndrasKovacs/staged
+- https://github.com/AndrasKovacs/smalltt
+
+#####
+# source
+Highlights
+----------
+
+Csip  =  dependent Haskell-- with staged compilation
+
+
+Haskell--
+
+- simplified language
+- strict evaluation
+
+
+Dependent Haskell--
+
+- no phase distinction between expressions and types
+- no universe levels
+- no termination checking
+- notation for constructor application needed for type classes
+
+
+Staged compilation
+
+- HOAS representation of an object language in the metalanguage
+- coercive subtyping inserts Lam and App
+- the HOAS expression is normalized and handled to a backend
+
+#####
+# source
+# elab
+-- example Csip source code for dependent types
+
+data N : Type where
+  Z : N
+  S : N -> N
+
+(+) : N -> N -> N
+Z   + m = m
+S n + m = S (n + m)
+
+data Fin : (n : N) -> Type where
+  FZ : Fin (S k)
+  FS : Fin k -> Fin (S k)
+
+finToNat : Fin n -> N
+finToNat FZ     = Z
+finToNat (FS k) = S (finToNat k)
+
+weaken : Fin n -> Fin (S n)
+weaken FZ     = FZ
+weaken (FS k) = FS (weaken k)
+
+shift : (m : N) -> Fin n -> Fin (m + n)
+shift Z     f = f
+shift (S m) f = FS (shift m f)
+
+last : {n} -> Fin (S n)
+last {Z}   = FZ
+last {S _} = FS last
+
+complement : {n} -> Fin n -> Fin n
+complement FZ     = last
+complement (FS x) = weaken (complement x)
+
+data List : Type -> Type where
+  Nil  : List a
+  (::) : a -> List a -> List a
+
+map : (a -> b) -> List a -> List b
+map f Nil       = Nil
+map f (x :: xs) = f x :: map f xs
+
+allFins : (n : N) -> List (Fin n)
+allFins Z     = Nil
+allFins (S n) = FZ :: map FS (allFins n)
+
+Type
+
+#####
+# source
+# elab
+-- example Csip source code for type errors
+
+data N : Type where
+  Z : N
+  S : N -> N
+
+data Fin : (n : N) -> Type where
+  FZ : Fin (S k)
+  FS : Fin k -> Fin (S k)
+
+weaken : Fin n -> Fin (S n)
+weaken (FS k) = FS (weaken k)
+weaken f      = f
+
+#####
+# source
+Constructor application
+-----------------------
+
+
+Problem:
+
+Haskell-style type classes needs
+
+   m a  =  List Int   ===>   m = List, a = Int
+
+which is not true.
+
+
+Solution:
+
+  (~>) : Type -> Type -> Type
+  List : Type ~> Type
+  Ap   : (a ~> b) -> a -> b
+
+Now
+
+  Ap m a  =  Ap List Int   ===>   m = List, a = Int
+
+Ap is automatically inserted by coercive subtyping.
+
+(~>) can also be dependent (I think).
+
+#####
+# source
+# eval
+-- example Csip source code for type classes
+
+import Prelude
+
+class Functor (m : Type ~> Type)  where
+  (<$>) : (a -> b) -> m a -> m b
+
+class Functor m => Applicative m  where
+  pure  : a -> m a
+  (<*>) : m (a -> b) -> m a -> m b
+
+class Applicative m => Monad m  where
+  (>>=) : m a -> (a -> m b) -> m b
+
+
+{- defined in Prelude
+data List : Type ~> Type where
+  Nil   : List a
+  Cons  : a -> List a -> List a
+-}
+
+append : List a -> List a -> List a
+append Nil         ys = ys
+append (Cons x xs) ys = Cons x (append xs ys)
+
+bindList : List a -> (a -> List b) -> List b
+bindList Nil         f = Nil
+bindList (Cons x xs) f = append (f x) (bindList xs f)
+
+instance Functor List where
+  f <$> Nil       = Nil
+  f <$> Cons x xs = Cons (f x) (f <$> xs)
+
+instance Applicative List where
+  pure x    = Cons x Nil
+  fs <*> xs = bindList fs \f -> f <$> xs
+
+instance Monad List where
+  (>>=) = bindList
+
+
+guard : Bool -> List Unit
+guard True  = pure TT
+guard False = Nil
+
+enum : Word -> Word -> List Word
+enum a 0        = Nil
+enum a (WSuc b) = Cons a (enum (1 + a) b)
+
+pita : Word -> List (Tuple3 Word Word Word)
+pita n = do
+  m <- enum 1 n
+  k <- enum 1 m
+  l <- enum 1 k
+  guard (m*m == k*k + l*l)
+  pure (T3 m k l)
+
+pita 20
+#####
+# source
+# stage
+-- example Csip source code for staged compilation
+
+import Prelude
+
+data OWord : Ty where              -- Ty : Type
+  One : OWord
+  Mul : OWord -> OWord -> OWord
+  Add : OWord -> OWord -> OWord
+
+sqr = \a -> do
+  b := a
+  Mul b b
+
+instance Num (Code OWord) where    -- Code : Ty -> Type
+  a + b = Add a b
+
+(^) : OWord -> Word -> OWord       -- Code OWord -> Word -> Code OWord
+a ^ 0 = One
+a ^ 1 = a
+a ^ n | even n = sqr (a ^ div n 2)
+a ^ WSuc n = do
+  c := a
+  Mul c (c ^ n)
+
+\a b -> ((a + b)^100 + b)^80       -- main expression
+
+#####
+# source
+# stage
+-- example Csip source code for staged compilation
+
+import Prelude
+
+data OWord : Ty where              -- Ty : Type
+  One : OWord
+  Mul : OWord -> OWord -> OWord
+  Add : OWord -> OWord -> OWord
+
+sqr := \a -> Mul a a
+
+
+
+instance Num (Code OWord) where    -- Code : Ty -> Type
+  a + b = Add a b
+
+(^) : OWord -> Word -> OWord       -- Code OWord -> Word -> Code OWord
+a ^ 0 = One
+a ^ 1 = a
+a ^ n | even n = sqr (a ^ div n 2)
+a ^ WSuc n = do
+  c := a
+  Mul c (c ^ n)
+
+\a b -> ((a + b)^100 + b)^80       -- main expression
+
+#####
+# source
+Equivalent code
+---------------
+
+Ty    : Type
+Arr   : Ty -> Ty -> Ty
+OWord : Ty
+
+Code : Ty -> Type
+Lam  : (Code a -> Code b) -> Code (Arr a b)
+App  : Code (Arr a b) -> (Code a -> Code b)
+Let  : Code a -> (Code a -> Code b) -> Code b
+One  : Code OWord
+Mul  : Code OWord -> Code OWord -> Code OWord
+Add  : Code OWord -> Code OWord -> Code OWord
+
+sqr : Code OWord -> Code OWord
+sqr a = Let a \b -> Mul b b
+
+(^) : Code OWord -> Word -> Code OWord
+a ^ 0 = One
+a ^ 1 = a
+a ^ n | even n = sqr (a ^ div n 2)
+a ^ WSuc n =
+  Let a \c ->
+  Mul c (c ^ n)
+
+Lam \a -> Lam \b ->
+  Add (Add a b ^ 100) b ^ 80
+
+#####
+# source
+Equivalent code
+---------------
+
+Ty    : Type
+Arr   : Ty -> Ty -> Ty
+OWord : Ty
+
+Code : Ty -> Type
+Lam  : (Code a -> Code b) -> Code (Arr a b)
+App  : Code (Arr a b) -> (Code a -> Code b)
+Let  : Code a -> (Code a -> Code b) -> Code b
+One  : Code OWord
+Mul  : Code OWord -> Code OWord -> Code OWord
+Add  : Code OWord -> Code OWord -> Code OWord
+
+
+Let (Lam \a -> Mul a a) \sqr ->
+
+  (^) : Code OWord -> Word -> Code OWord
+  a ^ 0 = One
+  a ^ 1 = a
+  a ^ n | even n = App sqr (a ^ div n 2)
+  a ^ WSuc n =
+    Let a \c ->
+    Mul c (c ^ n)
+
+  Lam \a -> Lam \b ->
+    Add (Add a b ^ 100) b ^ 80
+
+#####
+# source
+# stage
+-- example Csip source code for staged compilation
+import Prelude
+
+data Carry : Ty where
+  ClearCarry : Carry
+  SetCarry   : Carry
+
+data W64 : Ty where
+  Zero64 : W64
+
+builtin PlusC : Carry -> W64 -> W64 -> Prod Carry W64
+
+data Unit : Ty where
+  TT : Unit
+
+vec : Nat -> Ty -> Ty
+vec Zero    t = Unit
+vec (Suc n) t = Prod (vec n t) t
+
+addCarry : (n: Nat) -> Carry -> vec n W64 -> vec n W64
+  -> Prod Carry (vec n W64)
+addCarry Zero c a b = Pair c TT
+addCarry (Suc n) c a b = do
+  d := PlusC c (Snd a) (Snd b)
+  e := addCarry n (Fst d) (Fst a) (Fst b)
+  Pair (Fst e) (Pair (Snd e) (Snd d))
+
+add : (n: Nat) -> vec n W64 -> vec n W64 -> vec n W64
+  = \n a b -> Snd (addCarry n ClearCarry a b)
+
+add 3  -- main expression
+
+#####
+# source
+# stage
+-- example Csip source code for staged compilation
+import Prelude
+
+data Carry : Ty where
+  ClearCarry : Carry
+  SetCarry   : Carry
+
+data W64 : Ty where
+  Zero64 : W64
+
+builtin PlusC : Carry -> W64 -> W64 -> Prod Carry W64
+
+data Unit : Ty where
+  TT : Unit
+
+vec : Nat -> Ty -> Ty
+vec Zero    t = Unit
+vec (Suc n) t = Prod (vec n t) t
+
+addCarry : (n: Nat) -> Carry -> vec n W64 -> vec n W64
+  -> (Carry -> vec n W64 -> Code r) -> Code r
+addCarry Zero    c a b pair = pair c TT
+addCarry (Suc n) c a b pair = do
+  d := PlusC c (Snd a) (Snd b)
+  addCarry n (Fst d) (Fst a) (Fst b) \e1 e2 ->
+    pair e1 (Pair e2 (Snd d))
+
+add : (n: Nat) -> vec n W64 -> vec n W64 -> vec n W64
+  = \n a b -> addCarry n ClearCarry a b \e1 e2 -> e2
+
+add 3  -- main expression
+
+#####
+# source
+# stage
+-- example Csip source code for pattern matching
+--
+-- Pattern matching on Code constructor C is possible
+-- if there is a corresponding MatchC constructor
+
+import Builtins
+
+{-
+OBool      : Ty
+OTrue      : Code OBool
+OFalse     : Code OBool
+MatchOTrue : Code OBool -> Code a -> Code a -> Code a
+-}
+
+example : Bool -> Code (OBool -> OBool)
+example False a     = a
+example _     OTrue = OFalse
+example _     _     = OTrue
+
+f := example False   -- Lam \a -> a
+g := example True    -- Lam \a -> MatchOTrue a OFalse OTrue
+
+-- main expression
+\x -> f (g x)
+
+#####
+# source
+Low-level object code
+---------------------
+
+data Polarity : Set where
+  Value       : Polarity
+  Computation : Polarity
+
+data Ty : Polarity -> Set where
+  Int   : Ty Value
+  Carry : Ty Value
+  IO    : Ty Computation
+  (-->) : Ty p -> Ty Computation -> Ty Computation
+
+data Code : Ty p -> Set where
+
+  Lam    : (Code c -> Code io) -> Code (c --> io)
+  App    : Code (c --> io) -> (Code c -> Code io)
+
+  Lit  : ℕ ->             Code ((Int --> IO) --> IO)
+  Add  : Code (Int --> Int -->  (Int --> IO) --> IO)
+  Less : Code (Int --> Int -->   IO  --> IO  --> IO)
+
+  Halt : Code IO
+  Put  : Code (Int --> (IO --> IO))
+  Get  : Code ((Int --> IO) --> IO)
+
+#####
+# source
+Highlights of Csip's implementation
+-----------------------------------
+
+- written in Haskell--
+- no dependencies other than base
+- re-implements its own base from 30 primitive operations
+  - strict data structures only
+  - zero cost monad transformers
+  - String which remembers its origin
+    ==> no source code locations in the compiler code
+- "everything is an operator" parsing
+  ==> nearly linear time, total
+    , has a quasi-inverse generic pretty printing
+    , local parsability
+- explicit observable sharing used during evaluation
+- O(1) Map data structures are used during elaboration
+- pattern matching is implemented with rewrite rules
+
+The self-contained code is < 5000 LOC
+==> rapid prototyping
+
+
+https://github.com/faulhornlabs/csip
+#####
+# source
+Zero cost "monad transformers"
+------------------------------
+
+data Reader a
+
+runReader  :: a -> (Reader a -> RefM b) -> RefM b
+asks       :: Reader a -> (a -> b) -> RefM b
+local      :: Reader r -> (r -> r) -> RefM a -> RefM a
+
+data Writer a
+
+runWriter  :: Monoid w => (Writer w -> RefM a) -> RefM (a, w)
+tell       :: Monoid w => Writer w -> w -> RefM ()
+
+data State a
+
+runState   :: a -> (State a -> RefM b) -> RefM (b, a)
+gets       :: State a -> (a -> b) -> RefM b
+modify     :: State a -> (a -> a) -> RefM ()
+
+data Except e
+
+runExcept  :: (Except e -> RefM a) -> RefM (Either e a)
+throwError :: Except e -> e -> RefM a
+catchError :: Except e -> (e -> RefM a) -> RefM a -> RefM a
+
+#####
+# source
+String which remembers its origin
+---------------------------------
+
+
+Each String character knows where it came from:
+- from a file (with a position)
+- from a String literal
+
+
+Implementation:
+
+  type String = [Chunk]
+
+  data Chunk = MkChunk
+    { beginPos :: Int
+    , endPos   :: Int
+    , source   :: (FilePath, Vector Char)  -- shared
+    }
+
+The implementation is hidden behind a rich interface of
+String operations.
+
+#####
+# source
+O(1) Map data structure
+-----------------------
+
+1. Use finite maps (Ord a => Map a b)
+
+2. Replace maps with intmaps (HasIntKey a => IntMap a b)
+   - lots of key (Int identifier) generation
+
+3. Use intmaps linearly
+   - tricks, for example use (localInv) instead of (local)
+
+4. Replace linearly used intmaps with IORefs
+   - make a new Nothing IORef at key generation
+
+Currenlty 1-4 is done by hand...
+
+#####
+# source
+Status
+------
+
+TODOs before I recommend to try out Csip:
+
+- rewrite expression printing code
+- fix a metavariable bug
+- implement missing checks
+- improve type class implementation
+- implement rewrite rule optimization
+
+
+#####
+# source
+Plans
+-----
+
+- implement a C-- backend (Csaba Hruska)
+- support polarized object codes
+- make bigger examples (with Balázs Kőműves and Csaba Hruska)
+
+
+- implement pattern synonyms
+- remove lazyness annotations by using macros
+- self-hosting
+  - implement macros as meta-metalevel functions
+- use staged compilation to speed up the code
+- use higher abstractions in the codebase
+
+
+#####
+# source
+      \ \  \\\
+      \\ \  \\\
+      \\  \  ..\
+       \   \   _\
+       | Agda |         
+       \      /       o> Csip
+________\____/_______()________
+
+
+
+     end of presentation
+
+

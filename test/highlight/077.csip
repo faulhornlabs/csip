@@ -8,4 +8,4 @@
 # scope quote highlight
 u = Type
 
-const String Nat (id String "Hello World!") 13
+const String Word (id String "Hello World!") 13

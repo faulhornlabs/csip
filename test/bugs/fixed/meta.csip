@@ -1,6 +1,6 @@
 # elab
 
-f : (a : Type) -> a -> Nat
+f : (a : Type) -> a -> Word
 f _ x = f _ x
 
 f

@@ -1,8 +1,15 @@
 # stage
-# haskell_stage
+# stage_eval
+-- # haskell_stage
 
 import Prelude
 
+f : OBool -> OBool
+f := \x -> x
+
+f OTrue
+
+{-
 natPlus : Word -> Word -> Word
 natPlus a b = AddWord a b
 
@@ -18,7 +25,7 @@ builtin MulOp : OWord -> OWord -> OWord
 builtin OAppendStr : OString -> OString -> OString
 
 -- TODO: pattern synonym
-builtin OConsStr : OString -> OString -> OString
+builtin OCons : OString -> OString -> OString
 
 data Arg : Type where
   Num : Word    -> Arg
@@ -124,7 +131,7 @@ or _     _ = True
 
 allCharIs : (String -> Bool) -> String -> Bool
 allCharIs f "" = True
-allCharIs f (ConsStr c s) = and (f c) (allCharIs f s)
+allCharIs f (Cons c s) = and (f c) (allCharIs f s)
 
 isNumber : String -> Bool
 isNumber s = allCharIs isNumberChar s
@@ -134,7 +141,7 @@ compiled_allCharIsF
    : ((OString -> OBool) ->       OString -> OBool)
    -> (OString -> OBool) -> Code (OString -> OBool)
 compiled_allCharIsF rec f "" = OTrue
-compiled_allCharIsF rec f (OConsStr c s) = compiled_and (f c) (rec f s)
+compiled_allCharIsF rec f (OCons c s) = compiled_and (f c) (rec f s)
 
 compiled_allCharIs := Dec \rec -> Def rec (\f s -> compiled_allCharIsF rec f s) rec
 
@@ -142,11 +149,11 @@ compiled_isNumber := compiled_allCharIs compiled_isNumberChar
 
 reverseString : String -> String
 reverseString "" = ""
-reverseString (ConsStr c s) = appendStr (reverseString s) c
+reverseString (Cons c s) = appendStr (reverseString s) c
 
 c_reverseString : (OString -> OString) -> Code (OString -> OString)
 c_reverseString rev "" = ""
-c_reverseString rev (OConsStr c s) = OAppendStr (rev s) c
+c_reverseString rev (OCons c s) = OAppendStr (rev s) c
 
 compiled_reverseString :=
   Dec \rev ->
@@ -157,31 +164,31 @@ words_collect : String -> String -> List String
 
 words_skip : String -> List String
 words_skip "" = ListNil
-words_skip (ConsStr " " cs) = words_skip cs
-words_skip (ConsStr c cs) = words_collect c cs
+words_skip (Cons " " cs) = words_skip cs
+words_skip (Cons c cs) = words_collect c cs
 
 words_collect w "" = ListCons w ListNil
-words_collect w (ConsStr " " cs) = ListCons w (words_skip cs)
-words_collect w (ConsStr c cs) = words_collect (appendStr w c) cs
+words_collect w (Cons " " cs) = ListCons w (words_skip cs)
+words_collect w (Cons c cs) = words_collect (appendStr w c) cs
 
 words : String -> List String
 words = words_skip
 
 c_words_skip : (OString -> OString -> OList OString) -> (OString -> OList OString) -> Code (OString -> OList OString)
 c_words_skip coll skip "" = OListNil
-c_words_skip coll skip (OConsStr " " cs) = skip cs
-c_words_skip coll skip (OConsStr c cs) = coll c cs
+c_words_skip coll skip (OCons " " cs) = skip cs
+c_words_skip coll skip (OCons c cs) = coll c cs
 
 c_words_collect : (OString -> OString -> OList OString) -> (OString -> OList OString) -> OString -> Code (OString -> OList OString)
 c_words_collect coll skip w "" = OListCons w OListNil
-c_words_collect coll skip w (OConsStr " " cs) = OListCons w (skip cs)
-c_words_collect coll skip w (OConsStr c cs) = coll (OAppendStr w c) cs
+c_words_collect coll skip w (OCons " " cs) = OListCons w (skip cs)
+c_words_collect coll skip w (OCons c cs) = coll (OAppendStr w c) cs
 
 compiled_words :=
   Dec \coll ->
   Dec \skip ->
   Def skip (c_words_skip coll skip)
- (Def coll (\w -> c_words_collect coll skip w)
+ (Def coll (c_words_collect coll skip)
   skip
  )
 
@@ -214,11 +221,11 @@ compiled_parseDigit := c_parseDigit
 
 parseWord_go : String -> Word -> Word
 parseWord_go "" n = 0
-parseWord_go (ConsStr c s) n = natPlus (natMul n (parseDigit c)) (parseWord_go s (natMul n 10))
+parseWord_go (Cons c s) n = natPlus (natMul n (parseDigit c)) (parseWord_go s (natMul n 10))
 
 c_parseWord_go : (OString -> OWord -> OWord) -> Code (OString -> OWord -> OWord)
 c_parseWord_go rec "" n = 0
-c_parseWord_go rec (OConsStr c s) n = AddOp (MulOp n (compiled_parseDigit c)) (rec s (MulOp n 10))
+c_parseWord_go rec (OCons c s) n = AddOp (MulOp n (compiled_parseDigit c)) (rec s (MulOp n 10))
 
 compiled_parseWord_go := Dec \rec -> Def rec (c_parseWord_go rec) rec
 
@@ -435,3 +442,4 @@ v = compile ast EmptyEnv lastEntry
 --v
 
 compiled_eval (compiled_parse (compiled_words (MkOString src))) OEmptyEnv
+-}

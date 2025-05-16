@@ -43,22 +43,22 @@ instance Monad Maybe where
 
 data List : Type ~> Type where
   Nil    : List a
-  LCons  : a -> List a -> List a
+  Cons  : a -> List a -> List a
 
 instance Functor List where
   f <$> Nil = Nil
-  f <$> LCons x xs = LCons (f x) (f <$> xs)
+  f <$> Cons x xs = Cons (f x) (f <$> xs)
 
 append : List a -> List a -> List a
 append Nil xs = xs
-append (LCons x xs) ys = LCons x (append xs ys)
+append (Cons x xs) ys = Cons x (append xs ys)
 
 joinList : List (List a) -> List a
 joinList Nil = Nil
-joinList (LCons x xs) = append x (joinList xs)
+joinList (Cons x xs) = append x (joinList xs)
 
 instance Applicative List where
-  pure x = LCons x Nil
+  pure x = Cons x Nil
 
   fs <*> xs = joinList ((\f -> f <$> xs) <$> fs)
 
@@ -70,11 +70,11 @@ guard : Bool -> List Unit
 guard True = pure TT
 guard False = Nil
 
-enum : Nat -> Nat -> List Nat
+enum : Word -> Word -> List Word
 enum a 0 = Nil
-enum a (Succ b) = LCons a (enum (1 + a) b)
+enum a (WSuc b) = Cons a (enum (1 + a) b)
 
-pita : Nat -> List (Tuple3 Nat Nat Nat)
+pita : Word -> List (Tuple3 Word Word Word)
 pita n = do
   m <- enum 1 n
   k <- enum 1 m
@@ -83,7 +83,7 @@ pita n = do
   pure (T3 m k l)
 
 -- join (Just (Just 1))
--- the (Maybe Nat) (join (Just Nothing))
--- the (Maybe Nat) (join Nothing)
+-- the (Maybe Word) (join (Just Nothing))
+-- the (Maybe Word) (join Nothing)
 
 pita 20

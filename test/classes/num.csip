@@ -6,8 +6,8 @@ import Builtins
 class {a : Type} -> Num a where
   (+) : a -> a -> a
 
-instance Num Nat where
-  a + b = AddNat a b
+instance Num Word where
+  a + b = AddWord a b
 
 data Wrap : Type -> Type where
   MkWrap : a -> Wrap a

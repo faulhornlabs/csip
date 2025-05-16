@@ -5,7 +5,7 @@ import Builtins
 
 f : String -> String
 f "" = ""
-f (Cons a b) = AppendStr b a
+f (ConsStr a b) = AppendStr b a
 
 AppendStr (f (f "alma")) (f "")
 

@@ -3,9 +3,9 @@
 
 import Builtins
 
-f : Nat -> Nat
-f (Succ (Succ a)) = a
-f a = Succ a
+f : Word -> Word
+f (WSuc (WSuc a)) = a
+f a = WSuc a
 
 f (f 3)
 

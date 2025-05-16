@@ -4,7 +4,7 @@ module H_Elab
   , lookupDefs
   ) where
 
-import D_Base
+import B_Base
 import E_Parse
 import F_Eval
 import G_Unify
@@ -22,9 +22,9 @@ pattern CIPi    = WCon 2 "IPi"   --   t :-> s      -- injective function
 pattern CCode   = WCon 1 "Code"
 pattern CTy     = WCon 0 "Ty"
 pattern CArr    = WCon 2 "Arr"
-pattern CNat    = WCon 0 "Nat"
+pattern CNat    = WCon 0 "Word"
 pattern CString = WCon 0 "String"
-pattern CONat   = WCon 0 "ONat"
+pattern CONat   = WCon 0 "OWord"
 pattern COString= WCon 0 "OString"
 pattern CAp     = WCon 2 "Ap"
 pattern CApp    = WCon 2 "App"
@@ -33,7 +33,15 @@ pattern CBool   = WCon 0 "Bool"
 pattern CLet    = WCon 4 "Let"
 
 data Icit = Impl | ImplClass | Expl
-  deriving Eq
+
+instance Tag Icit where
+  tag Impl = 0
+  tag ImplClass = 1
+  tag Expl = 2
+
+instance Ord Icit where
+  compare = compareTag
+
 
 matchCode :: Val -> RefM (Tup2 (Tm -> RefM Tm) Tm)
 matchCode v = matchCon' "Code" v >>= \case
@@ -78,7 +86,7 @@ conArity v = spine' v >>= \case
   _ -> pure 0
  where
   f g = do
-    n <- mkName "r#"
+    n <- mkName "v"
     conArity =<< vApp g (vVar n)
 
 matchHPi v = spine' v <&> \case
@@ -106,7 +114,7 @@ insertDefs n a m = modify envR (insertIM n a) >> m
 lookupDefs n = gets envR (lookupIM n)
 
 memptyEnv
-  = def "Nat" CNat
+  = def "Word" CNat
   $ def "String" CString
   $ def "Type" CType
   $ pure mempty
@@ -121,7 +129,7 @@ namesR :: Reader (IntMap NameStr Name)
 namesR = topReader initNames
 
 initNames
-  = def "Nat"
+  = def "Word"
   $ def "String"
   $ def "Type"
   $ pure mempty
@@ -190,9 +198,9 @@ defineGlob_ cstr haslet metatest n tv t_ cont = addName_ n do
   case T0 of
     _ | haslet || not top -> addGlobal cstr n (if haslet then TVar n else tv) t (insertLocalVal n v co)
       | metatest && not (rigid t)
-      -> errorM $ "meta in global definition:\n" <<>> print n <<>> " : " <<>> print t
+      -> fail $ "meta in global definition:\n" <<>> print n <<>> " : " <<>> print t
       | metatest && not (rigid v), n /= "lookupDict", n /= "superClasses"
-      -> errorM $ "meta in global definition:\n" <<>> print n <<>> " = " <<>> print v
+      -> fail $ "meta in global definition:\n" <<>> print n <<>> " = " <<>> print v
     _ -> addGlobal cstr n (TVal v) t co
 
 nameOf' n@"caseFun" = mkName n    -- hack?
@@ -218,7 +226,7 @@ defineBound' :: NameStr -> Val -> (Name -> RefM a) -> RefM a
 defineBound' n_ t cont = mkName n_ >>= \n -> defineBound'_ n t $ cont n
 
 askDef  n = askName n >>= maybe (pure Nothing) askDef'
-askDef' n = lookupDefs n <&> fmap tmTy
+askDef' n = lookupDefs n <&> (<$>) tmTy
 
 evalEnv :: Tm -> RefM Val
 evalEnv t = getLocalVals >>= \ls -> eval "env" ls t
@@ -250,7 +258,7 @@ freshMeta' = do
   m <- freshMeta
   T2 m <$> evalEnv m
 
-typeName n = addSuffix n "_t#"
+typeName n = addSuffix n "_t"
 
 ---------
 
@@ -279,7 +287,10 @@ conv_ a b = do
       unify m COString
       pure $ Just \t -> pure $ TVal CMkStr `TApp` t
 
-    T2 (Just (T2 "Nat" Nil)) (Just (T2 "Code" (m :. Nil))) -> do
+    T2 (Just (T2 "Word" Nil)) (Just (T2 "Nat" Nil)) -> do
+      pure $ Just \t -> pure $ TVal wordToNatFun `TApp` t
+
+    T2 (Just (T2 "Word" Nil)) (Just (T2 "Code" (m :. Nil))) -> do
       unify m CONat
       pure $ Just \t -> pure $ TVal CMkNat `TApp` t
 
@@ -287,7 +298,7 @@ conv_ a b = do
 
       q <- conv_ m3 m1
 
-      v <- lamName "v#" m4
+      v <- lamName "z" m4
       defineBound' v m3 \v -> do
         let vv = vVar v
 
@@ -305,7 +316,7 @@ conv_ a b = do
 
       q <- conv_ m3 m1
 
-      v <- lamName "v#" m2
+      v <- lamName "z" m2
       defineBound' v m3 \v -> do
         let vv = vVar v
 
@@ -325,7 +336,7 @@ conv_ a b = do
       c1 <- vApp CCode m1'
       q <- conv_ m3 c1{- Code m1 -}
 
-      v <- lamName "v#" m4
+      v <- lamName "z" m4
       defineBound' v c1 \v -> do
         c2 <- vApp CCode m2'
         m4_v <- vApp m4 (vVar v)
@@ -344,7 +355,7 @@ conv_ a b = do
       c1 <- vApp CCode m1'
       q <- conv_ c1{- Code m1 -} m3
 
-      v <- lamName "v#" m4
+      v <- lamName "z" m4
       defineBound' v c1 \v -> do
         let vv = vVar v
 
@@ -433,17 +444,17 @@ check_ r ty = case r of
           ta <- check a t
           f =<< tLam n ta
       Impl -> do
-        n' <- lamName "z#" pb
+        n' <- lamName "z" pb
         f =<< check (RHLam (EVarStr n') Hole r) ty
       _ -> undefined
   _ -> do
    lhs <- askLHS
    matchHPi ty >>= \case
     Just (T3 Impl _ pb) | not lhs -> do
-      n' <- lamName "z#" pb
+      n' <- lamName "z" pb
       check (RHLam (EVarStr n') Hole r) ty
     Just (T3 ImplClass _ _) | not lhs -> do
-      check (RHLam "c#" Hole r) ty
+      check (RHLam "h" Hole r) ty
     _ -> case r of
       RLet (EVarStr n) t a b -> do
         MkTmTy ta vta <- case t of
@@ -509,7 +520,7 @@ getHPi :: Val -> RefM (Maybe (Tup2 (Tup2 Name Val) Val))
 getHPi v = getHPi__ v >>= \case
   Nothing -> pure Nothing
   Just (T2 a b) -> do
-    n <- lamName "m#" b >>= mkName
+    n <- lamName "v" b >>= mkName
     b <- vApp b $ vVar n
     pure $ Just (T2 (T2 n a) b)
 
@@ -589,10 +600,10 @@ analyzeInstanceHead t = do
 
 defineSuperclasses :: NameStr -> Val -> ConInfo -> Word -> List Val -> RefM Tup0
 defineSuperclasses nclass vclass dict num supers = do
-  m <- mkName "m#"
+  m <- mkName "m"
   let c = TVal vclass `TApp` TVar m
   ss <- forM (numberWith T2 0 supers) \(T2 i s) -> do
-    sn <- mkName $ addSuffix (addPrefix "sel" nclass) (mkIntToken i)
+    sn <- mkName $ addIntSuffix (addPrefix "sel" nclass) i
     sf <- mkFun sn
     addDictSelector (TVal sf) dict num $ i + 1
     pure (T2 (TVal s :@. TVar m) (TVal sf :@. TVar m))
@@ -604,17 +615,17 @@ inferMethods :: (RefM Val -> RefM Val) -> Raw -> (List (Tup2 Name Val) -> RefM a
 inferMethods under r cont = case r of
   RLetTy (EVarStr n) t b -> do
     vta <- under $ checkType n t
-    defineGlob n (fmap TVal . mkFun) vta \n _ _ -> do
+    defineGlob n ((<$>) TVal . mkFun) vta \n _ _ -> do
       inferMethods under b \mts -> cont $ T2 n vta :. mts
   REnd -> cont Nil
-  _ -> errorM "can't infer method"
+  _ -> fail "can't infer method"
 
 inferMethodBodies :: (NameStr -> Name) -> Raw -> RefM Tup0
 inferMethodBodies tickName r = case r of
   RRule a b c -> addRule' (mapHead tickName a) b >> inferMethodBodies tickName c
   RLet (EVarStr a) Hole b c -> addRule' (RVar $ EVar $ tickName a) b >> inferMethodBodies tickName c
   REnd -> pure T0
-  r -> errorM $ ("can't infer method body :\n" <>) <$> print r
+  r -> fail $ ("can't infer method body :\n" <>) <$> print r
 
 filterM _ Nil = pure Nil
 filterM p (a :. b) = p a >>= \case
@@ -641,7 +652,7 @@ addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ ar
   arg <- quoteTm' arg_
   arg' <- quoteTm_ False False False arg_
   is <- mapM quoteTm' is_
-  ds <- forM is \_ -> mkName "d#"
+  ds <- forM is \_ -> mkName "d"
   let rhs
         = tLets (zip ds $ map lookup is)
         $ TApps (TVal dictVal)
@@ -676,11 +687,11 @@ inferConstructors r cont = case r of
           pure $ TVal $ vCon ar n
     defineConstructor n ff vta \_ _ _ -> inferConstructors b cont
   REnd -> cont
-  _ -> errorM "can't infer constructor"
+  _ -> fail "can't infer constructor"
 
 assertOnTop = isOnTop >>= \case
   True -> pure T0
-  False -> errorM "not on top level"
+  False -> fail "not on top level"
 
 infer :: Raw -> RefM TmTy
 infer r = do
@@ -753,10 +764,10 @@ infer_ r = case r of
   RVar (MkEmbedded t v) -> pure (MkTmTy t v)
   RVar (EVar n) -> askDef' n >>= \case
     Just res -> pure res
-    _        -> errorM $ "Not in scope: " <<>> print n
+    _        -> fail $ "Not in scope: " <<>> print n
   RVar' n -> askDef n >>= \case
     Just res -> pure res
-    _        -> errorM $ "Not in scope: " <<>> print n
+    _        -> fail $ "Not in scope: " <<>> print n
   RConstructor (EVarStr n) t b -> do
     assertOnTop
     vta <- checkType n t
@@ -783,7 +794,7 @@ infer_ r = case r of
     infer c
   RLet (EVarStr n) t a b | isRuleTy t -> do
     vta <- checkType n t
-    defineGlob n (fmap TVal . mkFun) vta \_ _ _ -> do
+    defineGlob n ((<$>) TVal . mkFun) vta \_ _ _ -> do
       addRule' (RVar' n) a
       infer b
   RLet (EVarStr n) t a b -> do
@@ -823,7 +834,7 @@ infer_ r = case r of
   RView a b -> do
     MkTmTy ta ty <- infer a
     T4 f Expl pa pb <- matchPi True Expl ty
-    n <- lamName "t#" pb
+    n <- lamName "t" pb
     defineBound' n pa \n -> do
       T2 _ vb <- unlam n pb
       tb <- check b vb
@@ -838,27 +849,27 @@ infer_ r = case r of
   RApp a b -> do
     inferApp Expl a b
   RCaseOf a b -> inferCaseOf a b
-  _ -> errorM "can't infer"
+  _ -> fail "can't infer"
  where
   inferApp i a b = infer a >>= \(MkTmTy av ty) -> do
     T4 f icit pa pb <- matchPi True i ty
     fav <- f av
     case T0 of
-     _ | icit == ImplClass, i == Impl -> do
+     _ | ImplClass <- icit, Impl <- i -> do
         tb <- check b pa
         pure (MkTmTy (TApp fav tb) pb)
        | icit == i -> do
         tb <- check b pa
-        n <- lamName "t#" pb
+        n <- lamName "t" pb
         v <- evalEnv' n tb
         b <- vApp pb v
         pure (MkTmTy (TApp fav tb) b)
-       | icit == Impl -> do
+       | Impl <- icit -> do
         infer $ RApp (RHApp (REmbed av ty) Hole) b
-       | icit == ImplClass -> do
+       | ImplClass <- icit -> do
         T2 m m' <- instanceMeta
         infer $ RApp (RHApp (REmbed av ty) $ REmbed m m') b
-     _ -> errorM "baj"
+     _ -> fail "baj"
 
 inferLetTy n_ t cont = do
     top <- isOnTop
@@ -876,7 +887,7 @@ inferCaseOf a b = inferLetTy "caseFun" (RPi "_" Hole Hole) \n -> do
 
     f acc (RCase a b c) = f (acc >> addRule' (RApp fn a) b) c
     f acc REnd = acc >> infer (RApp fn a)
-    f _ _ = errorM "invalid case expression"
+    f _ _ = fail "invalid case expression"
 
   f (pure T0) b
 
@@ -957,10 +968,10 @@ fvs = nub . go where
     RAnn a _ -> go a
     RHApp a b -> go a <> go b
     RApp a b -> go a <> go b
-    RVar' a -> a :. Nil
-    RVar{} -> Nil -- hack
     RNat{} -> Nil
     RString{} -> Nil
+    RVar' a -> a :. Nil
+    RVar{} -> Nil -- hack
     x -> error $ ("fvs: " <>) <$> print x
 
 addForalls :: Raw -> RefM Raw
@@ -992,9 +1003,9 @@ fvs' = nub . go where
     RIPi a b -> go a <> go b
     RHApp a b -> go a <> go b
     RApp a b -> go a <> go b
-    RVar' a -> a :. Nil
     RNat{} -> Nil
     RString{} -> Nil
+    RVar' a -> a :. Nil
     x -> error $ ("fvs': " <>) <$> print x
 
   del n = filter (/= n)

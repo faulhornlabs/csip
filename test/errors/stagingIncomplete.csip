@@ -1,0 +1,13 @@
+# elab
+# stage
+
+import Builtins
+
+data Obj : Ty where
+  Return : Obj
+
+f : Bool -> Obj
+f True = Return
+
+f False
+

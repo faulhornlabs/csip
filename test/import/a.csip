@@ -6,4 +6,4 @@
 
 import Builtins
 
-AddNat 1 1
+AddWord 1 1

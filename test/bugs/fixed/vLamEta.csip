@@ -1,7 +1,7 @@
 # elab
 
 data Env : Type -> Type where
-  EntryEnv : Nat -> (a : Type) -> a -> Env a
+  EntryEnv : Word -> (a : Type) -> a -> Env a
 
 ite : (a : Type) -> a -> a -> a
 

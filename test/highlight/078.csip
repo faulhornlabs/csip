@@ -7,5 +7,5 @@ id: (a: u) -> a -> a
 const: (a b: Type) -> a -> b -> a
   = \_ _ x _ -> x
 
-const String Nat (id String "Hello World!") 13
+const String Word (id String "Hello World!") 13
 

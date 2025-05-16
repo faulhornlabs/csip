@@ -3,7 +3,7 @@
 id: (a: Type) -> a -> a
   = \_ x -> x
 
-nat = Nat
+nat = Word
 n = nat
 
 a : n = 23

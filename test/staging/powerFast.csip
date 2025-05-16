@@ -14,11 +14,11 @@ sqr = \a -> do
   b := a
   Mul b b
 
-(^) : Int -> Nat -> Int
+(^) : Int -> Word -> Int
 a ^ 0 = One
 a ^ 1 = a
 a ^ n | even n = sqr (a ^ div n 2)
-a ^ Succ n = do
+a ^ WSuc n = do
   c := a
   Mul c (c ^ n)
 

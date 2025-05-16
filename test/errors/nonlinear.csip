@@ -1,3 +1,3 @@
 
-f : Nat -> Nat -> Nat
+f : Word -> Word -> Word
 f x x = x

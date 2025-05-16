@@ -1,0 +1,1094 @@
+# source
+         ____     _
+        / ___|___(_)_ __
+       | |   / __| | '_ \
+       | |___\__ \ | |_) )
+        \____|___/_| .__/
+                   |_|
+
+
+    -------------------------
+     Syntactic frontend demo
+    -------------------------
+
+
+
+
+space | enter | backspace | arrows
+
+            q | Ctrl+c
+
+#####
+# source
+Csip is a minimalistic Agda-like language
+for writing efficient programs with
+high-level abstractions.
+
+Csip can do staged compilation and it
+does not have termination checking.
+
+This is the presentation of the syntactic
+frontend of Csip.
+
+#####
+# source
+----------
+ Overview
+----------
+
+#####
+# source
+Programming languages are viewed, edited and stored as strings.
+
+A good syntactic frontend is essential for compiler development.
+
+It is not easy to have one...
+
+
+                      layout rules
+                    desugaring rules
+                   name disambiguation
+                  pretty printed output
+                  extensible description
+                 highlighted source code
+                parser-printer consistency
+               ............................
+
+
+Let me reshape syntactic frontend design!
+
+#####
+# source
+----------------------------
+ Parser-printer consistency
+----------------------------
+
+#####
+# source
+Instead of
+
+          ----- monolithic parser ----->
+          <---- monolithic printer -----
+
+Csip has
+
+      lex . tree . space . op . sugar . scope
+
+where (.) is composition of bidirectional functions
+
+
+  lex        -- split / concatenate tokens
+  tree       -- build / flatten syntax tree
+  space      -- remove / add whitespace
+  op         -- remove / add (mixfix) operators
+  sugar      -- desugar / sugar syntactic constructs
+  scope      -- add unique ids to names / rename by need
+
+#####
+# source
+------------------------
+  Split tokens (lexing)
+ and concetanate tokens
+------------------------
+
+#####
+# source
+            ----- lex ----->
+            <--- unlex -----
+
+
+Essentially
+
+  unlex = concat
+
+  lex = groupBy glue   where
+
+      glue a b
+         = isAlphaNum a && isAlphaNum b
+        || isGraphic  a && isGraphic  b
+
+
+
+#####
+# source
+# lex quote
+id (xs++ys)
+#####
+# source
+-----------------------------
+ Build syntax tree (parsing)
+  and flatten syntax tree
+-----------------------------
+
+#####
+# source
+Parser generators and parser combinators are wrong
+abstractions for describing programming language syntax.
+
+Operator precedence relations are better:
+
+- easier to read and write
+- lots of unintuitive grammars are ruled out
+  (like operators with context depedent precedence)
+- simple generic parsing and pretty printing algorithms
+- generic error messages (acceptable quality)
+- local parsability
+
+Unsurprisingly, user definable sub-languages are given by
+operators in Haskell, ML, Prolog, Scala, Agda, Coq, Isabelle.
+
+Let's describe the whole language with (mixfix) operators!
+
+                                     let_in_
+                                       /    \
+      let a = b + c in d             _=_     d
+                                    /   \
+                                   a    _+_
+                                       /   \
+                                      b     c
+
+#####
+# source
+Basic operator precedences
+--------------------------
+
+Notation:
+  _e_ = precedence e
+
+A precedence relation:
+
+    _var_  >  _*_  >  _+_
+
+Parse tree of "a*b+c":
+
+              +
+            /   \
+          *       c
+         / \
+        a   b
+
+#####
+# source
+Specification
+-------------
+
+  data Tree = Empty | Node Tree Op Tree
+
+  Ordered Empty = ()
+  Ordered (Node l op r)
+     =  Ordered l    /\    Ordered r
+    /\    _l_ > _op_ /\ _op_ < _r_
+
+  _Empty_         = infinity
+  _(Node l op r)_ = _op_
+
+  Parsed os =
+    (t : Tree)  x  Ordered t  /\  elems t == os
+
+  parse : (os : List Op) -> Parsed os
+
+Notes
+ - (Parsed "a*b+c") is a singleton set
+ - (Parsed "a+b+c") is an empty set
+
+#####
+# source
+Implementation
+--------------
+
+  mempty : Parsed Nil
+  mempty = Empty, _
+
+  (<>) : Parsed as -> Parsed bs -> Parsed (as ++ bs)
+  p <> q =
+     ...   -- merging of trees
+
+  parse :: (os : List Op) -> Parsed os
+  parse Nil = mempty
+  parse (Cons a b) = singleton a <> parse b
+
+#####
+# source
+Generalization to two-sided precedences
+---------------------------------------
+
+Notation:  _e  = leftPrec  e
+            e_ = rightPrec e
+
+
+  var_ > _var > *_ > _* > +_ > _+
+
+              +
+            /   \
+          +       a
+         / \     /
+        a   b   c
+
+
+  Ordered Empty = ()
+  Ordered (Node l op r)
+     =  Ordered l    /\    Ordered r
+    /\     l_ > _op  /\  op_ < _r
+
+  _Empty          = infinity
+  _(Node l op r)  = _op `min` _l
+
+#####
+# source
+Adding parentheses:
+
+             var_ =  )_
+          > _var  = _(
+          >    (_ = _)
+
+
+                (   )
+              /   |
+            a     b
+                 /
+                c
+
+  data Tree = ... | Node3 Tree Op Tree Op Tree
+
+  Ordered (Node3 l o1 c o2 r)
+     =  Ordered l /\ Ordered c /\ Ordered r
+    /\   l_ > _o1 /\ o1_ < _c
+    /\               o1_ == _o2
+    /\                c_ > _o2 /\ o2_ < _r
+
+#####
+# source
+Node4, Node5, ... constructors are similar.
+The final tree data structure is
+
+  data Tree
+    = Empty
+    | Node Tree Op [(Tree, Op)] Tree
+
+Theorem:
+  For all (os : List Op),
+  (Parsed os) is a singleton set.
+
+#####
+# source
+Csip's precedence relation (half)
+---------------------------------
+
+    var_ )_ ]_ }_
+   _var _( _[ _{ _let _if _\
+           _^
+            ^_
+            *_
+           _*
+            +_
+           _+
+          else_
+        _->   _:
+         ->_   :_
+           in_
+            \_
+           _=
+            =_
+           _;
+            ;_
+let_ _in if_ _then then_ _else
+     (_  _) [_ _] {_ _}
+
+
+#####
+# layout
+# structure quote
+f\x->x+x
+#####
+# source
+--------------------------------
+      Removing space and
+ adding space (pretty printing)
+--------------------------------
+
+#####
+# source
+Removing space characters
+-------------------------
+
+Space (" ") is the weakest right associative operator
+
+          ... > _space > space_
+
+and one can easily remove it:
+
+  unspace (Node2 l " " r) = l <> unspace r
+  unspace t = t
+
+#####
+# source
+Overview of spacing
+-------------------
+
+Space is a bottom-up algorithm constructing
+a document from an unspaced parse tree:
+
+  space : Tree -> Doc
+
+Doc is a pair of a spaced tree and a shape:
+
+  Doc = Tree x Shape
+
+The spaced tree is not inspected during spacing;
+Shape contains all information needed for
+embedding it in a larger spaced tree.
+
+Note that the maximum width can be adjusted
+by parameterizing space.
+
+#####
+# source
+Document shapes
+---------------
+
+Shape can be single-line or multiline.
+
+Single-line shape contains:
+
+ - first and last characters
+ - length
+ - nesting complexity
+        ______________
+       |c____(())____c|
+
+Multiline shape contains:
+
+ - first and last characters
+ - length of the first and last line
+ - nesting complexity of the first and last line
+              ___________
+     ________|c   (())   |
+    |                    |
+    |             _______|
+    |____(())___c|
+
+#####
+# source
+Gluing of spaced trees
+----------------------
+
+(a <+> b) is either:
+
+  A)        a <> b
+  B)    a <> " "  <> b
+  C)    a <> "\n" <> b
+
+A) is the default
+B) is used if the last char of (a) and the
+   first char of (b) should be separated
+C) is used if the shape of the result of A) or B)
+   is overweight.
+
+A shape is overweight if
+ - the length (of the first or the last line)
+   is greater than the maximum width
+ - the nesting complexity (of the first or the
+   last line) is greater than a limit
+
+#####
+# source
+Indentation
+-----------
+
+  indent a
+    | isSingleLine a = a
+    | otherwise      = "\t\t" <> inc a <> "\r\r"
+
+  inc = <<increase nesting complexity>>
+
+
+Finally, the spacing algorithm is:
+
+  space Empty
+    = mempty
+  space (Node2 l op r)
+    = indent (space l <+> sing op <+> space r)
+  space (Node3 l o1 c o2 r)
+    = indent (space l <+> sing o1 <+> space c <+> sing o2 <+> space r)
+  ...
+
+#####
+# source
+Spacing notes
+-------------
+
+- (space) is a linear-time algorithm if
+  the maximum width is fixed.
+
+- The indentation is not count in the width.
+  If, on a 35x160 terminal, the maximum width
+  is 100 then to much indentation becomes a
+  display problem, not a rendering problem!
+          ______________________
+         |...  #######          |
+         |...    #######        |
+         |...      #######      |
+         |...        #######    |
+         |...__________#######__|
+
+#####
+# exptree
+Node
+  (Node (Node Leaf Leaf) (Node Leaf Leaf))
+  (Node (Node Leaf Leaf) (Node Leaf Leaf))
+#####
+# exptree
+Node (Node
+    (Node (Node Leaf Leaf) (Node Leaf Leaf))
+    (Node (Node Leaf Leaf) (Node Leaf Leaf))
+    )
+  (Node
+    (Node (Node Leaf Leaf) (Node Leaf Leaf))
+    (Node (Node Leaf Leaf) (Node Leaf Leaf))
+    )
+#####
+# exptree
+Node (Node (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      )
+    (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      ))
+  (Node (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      )
+    (Node
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      (Node (Node Leaf Leaf) (Node Leaf Leaf))
+      ))
+#####
+# exptree
+Node (Node (Node (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        )
+      (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        ))
+    (Node (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        )
+      (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        )))
+  (Node (Node (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        )
+      (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        ))
+    (Node (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        )
+      (Node
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        (Node (Node Leaf Leaf) (Node Leaf Leaf))
+        )))
+#####
+# exptree
+0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+  + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7) + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15)
+#####
+# exptree
+0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+  + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7) + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15)
+  + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16) +
+  (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17)
+  +
+  (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17
+    + 18) +
+  (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17
+    + 18 + 19) +
+  (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 + 16 + 17
+    + 18 + 19 + 20)
+#####
+# exptree
+(1 ^ 0)
+  ^ (1 ^ 2 ^ 0) ^ (1 ^ 2 ^ 3 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 0) ^ 0
+#####
+# exptree
+(1 ^ 0)
+  ^ (1 ^ 2 ^ 0) ^ (1 ^ 2 ^ 3 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 0) ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 0)
+  ^ (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 16 ^ 0) ^
+  (1 ^ 2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 16 ^ 17 ^ 0)
+  ^ (1 ^
+    2 ^ 3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 16 ^ 17 ^ 18 ^ 0)
+  ^ (1 ^ 2 ^
+    3 ^ 4 ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 16 ^ 17 ^ 18 ^ 19 ^ 0
+    )
+  ^ (1 ^ 2 ^ 3 ^ 4
+    ^ 5 ^ 6 ^ 7 ^ 8 ^ 9 ^ 10 ^ 11 ^ 12 ^ 13 ^ 14 ^ 15 ^ 16 ^ 17 ^ 18 ^ 19 ^ 20 ^ 0)
+  ^ 0
+#####
+# exptree
+(((((((
+                ((0 ^ 0 ^ 1) ^ (0 ^ 1) ^ 2)
+                ^
+                ((0 ^ 1) ^ 2)
+                ^ 3)
+              ^ (
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4)
+            ^ ((
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4) ^ 5)
+          ^ (((
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4) ^ 5) ^ 6)
+        ^ ((((
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4) ^ 5) ^ 6) ^ 7)
+      ^ (((((
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4) ^ 5) ^ 6) ^ 7) ^ 8)
+    ^ ((((((
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4) ^ 5) ^ 6) ^ 7) ^ 8) ^ 9)
+  ^ (((((((
+                ((0 ^ 1) ^ 2)
+                ^ 3) ^ 4) ^ 5) ^ 6) ^ 7) ^ 8) ^ 9) ^ 10
+#####
+# exptree
+1 + 0 +
+  (1 + (2 + 0) + (1 +
+      (2 + (3 + 0))
+      + (1 + (2 +
+          (3 + (4 + 0))
+          )
+        + (1 + (2 + (3 +
+              (4 + (5 + 0))
+              ))
+          + (1 + (2 + (3 + (4 +
+                  (5 + (6 + 0))
+                  )))
+            + (1 + (2 + (3 + (4 + (5 +
+                      (6 + (7 + 0))
+                      ))))
+              + (1 + (2 + (3 + (4 + (5 + (6 +
+                          (7 + (8 + 0))
+                          )))))
+                + (1 + (2 + (3 + (4 + (5 + (6 + (7 +
+                              (8 + (9 + 0))
+                              ))))))
+                  + (1 + (2 + (3 + (4 + (5 + (6 + (7 + (8 +
+                                  (9 + (10 + 0))
+                                  ))))))) + 0)))))))))
+#####
+# exptree
+x10 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+    + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7) + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10);
+  x9 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+    + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7) + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
+  x8 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+    + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7) + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8);
+  x7 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+    + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6)
+    + (0 + 1 + 2 + 3 + 4 + 5 + 6 + 7);
+  x6 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+    + (0 + 1 + 2 + 3 + 4 + 5) + (0 + 1 + 2 + 3 + 4 + 5 + 6);
+  x5 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4)
+    + (0 + 1 + 2 + 3 + 4 + 5);
+  x4 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3) + (0 + 1 + 2 + 3 + 4);
+  x3 = 0 + (0 + 1) + (0 + 1 + 2) + (0 + 1 + 2 + 3);
+  x2 = 0 + (0 + 1) + (0 + 1 + 2);
+  x1 = 0 + (0 + 1);
+  x0
+#####
+# source
+----------------------------
+  Remove (mixfix) operators
+ and add (mixfix) operators
+----------------------------
+
+#####
+# source
+Informal conversion rules
+-------------------------
+                      
+             +  
+            / \         <-->    _+_ a b
+           a   b
+
+            var
+           /            <-->    a var
+          a
+
+            ( )               
+           / |          <-->    a ((_) b)
+          a  b
+
+         let in
+        /   |  \        <-->    a (let_in_ b c)
+       a    b   c
+
+      if then else
+     /  |    |    \     <-->    a (if_then_else_ b c d)
+    a   b    c     d
+
+ 
+
+#####
+# source
+Notes
+
+- There are four general rules:
+  - the leftmost  precedence is maximal (let, var) or not (+)
+  - the rightmost precedence is maximal (")", var) or not (in)
+
+- If the rightmost precedence is maximal then the
+  rightmost branch is Empty (like in var).
+
+- Removing mixfix operators halts with an error if
+  operator parts are missing or mismatched
+  (for example "if else").
+
+#####
+# source
+# op quote
+# exptree quote
+f (if a then b else c)
+
+#####
+# source
+---------------
+ Sugar-desugar
+---------------
+
+#####
+# source
+1) Build more complex mixfix operators from parts
+   (semi-automatic step)
+
+             (_:_)   {_:_}   \_->_
+
+   (_:_)->_   {_:_}->_   \(_:_)_->_   \{_:_}->_
+
+         _:_;_   _=_;_   _:_=_   _:_=_;_
+
+2) Expand syntactic sugars (ad-hoc step)
+
+    (n m: a)-> c       <-->   t = a; (n: t)(m: t)-> c
+    (n: a)(m: b)-> c   <-->   (n: a)-> (m: b)-> c
+    ...
+
+3) Generalize by adding holes (ad-hoc step)
+
+    a = b; c     <-->    a : _ = b; c
+    \a -> b      <-->    \(a : _)-> b
+     a -> b      <-->     (_ : a)-> b
+    ...
+
+(Note that "_;_" is the same as "let_in_" in Csip.)
+
+
+#####
+# source
+# sugar
+x = (_ : a)-> (b c)
+x = (\(a : _)-> b)
+x = \a -> (\b -> c)
+x = \(c : e)-> \(d : e)-> \(f : _) -> g
+x = (a : c)(b : c)-> d
+x = (a : c)-> (b : e)-> d
+x : _ = b
+main
+
+
+#####
+# source
+-----------------------------
+ Add unique ids to names and
+  rename names when needed
+-----------------------------
+
+#####
+# source
+# scope
+x = a + b
+x = x * b
+x = x ^ x
+f x
+
+
+#####
+# source
+            Section II
+            ==========
+
+
+Syntactic extensions:
+  - nat and string literals
+  - layout rules
+  - comments
+
+Extra features:
+  - source code highlighting
+  - printing of inner representations
+
+#####
+# source
+-------------------------
+ Word and string literals
+-------------------------
+
+#####
+# source
+- Decimal natural number literals is easy to add
+
+- Support for string literals can be added
+   A) in the lexer (traditional)
+   B) as a separate phase before removing spaces
+
+  Csip has B) which fits better in its design.
+
+  Moreover, Csip's strings are locally parsable.
+  The tradeoff is that escape sequences are not
+  supported (but there is a workaround).
+
+#####
+# source
+x = 132
+
+y = "Hello World!"
+
+z = "escape" <> newline <> "sequence workaround"
+
+v = quote <> "quoted string" <> quote
+
+w = "two backslashes: \\"
+
+#####
+# source
+--------------
+ Layout rules
+--------------
+
+#####
+# source
+Layout rules (= replacing semicolons with indentation)
+are supported by adding two new phases:
+
+
+  indent . lex . tree . space . layout . op . sugar . scope
+     |                             |
+     |                             |
+     v                             v
+  replace indentation        replace begin/end/newline
+  with begin/end             tokens with {/;/} tokens
+  characters                 or erase them
+
+
+#####
+# source
+# indent quote
+# space quote
+# layout quote
+a = do
+  b
+   = c
+  d = b
+  d
+a
+
+#####
+# source
+----------
+ Comments
+----------
+
+#####
+# source
+Handling of comments can be done at different places
+in the pipeline:
+
+
+   lex . tree . space . op . sugar . scope
+    |     |       |     |
+    |     v       v     v
+    |    higher level comments
+    v
+   traditional low-level comments
+
+
+Let's see the higher level comments!
+
+#####
+# source
+Rules for removing comments:
+
+          newline
+          /     \
+       --        c   ~>   a <> spaceOf b <> newline' <> c
+     /    \
+    a      b
+
+        {-   -}
+      /    |    \     ~>   a <> spaceOf b <> c
+     a     b     c
+
+Notes
+
+- the precedence of "--", newline, "{-" and "-}" tokens
+  should be adjusted to get the desired effect
+- newline is converted to newline' which has a difference
+  precedence and which is used in layout phase later
+- spaceOf preserves indentation tokens and erases everything else
+
+#####
+# source
+# structure quote
+# comments quote
+a--x
+b{-x-}c
+#####
+# source
+Surprise 1
+----------
+
+The traditional comment behaviour cannot be fully
+achieved. In the closest setting, these lines can
+be commented out by a multiline comment:
+
+          "abc-}def"
+
+         -- abc-}def
+
+The tradeoff is that strings should be well-formed
+in comments too.
+
+#####
+# source
+Surprise 2
+----------
+
+Comments should respect indentation so this ill-looking
+program is rejected, for example:
+
+      a = b  where
+      {-
+      c = d  where
+      -} e = f   
+
+The comment lowers the indentation, so
+the code will be transformed to
+
+      a = b  where
+      ;
+
+         e = f   
+
+which has a buggy extra semicolon.
+
+#####
+# source
+Higher-level comments
+---------------------
+
+Csip has a "definition comment", with which
+one can comment out definitions by one keystroke.
+
+General form:
+
+     a # b
+
+Specialized form:
+
+     # b
+
+#####
+# source
+# exptree
+x = a + b
+   + c + d
+ # multiline
+   comment
+
+# x = e + f
+   + g + h
+
+main
+
+#####
+# source
+--------------------------
+ Source code highlighting
+--------------------------
+
+#####
+# source
+Real-life parsers carries source location information
+until the error messages in a painful way.
+
+Csip carries location information invisibly.
+Essentially, the Char type is replaced by
+
+  data CtxChar = MkChar Int (FilePath, Vector Char)
+
+Key operations:
+
+  char :: CtxChar -> Char
+  char (MkChar i (f, v)) = v !! i
+
+  instance Eq CtxChar where (==) = (==) `on` char
+
+  instance IsString [CtxChar] where ...
+
+  readFile :: FilePath -> IO [CtxChar]
+  readFile f = do
+    v <- Vector.readFile f
+    pure [MkChar i (f, v) | i <- [0..length v]]
+
+(The actual implementation defines CtxString
+which is more efficient.)
+
+#####
+x = "adfasdf
+
+#####
+
+    {- abcdef
+
+#####
+{- Unterminated operator -}
+
+(((Type))))
+
+
+#####
+# sugar
+
+a = b
+
+#####
+
+f : Type -> Type = \x -> x
+
+f "2"
+
+#####
+# source
+-----------------------------------
+ Printing of inner representations
+-----------------------------------
+
+#####
+# source
+PPrint if for pretty printing any value:
+
+  class PPrint a
+   where
+    pprint :: a -> Raw
+
+Raw is the highest level data type in the syntactic pipeline.
+It is surprisingly simple to use it.
+
+For example, the instance for tuples is:
+
+  instance (PPrint a, PPrint b) => PPrint (a, b)
+   where
+    pprint (a, b) = ["(",",",")"] :@ pprint a :@ pprint b
+
+["(",",",")"] is converted to a mixfix operator on the fly
+and it encloses the pretty printed result of (a) and (b).
+
+
+#####
+# source
+# source quote
+# indent quote
+# lex quote
+# structure quote
+# string quote
+# comment quote
+# comments quote
+# space quote
+# layout quote
+# op quote
+# exptree quote
+# sugar quote
+# scope quote
+(a: Type)-> a-> a
+
+#####
+# source
+Closing notes
+-------------
+
+- The presented syntactic frontend has
+
+        700 LOC specific
+      + 650 LOC general purpose code
+
+- The essential depedencies are the
+  [base, containers, vector] packages.
+
+- As a (bit unfair) comparison, the Agda
+  parsing code is 35000 LOC in Haskell.
+
+#####
+# source
+         ___
+        /   \
+       (  __/     \ \  \\\
+     ___\| o\     \\ \  \\\
+    /   \| /      \\  \  ..\
+   ( Coq | \       \   \   _\
+    \  /    \      | Agda |         
+     \  \  /       \      /       o> Csip
+________/__\________\____/_______()________
+
+
+
+             end of presentation

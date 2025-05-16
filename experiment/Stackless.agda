@@ -6,158 +6,115 @@ https://github.com/AndrasKovacs/staged/blob/main/icfp24paper/supplement/agda-cft
 This object language supports an operational semantics without runtime closures but
 stack and heap is needed.
 -}
-{-# OPTIONS --type-in-type #-}
-
-infix  4 _<_
-infixr 3 _&&_
-infixr 2 _||_
-
 open import Data.Nat hiding (less; _<_)
 open import Data.Bool using (Bool)
 open import Data.Product
 
-------------------------
 
 data Polarity : Set where
-  V : Polarity    -- value
-  C : Polarity    -- computation
+  Value       : Polarity
+  Computation : Polarity
+
+variable p p' : Polarity
 
 data Ty : Polarity -> Set where
-  Int   : Ty V
-  Carry : Ty V
-  IO    : Ty C
-  Arr   : ∀ {p} -> Ty p -> Ty C -> Ty C
+  Int   : Ty Value
+  Carry : Ty Value
+  IO    : Ty Computation
+  Arr   : Ty p -> Ty Computation -> Ty Computation
+
+variable c  : Ty p
+variable c' : Ty p'
+variable io : Ty Computation
 
 {-# NO_POSITIVITY_CHECK #-}
-data Code : ∀ {p} -> Ty p -> Set
+data Code : Ty p -> Set where
 
-R : Ty V -> Set
-R a = (Code a -> Code IO) -> Code IO
+  Lam    : (Code c -> Code io) -> Code (Arr c io)
+  App    : Code (Arr c io) -> (Code c -> Code io)
+  Let    : Code io -> (Code io -> Code IO) -> Code IO
+  LetRec : (Code io -> Code io) -> (Code io -> Code IO) -> Code IO
 
-RT : Ty V -> Ty V -> Set
-RT a b = (Code a -> Code b -> Code IO) -> Code IO
+  Lit  : ℕ ->                                                (Code Int -> Code IO) -> Code IO
+  Add  :               Code Int -> Code Int ->               (Code Int -> Code IO) -> Code IO
+  AddC : Code Carry -> Code Int -> Code Int -> (Code Carry -> Code Int -> Code IO) -> Code IO
+  ClearCarry :                                             (Code Carry -> Code IO) -> Code IO
 
-RBool = Code IO -> Code IO -> Code IO
+  Eq   : Code Int -> Code Int ->    Code IO -> Code IO -> Code IO
+  Less : Code Int -> Code Int ->    Code IO -> Code IO -> Code IO
 
-data Code where
-
-  Lam : ∀ {p} {a : Ty p} {b} -> (Code a -> Code b) -> Code (Arr a b)
-  App : ∀ {p} {a : Ty p} {b} -> Code (Arr a b) -> (Code a -> Code b)
-  Let : ∀ {a : Ty C} {b : Ty C} -> Code a -> (Code a -> Code b) -> Code b
-  LetRec : ∀ {a : Ty C} {b : Ty C} -> (Code a -> Code a) -> (Code a -> Code b) -> Code b
-
-  Lit  : ℕ -> R Int
-  Add  : Code Int -> Code Int -> R Int
-  AddC : Code Carry -> Code Int -> Code Int -> RT Carry Int
-  ClearCarry : R Carry
-  Less : Code Int -> Code Int -> RBool
-
-  Halt : Code IO
+  Halt :                          Code IO
   Put  :  Code Int -> Code IO  -> Code IO
   Get  : (Code Int -> Code IO) -> Code IO
 
-ret : ∀ {a} -> Code a -> R a
-ret x c = c x
 
-_<_ : R Int -> R Int -> RBool
+Ret : Ty Value -> Set
+Ret a = (Code a -> Code IO) -> Code IO
+
+Int'  = Ret Int
+Bool' = Code IO -> Code IO -> Code IO
+IO'   = Code IO
+
+_==_ : Int' -> Int' -> Bool'
+_==_ a b t f = a \x -> b \y -> Eq x y t f
+
+_<_ : Int' -> Int' -> Bool'
 _<_ a b t f = a \x -> b \y -> Less x y t f
 
-add : R Int -> R Int -> R Int
+add : Int' -> Int' -> Int'
 add a b c = a \x -> b \y -> Add x y c
 
-lit : ℕ -> R Int
+lit : ℕ -> Int'
 lit = Lit
 
-get : (R Int -> Code IO) -> Code IO
-get c = Get \x -> c (ret x)
+get : (Int' -> IO') -> IO'
+get c = Get \x -> c (\d -> d x)
 
-put : R Int -> Code IO -> Code IO
+put : Int' -> IO' -> IO'
 put a c = a \x -> Put x c
 
-iteIO : RBool -> Code IO -> Code IO -> Code IO
-iteIO p = p
+not : Bool' -> Bool'
+not c t f = c f t
 
-iteBool : RBool -> RBool -> RBool -> RBool
-iteBool a b c t f = Let t \t -> Let f \f -> a (b t f) (c t f)
+_&&_ : Bool' -> Bool' -> Bool'
+_&&_ p q t f = Let f \f -> p (q t f) f
 
-iteV : ∀ {a} -> RBool -> R a -> R a -> R a
-iteV p t f c = Let (Lam c) \c -> p (t (App c)) (f (App c))
+_||_ : Bool' -> Bool' -> Bool'
+_||_ p q t f = Let t \t -> p t (q t f)
 
-true : RBool
-true t f = t
+iteValue : Bool' -> Ret c -> Ret c -> Ret c
+iteValue p t f c = Let (Lam c) \c -> p (t (App c)) (f (App c))
 
-false : RBool
-false t f = f
+iteIO : Bool' -> IO' -> IO' -> IO'
+iteIO p t f = p t f
 
-letV : ∀ {a b} -> R a -> (R a -> R b) -> R b
-letV x f c = x \x -> f (ret x) c
+letValue : (Ret c -> Ret c') -> Ret c -> Ret c'
+letValue f x c = x \x -> f (\d -> d x) c
 
-letII : ∀ {a b c} -> (R a -> R b) -> ((R a -> R b) -> Code c) -> Code c
-letII f c = Let (Lam \i -> Lam \c -> f (ret i) (App c)) \f -> c \i co -> i \i -> App (App f i) (Lam co)
+syntax letValue (\x -> e) = lam x => e
 
-liftLet : ∀ {a : Set} {p} {i : Ty p} {j} -> (a -> (a -> Code j) -> Code j) -> a -> (a -> Code (Arr i j)) -> Code (Arr i j)
-liftLet le i f = Lam \x -> le i \i -> App (f i) x
-
-bind : ∀ {a b} -> (R a -> R b) -> R a -> R b
-bind f x = letV x f
-
-syntax bind (\x -> e) = lam x => e
+letFun : (Ret c -> Ret c') -> ((Ret c -> Ret c') -> Code IO) -> Code IO
+letFun f c = Let (Lam \i -> Lam \c -> f (\d -> d i) (App c)) \f -> c \i co -> i \i -> App (App f i) (Lam co)
 
 ------------------
 
-not : RBool -> RBool
-not c = iteBool c false true
-
-_&&_ : RBool -> RBool -> RBool
-p && q = iteBool p q false
-
-_||_ : RBool -> RBool -> RBool
-p || q = iteBool p true q
-
-double : R Int -> R Int
+double : Int' -> Int'
 double = lam x => add x x
 
-doublePos : R Int -> R Int
-doublePos = lam x => iteV (not (x < lit 0)) (double x) x
+example0 : IO'
+example0 = get \x -> put (double (double x)) Halt
 
-example1 : Code IO
-example1 = letII double \d -> get \x -> put (d (d x)) Halt
-{- normalized output
-Let (Lam (\ i -> Lam (\ c -> Add i i (App c))))
-(\ f ->
-   Get
-   (\ x ->
-      App (App f x)
-      (Lam (\ i -> App (App f i) (Lam (\ x₁ -> Put x₁ Halt))))))
--}
+example1 : IO'
+example1 = letFun double \d -> get \x -> put (d (d x)) Halt
 
-example2 : Code IO
+doublePos : Int' -> Int'
+doublePos = lam x => iteValue (not (x < lit 0)) (double x) x
+
+example2 : IO'
 example2 =
-  LetRec (\m -> 
+  LetRec (\go -> 
     get \x ->
-    iteIO (double x < lit 3 && not (x < lit 0))
+    iteIO ((double x < lit 13) && not (x == lit 10))
       Halt
-      (put (double (doublePos x)) m)
-  ) \m -> m
-{- normalized output
-LetRec
-(\ m ->
-   Get
-   (\ x ->
-      Let Halt
-      (\ t ->
-         Let
-         (Let (Lam (\ x₁ -> Add x₁ x₁ (\ x₂ -> Put x₂ m)))
-          (\ c ->
-             Let (Add x x (App c))
-             (\ t₁ -> Let (App c x) (\ f -> Lit 0 (\ y -> Less x y f t₁)))))
-         (\ f ->
-            Add x x
-            (\ x₁ ->
-               Lit 3
-               (\ y ->
-                  Less x₁ y
-                  (Let t (\ t₁ -> Let f (\ f₁ -> Lit 0 (\ y₁ -> Less x y₁ f₁ t₁))))
-                  f))))))
-(\ m -> m)
--}
+      (put (doublePos x) go)
+  ) \go -> go
