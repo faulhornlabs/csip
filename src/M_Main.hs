@@ -60,7 +60,9 @@ doCmds_ cmd s = case cmd of
     _ -> fail $ pure $ "Unknown command: " <> cmd
    where
     sh :: (PPrint a, Print a) => a -> RefM String
-    sh x = if quote then sh' x else print x
+    sh x = case quote of
+      True -> sh' x
+      _    -> print x
 
   sh' :: PPrint a => a -> RefM String
   sh' m = print (pprint m)
@@ -99,29 +101,38 @@ testNames files = do
         r <- parseFile tdir out
         pure $ MkCommand s cmd (printFile (tdir </> out)) r
       pure $ T2 fn rs
-  if null l then fail $ pure "no tasks given" else pure l
+  case l of
+    Nil  -> fail $ pure "no tasks given"
+    _    -> pure l
  where
   maybeElab Nil = ("elab" :. Nil) :. Nil
   maybeElab cmds = cmds
 
-getRR (MkCommand s cmd printres r) = maybe (doCmds cmd s >>= \r -> printres r >> pure r) pure r
+getRR (MkCommand _ _ _   (Just m)) = pure m
+getRR (MkCommand s cmd printres _) = doCmds cmd s >>= \r -> printres r >> pure r
 
 testFiles accept files = do
  fs <- testNames files
  forM_ fs \(T2 fn cmds) -> do
   forM_ cmds \r_@(MkCommand s cmd printres r2) -> do
     let title msg r = invertColors (foreground cyan $ msg <> showCmd cmd <> " " <> fn <> "           ") <> "\n" <> r <> "\n"
-    if accept then getRR r_ >>= putStr . title "           "
-     else do
+    case accept of
+     True -> getRR r_ >>= putStr . title "           "
+     _    -> do
       r <- doCmds cmd s
-      when (r2 /= Just r) do
+      case r2 == Just r of
+       True -> pure T0
+       _    -> do
         putStr
            $ maybe "" (title "   old     ") r2 <> title "   new     " r
-          <> maybe "" (\r' -> if lines r' /= lines r then
-               invertColors (foreground red $ "    first diff    ")
-            <> mconcat (take 1 do T2 a b <- repNl (lines r') (lines r); guard (a /= b); pure ("\n" <> a <> "\n" <> b <> "\n"))
-            else "") r2
-        askYN "accept" >>= \b -> if b then printres r else pure T0
+          <> maybe "" (\r' -> case lines r' /= lines r of
+               True ->
+                   invertColors (foreground red $ "    first diff    ")
+                <> mconcat (take 1 do T2 a b <- repNl (lines r') (lines r); guard (a /= b); pure ("\n" <> a <> "\n" <> b <> "\n"))
+               _    -> "") r2
+        askYN "accept" >>= \case
+          True -> printres r
+          _    -> pure T0
 
 repNl as bs = zip (as ++ replicate (c-.a) "") (bs ++ replicate (c-.b) "") where
 
@@ -140,16 +151,15 @@ present files beg = do
        where
         T2 fn cmds = fs !! i
         wait k
-          | k == " " || k == "\n" || k == "Right" = listToMaybe $ condCons (i+1 < l) (f (i+1)) Nil
-          | k == "Backspace     " || k == "Left"  = listToMaybe $ condCons (i > 0)  (f (i-.1)) Nil
+          | k == " " || k == "\n" || k == "Right", i+1 < l = Just (f (i+ 1))
+          | k == "Backspace     " || k == "Left" , i > 0   = Just (f (i-.1))
           | k == "Esc" || k == "q"  = Just (pure T0)
           | k == "r"                = Just (present files fn)
           | True                    = Nothing
 
       ix = length $ takeWhile ((/= beg) . fst) fs
 
-  f $ if ix == l then 0 else ix
-
+  f $ ix `mod` l
 
 export files = do
   T2 w h <- getTerminalSize
@@ -176,9 +186,10 @@ mkScreen rich (T2 w h) color ts
 
   f :: Tup2 String String -> List String
   f (T2 title s) =
-    (if rich then invertColors . foreground color $ takeStr t1 spaces <> title <> takeStr t2 spaces
-             else takeStr t1 eqs <> title <> takeStr t2 eqs)
-    :. (ls <&> \s -> (if rich then cursorForward ow else takeStr ow spaces) <> s)
+    (case rich of
+      True -> invertColors . foreground color $ takeStr t1 spaces <> title <> takeStr t2 spaces
+      _    -> takeStr t1 eqs <> title <> takeStr t2 eqs)
+    :. (ls <&> \s -> (case rich of True -> cursorForward ow; _ -> takeStr ow spaces) <> s)
    where
     eqs    = "=========================================================================================================================================="
     spaces = "                                                                                                                                          "
@@ -200,7 +211,9 @@ disp h ls' cont = wait 0  where
       "Down"     | z < mz -> wait (z +  1)
       "PageUp"   | z > 0  -> wait (z -. h)
       "PageDown" | z < mz -> wait (min mz $ z + h)
-      s -> maybe (wait z) id $ cont s
+      s -> case cont s of
+        Just m -> m
+        _      -> wait z
 
 
 ----------------------------

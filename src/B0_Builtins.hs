@@ -1,43 +1,73 @@
 {-# language MagicHash, UnboxedTuples #-}
 module B0_Builtins
   ( Word, andWord, orWord, addWord, mulWord, subWord, divWord, modWord, shiftRWord, shiftLWord
-  , addWordCarry, mulWordCarry, compareWord
+  , addWordCarry, mulWordCarry, eqWord, ltWord
   , CharArray, readCharArray, lengthCharArray
-  , Tup0 (T0)
   , RefM, pureRefM, bindRefM, unsafePerformRefM
   , throwRefM, catchRefM
   , Ref, newRef, readRef, writeRef
   , Array, newArray, readArray, writeArray
   , Prog (..), runProg, readFileRaw, getDataDirRaw
-  , HasCallStack, callStackRaw, coerce
+  , HasCallStack, callStackRaw
 
+  , Tup0 (T0)
+  , Lazy, lazy, force
   , Char, charToWord
   , Bool (True, False)
   , integerToWord
   , PreludeList, nilPrelude, consPrelude, foldrPrelude
   , PreludeString, fromPreludeString
+  , coerce
   ) where
 
 import Prelude
-import Data.String
-import Data.IORef
-import Data.Typeable
 import Data.Coerce
 import Control.Exception
-import Control.Monad.ST
 import System.Exit
 import System.Environment
 import System.IO
 import System.IO.Error
-import System.IO.Unsafe
-import GHC.Base hiding (compareWord)
+import qualified GHC.Base as P (lazy)
+import GHC.Base hiding (lazy)
 import GHC.Num
-import GHC.ST
-import GHC.IOArray
 import GHC.Stack
-import GHC.TypeLits
 import Unsafe.Coerce
 import Paths_csip
+
+--import Data.Typeable
+--import GHC.TypeLits
+
+
+-------------------------------------------------- Tup0
+
+data Tup0 = T0
+
+
+-------------------------------------------------- laziness
+
+data Lazy a = MkLazy (Tup0 -> a)
+
+lazy :: a -> Lazy a
+lazy ~a = MkLazy \_ -> a
+
+force :: Lazy a -> a
+force (MkLazy f) = f T0
+
+
+--------------------------------------------------
+
+type PreludeList a = [a]
+
+nilPrelude = []
+consPrelude a b = a: b
+
+foldrPrelude :: (a -> b -> b) -> b -> PreludeList a -> b
+foldrPrelude c n (a: as) = c a (foldrPrelude c n as)
+foldrPrelude _ n [] = n
+
+type PreludeString = [Char]
+
+fromString s = s
 
 
 -------------------------------------------------- Word
@@ -61,27 +91,11 @@ mulWordCarry :: Word -> Word -> (Word -> Word -> a) -> a
 mulWordCarry (W# a) (W# b) cont = case timesWord2# a b of
   (# a, b #) -> cont (W# a) (W# b)
 
-compareWord :: Word -> Word -> a -> a -> a -> a
-compareWord (W# a) (W# b) ~lt ~eq ~gt = case compareWord# a b of LT -> lt; EQ -> eq; GT -> gt
 
 -------------------------------------------------- Char
 
 charToWord :: Char -> Word
 charToWord (C# c#) = W# (int2Word# (ord# c#))
-
-
---------------------------------------------------
-
-type PreludeList a = [a]
-
-nilPrelude = []
-consPrelude a b = a: b
-
-foldrPrelude :: (a -> b -> b) -> b -> PreludeList a -> b
-foldrPrelude c n (a: as) = c a (foldrPrelude c n as)
-foldrPrelude _ n [] = n
-
-type PreludeString = PreludeList Char
 
 
 -------------------------------------------------- CharArray
@@ -95,73 +109,74 @@ lengthCharArray :: CharArray -> Word
 lengthCharArray (MkCharArray v#) = W# (uncheckedShiftRL# (int2Word# (sizeofByteArray# v#)) 2#)
 
 emptyCharArray :: CharArray
-emptyCharArray = runST $
-  ST \s# -> case newByteArray# 0# s# of
+emptyCharArray = runRW#
+  \s# -> case newByteArray# 0# s# of
     (# s#, marr# #) -> case unsafeFreezeByteArray# marr# s# of
-      (# s#, arr# #) -> (# s#, MkCharArray arr# #)
+      (# _, arr# #) -> MkCharArray arr#
 
 fromPreludeString :: PreludeString -> CharArray
 fromPreludeString [] = emptyCharArray
-fromPreludeString cs = runST $
-  ST \s# -> case length cs of
+fromPreludeString cs = runRW#
+  \s# -> case length cs of
     I# l# -> case newByteArray# (l# *# 4#) s# of
       (# s#, marr# #) -> let
           go (C# c# : cs) i# s# = go cs (i# +# 1#) (writeWideCharArray# marr# i# c# s#)
           go [] _ s# = case unsafeFreezeByteArray# marr# s# of
-            (# s#, arr# #) -> (# s#, MkCharArray arr# #)
+            (# _, arr# #) -> MkCharArray arr#
         in go cs 0# s#
-
-
--------------------------------------------------- Tup0
-
-data Tup0 = T0
 
 
 -------------------------------------------------- RefM
 
-type RefM = IO
+data RefM a = MkRefM (State# RealWorld -> (# State# RealWorld, a #))
+
+unRefM (MkRefM f) = f
+
+refMToIO (MkRefM f) = IO f
+ioToRefM (IO f) = MkRefM f
 
 pureRefM :: a -> RefM a
-pureRefM a = pure a
+pureRefM a = MkRefM \s -> (# s, a #)
 
 bindRefM :: RefM a -> (a -> RefM b) -> RefM b
-bindRefM a f = a >>= f
+bindRefM (MkRefM a) f = MkRefM \s -> case a s of (# s, b #) -> unRefM (f b) s
 
 unsafePerformRefM :: RefM a -> a
-unsafePerformRefM a = unsafePerformIO a
+unsafePerformRefM (MkRefM m) = case runRW# m of (# _, a #) -> P.lazy a
 
 
 -------------------------------------------------- Ref
 
-type Ref = IORef
+data Ref a = MkRef (MutVar# RealWorld a)
 
 newRef :: a -> RefM (Ref a)
-newRef a = newIORef a
+newRef a = MkRefM \s# -> case newMutVar# a s# of
+  (# s#, arr# #) -> (# s#, MkRef arr# #)
 
 readRef :: Ref a -> RefM a
-readRef r = readIORef r
+readRef (MkRef arr#) = MkRefM \s# -> readMutVar# arr# s#
 
 writeRef :: Ref a -> a -> RefM Tup0
-writeRef r a = writeIORef r a >> pure T0
+writeRef (MkRef arr#) e = MkRefM \s# -> (# writeMutVar# arr# e s#, T0 #)
 
 
 -------------------------------------------------- Array
 
-type Array = IOArray Word
+data Array a = MkArray (MutableArray# RealWorld a)
 
--- size is (input + 1)
 newArray :: Word -> e -> RefM (Array e)
-newArray s e = newIOArray (0, s) e
+newArray (W# n#) def = MkRefM \s# -> case newArray# (word2Int# n#) def s# of
+  (# s#, arr# #) -> (# s#, MkArray arr# #)
 
 readArray :: Array e -> Word -> RefM e
-readArray ar i = unsafeReadIOArray ar (fromIntegral i)
+readArray (MkArray arr#) (W# i#) = MkRefM \s# -> readArray# arr# (word2Int# i#) s#
 
 writeArray :: Array e -> Word -> e -> RefM Tup0
-writeArray ar i e = unsafeWriteIOArray ar (fromIntegral i) e >> pure T0
+writeArray (MkArray arr#) (W# i#) e = MkRefM \s# -> (# writeArray# arr# (word2Int# i#) e s#, T0 #)
 
 
 -------------------------------------------------- exceptions
-
+{-
 data GException (i :: Nat) = MkGException Any
 
 instance Show (GException i) where show _ = "<<exception>>"
@@ -176,13 +191,26 @@ throwRefM w e = case someNatVal (fromIntegral w) of
   mk :: Proxy i -> GException i
   mk _ = MkGException (unsafeCoerce e)
 
-catchRefM :: Word -> (e -> RefM a) -> RefM a -> RefM a
-catchRefM w f ~g = case someNatVal (fromIntegral w) of
-  Just (SomeNat p) -> catch (g >>= \a -> pure a) (fun p f)
+catchRefM :: Word -> (e -> RefM a) -> Lazy (RefM a) -> RefM a
+catchRefM w f g = case someNatVal (fromIntegral w) of
+  Just (SomeNat p) -> catch (force g >>= \a -> pure a) (fun p f)
   _ -> undefined
  where
   fun :: Proxy i -> (e -> RefM a) -> GException i -> RefM a
   fun _ f (MkGException x) = f (unsafeCoerce x)
+-}
+data Exception = MkException Word Any
+
+throwRefM :: Word -> e -> RefM a
+throwRefM w e = MkRefM \s# -> raiseIO# (MkException w (unsafeCoerce e)) s#
+
+catchRefM :: Word -> (e -> RefM a) -> Lazy (RefM a) -> RefM a
+catchRefM w f g = MkRefM \s# -> catch# io handler s#  where
+  io s# = case (bindRefM (force g) \a -> pureRefM a) of MkRefM f -> f s#
+  handler e@(MkException w' c)
+    | w' == w = unRefM (f (unsafeCoerce c))
+    | True    = raiseIO# e
+
 
 
 -------------------------------------------------- callstack
@@ -203,13 +231,13 @@ data Prog
   | Die PreludeString
   | GetArgs (PreludeList PreludeString -> Prog)
 
-  | PutStr PreludeString ~Prog
+  | PutStr PreludeString (Lazy Prog)
   | GetChar (Char -> Prog)
-  | PresentationMode ~Prog ~Prog
-  | GetTerminalSize (Word -> Word -> Prog)
+  | PresentationMode (Lazy Prog) (Lazy Prog)
+  | GetTerminalSize (Lazy Prog) (Word -> Word -> Prog)
 
-  | ReadFile PreludeString ~Prog (PreludeString -> Prog)
-  | WriteFile PreludeString PreludeString ~Prog
+  | ReadFile PreludeString (Lazy Prog) (PreludeString -> Prog)
+  | WriteFile PreludeString PreludeString (Lazy Prog)
   | GetTemporaryDir (PreludeString -> Prog)
 
   | forall a. Do (RefM a) (a -> Prog)
@@ -226,7 +254,7 @@ runProg m = do
  where
   putStr' s = putStr s >> hFlush stdout
 
-  go :: Prog -> RefM Tup0
+  go :: Prog -> IO Tup0
   go = \case
 
     ProgEnd   -> pure T0
@@ -234,17 +262,17 @@ runProg m = do
     GetArgs f -> getArgs >>= go . f
 
     GetChar f  -> getChar >>= go . f
-    PutStr s m -> putStr' s >> go m
+    PutStr s m -> putStr' s >> go (force m)
 
-    ReadFile f fail cont -> tryIOError (readFileRaw f) >>= \case
-      Left _  -> go fail
+    ReadFile f fail cont -> tryIOError (openFile f ReadMode >>= hGetContents) >>= \case
+      Left _  -> go (force fail)
       Right s -> go (cont s)
  
     WriteFile f s c -> do
       writeFile f s
-      go c
+      go (force c)
 
-    Do m f -> m >>= go . f
+    Do m f -> refMToIO m >>= go . f
 
     GetTemporaryDir cont -> do
       t <- lookupEnv "TMPDIR"
@@ -254,13 +282,13 @@ runProg m = do
       -- hide cursor, turn on bracketed paste mode, enable alternative screen buffer, turn line wrap off
       putStr "\ESC[?25l\ESC[?2004h\ESC[?1049h\ESC[?7l"
       hSetEcho stdin False
-      go m `finally` do
+      go (force m) `finally` do
         hSetEcho stdin True
         putStr "\ESC[?7h\ESC[?1049l\ESC[?2004l\ESC[?25h"
-        go c
+        go (force c)
 
-    GetTerminalSize ret -> hIsTerminalDevice stdout >>= \case
-      False -> go def
+    GetTerminalSize def ret -> hIsTerminalDevice stdout >>= \case
+      False -> go (force def)
       True -> do
         putStr' "\ESC7\ESC[10000;10000H" -- save cursor, set cursor position
         r <- try 3
@@ -268,7 +296,7 @@ runProg m = do
         go r
      where
       try :: Int -> IO Prog
-      try 0 = pure def
+      try 0 = pure (force def)
       try i = do
         clearStdin
         putStr' "\ESC[6n"
@@ -285,20 +313,18 @@ runProg m = do
           c | '0' <= c, c <= '9' -> getInt (10 * acc + (charToWord c - 48)) end cont
           _ -> try (i - 1)
 
-      ~def = ret 119 31
-
     CatchError w fail m ok -> do
-      r <- newIORef $ unsafeCoerce False
-      let cont x = Do (writeIORef r $ unsafeCoerce x) \_ -> ProgEnd
-      _ <- catchRefM w (\e -> go $ fail e cont) (go $ m cont)
-      x <- readIORef r
+      r <- refMToIO $ newRef $ unsafeCoerce False
+      let cont x = Do (writeRef r $ unsafeCoerce x) \_ -> ProgEnd
+      _ <- refMToIO $ catchRefM w (\e -> ioToRefM $ go $ fail e cont) (lazy (ioToRefM $ go $ m cont))
+      x <- refMToIO $ readRef r
       go $ ok $ unsafeCoerce x
 
 
 -------------------------------------------------- I/O in RefM
 
 readFileRaw :: PreludeString -> RefM PreludeString
-readFileRaw f = readFile f
+readFileRaw f = ioToRefM (readFile f)
 
 getDataDirRaw :: RefM PreludeString
-getDataDirRaw = getDataDir
+getDataDirRaw = ioToRefM getDataDir

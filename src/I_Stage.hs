@@ -116,7 +116,7 @@ unquote = f mempty where
     RVar "noreturn" :@ _ -> pure $ RVar "Fail"
     Lam n a -> Lam n <$> f e a
     a :@ b -> f e a .@ f e b
-    RVar n -> pure $ RVar $ fromMaybe n $ lookupIM n e
+    RVar n -> pure $ RVar $ fromMaybe' n $ lookupIM n e
     r -> pure $ r
    where
     rLet' :: Name -> Scoped -> Scoped -> RefM Scoped

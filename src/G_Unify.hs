@@ -46,7 +46,7 @@ pruneMeta m (toListIS -> is) = do
 
 closeTm :: Val -> RefM Val
 closeTm v_ = do
-  v <- force v_
+  v <- forceVal v_
   let sv = T2 v mempty
   m <- go (sv :. Nil)
   T0 <- case fromJust $ lookupMap sv m of
@@ -69,7 +69,7 @@ closeTm v_ = do
       WNoRet{} -> undefined
       _            -> ret allowed Nil
      where
-      ret allowed es = T2 T0 . map (\v -> T2 v allowed) <$> mapM force es
+      ret allowed es = T2 T0 . map (\v -> T2 v allowed) <$> mapM forceVal es
 
     up :: SVal -> Tup0 -> List (Tup2 SVal PruneSet) -> RefM PruneSet
     up (T2 v allowed) _ ts = case v of
@@ -107,14 +107,14 @@ unify aa{-actual-} bb{-expected-} = do
   go aa bb
  where
  ff v@(WMetaApp _ b) = do
-   b <- force b
+   b <- forceVal b
    pure (T2 v (case b of WVar n -> Just n; _ -> Nothing))
  ff v = pure (T2 v Nothing)
 
  go :: Val -> Val -> RefM Tup0
  go a_ b_ = do
-  T2 fa va <- force' a_
-  T2 fb vb <- force' b_
+  T2 fa va <- forceVal' a_
+  T2 fb vb <- forceVal' b_
   case T2 va vb of
    _ | va == vb -> pure T0
    T2 (WMeta d) _ -> updateClosed d fb >> pure T0
@@ -138,4 +138,4 @@ unify aa{-actual-} bb{-expected-} = do
        vb' <- vApp fb v
        go va' vb'
      T2 (WApp f a) (WApp g b) -> go f g >> go a b
-     _ -> fail $ "Expected type\n " <<>> expr (print =<< force_ bb) <<>> "\ninstead of\n " <<>> expr (print =<< force_ aa)
+     _ -> fail $ "Expected type\n " <<>> expr (print =<< forceVal_ bb) <<>> "\ninstead of\n " <<>> expr (print =<< forceVal_ aa)

@@ -10,7 +10,7 @@ module F_Eval
         )
   , vNat, vString, mkFun, vCon, vVar, vApp, vApps, vSup, vTm, vLam, vLams, vConst, isConst
   , mkBuiltin, RuleRef, rigid, closed, lamName
-  , force_, force', force
+  , forceVal_, forceVal', forceVal
 
   , eval, evalClosed, evalClosed'
   , quoteTm_, quoteTm', quoteNF, quoteNF'
@@ -28,10 +28,10 @@ import E_Parse
 -------------
 
 -- De Bruijn index
-data DB = MkDB
-  { dbIndex :: Word
-  , dbName  :: NameStr
-  }
+data DB = MkDB Word NameStr
+
+dbIndex (MkDB w _) = w
+dbName  (MkDB _ n) = n
 
 instance Print  DB where print  = print  . dbName
 instance PPrint DB where pprint = pprint . dbName
@@ -41,12 +41,10 @@ instance HasId DB where getId = dbIndex
 -------------
 
 -- supercombinator (closed)       -- \x1 ... xN -> t
-data Combinator = MkCombinator
-  { combName   :: Name
-  , rigidCombinator :: Bool
-  , _combNames :: List NameStr                  -- x1 ... xN
-  , _combBody  :: (Tm_ DB)                   -- t
-  }
+data Combinator = MkCombinator Name Bool (List NameStr) (Tm_ DB)
+
+combName (MkCombinator n _ _ _) = n
+rigidCombinator (MkCombinator _ r _ _) = r
 
 instance Ord Combinator where compare = compare `on` combName
 
@@ -67,7 +65,7 @@ mkCombinator n t = do
   ns' = fvs t
   isconst = not $ memberIS n ns'
   ns_ = filter (/= n) $ toListIS ns'
-  nsA = ns_ ++ (if isconst then rename "_" n else n) :. Nil
+  nsA = ns_ ++ (case isconst of True -> rename "_" n; _ -> n) :. Nil
 
   fvs = \case
     TGen e -> fvs e
@@ -80,7 +78,7 @@ mkCombinator n t = do
     TRet e -> fvs e
     TNoRet e -> fvs e
 
-  ins a b (T2 n e) = T2 (maybe (n+1) (const n) (lookupIM a e)) (insertIM a b e)
+  ins a b (T2 n e) = T2 (maybe (n+1) (\_ -> n) (lookupIM a e)) (insertIM a b e)
 
   f env = \case
     TVar n -> TVar $ MkDB (fromJust $ lookupIM n $ snd env) (nameStr n)
@@ -105,7 +103,7 @@ varName_ d (MkCombinator _ _ ns _) = case last ns of
 
 varName c = mkName $ varName_ "v"{-TODO?-} c
 
-lamName n x = force x <&> \case
+lamName n x = forceVal x <&> \case
   WSup _ c _ -> varName_ n c
   _ -> n
 
@@ -136,15 +134,15 @@ instance Tag (Tm_ a) where
   tag TVal{} = 8
 
 instance Ord a => Ord (Tm_ a) where
-  compare (TVar a)  (TVar a') = compare a a'
-  compare (TApp a b)  (TApp a' b') = compare a a' &&& compare b b'
-  compare (TSup a b)  (TSup a' b') = compare a a' &&& compare b b'
-  compare (TLet a b c)  (TLet a' b' c') = compare a a' &&& compare b b' &&& compare c c'
-  compare (TMatch a b c d)  (TMatch a' b' c' d') = compare a a' &&& compare b b' &&& compare c c' &&& compare d d'
-  compare (TRet a)  (TRet a') = compare a a'
-  compare (TNoRet a)  (TNoRet a') = compare a a'
-  compare (TGen a)  (TGen a') = compare a a'
-  compare (TVal a)  (TVal a') = compare a a'
+  compare (TVar a)         (TVar a')            = compare a a'
+  compare (TApp a b)       (TApp a' b')         = compare a a' &&& lazy (compare b b')
+  compare (TSup a b)       (TSup a' b')         = compare a a' &&& lazy (compare b b')
+  compare (TLet a b c)     (TLet a' b' c')      = compare a a' &&& lazy (compare b b' &&& lazy (compare c c'))
+  compare (TMatch a b c d) (TMatch a' b' c' d') = compare a a' &&& lazy (compare b b' &&& lazy (compare c c' &&& lazy (compare d d')))
+  compare (TRet a)         (TRet a')            = compare a a'
+  compare (TNoRet a)       (TNoRet a')          = compare a a'
+  compare (TGen a)         (TGen a')            = compare a a'
+  compare (TVal a)         (TVal a')            = compare a a'
   compare a b = compareTag a b
 
 infixl 9 :@.
@@ -261,7 +259,7 @@ eval_ val box vDot vApp vSup var match ret noret = go where
   go env = \case
     TVal v     -> val v
     TGen x     -> box =<< go env x
-    TVar x     -> maybe (var x) pure $ lookupIM x env
+    TVar x     -> case lookupIM x env of Just z -> pure z; _ -> var x
     TDot x     -> vDot =<< go env x
     TApp t u   -> join $ vApp <$> go env t <*> go env u
     TSup c ts  -> join $ vSup c <$> mapM (go env) ts
@@ -325,7 +323,7 @@ tmToRaw t = do
         TRet a -> rRet <$> f env a
         TNoRet a -> rNoRet <$> f env a
 
-      g env v_ = force_ v_ >>= \case
+      g env v_ = forceVal_ v_ >>= \case
         WNat n-> pure (RNat n)
         WString n -> pure (RString n)
         WCon _ n -> pure (RVar n)
@@ -407,7 +405,7 @@ data View
   | VNat Word
   | VString String
 
-  | VApp_ Val Val {-# UNPACK #-} AppKind
+  | VApp_ Val Val AppKind
   | VSup Combinator (List Val)     -- lambda
 
   | VMatch ConInfo Val Val Val (Maybe (Tup2 MetaRef MetaDep))
@@ -452,17 +450,16 @@ pattern WLam n f <- WSup n (varName -> f) _
 
 -----
 
-data Val = MkVal
-  { name   :: Name
-  , rigid  :: Bool     -- no meta inside   -- forceAll may change it from False to True
-  , closed :: Bool                         -- forceAll may change it from False to True if not rigid
-  , view   :: View
-  }
--- invariant:  name v == name w  ==>  view v == view w
+data Val = MkVal Name Bool Bool View
+
+name   (MkVal n _ _ _) = n    -- invariant:  name v == name w  ==>  view v == view w
+rigid  (MkVal _ r _ _) = r    -- no meta inside   -- forceValAll may change it from False to True
+closed (MkVal _ _ c _) = c                        -- forceValAll may change it from False to True if not rigid
+view   (MkVal _ _ _ v) = v
 
 instance HasId Val where getId = getId . name
 
--- TODO: assert that names are forced (with time)?
+-- TODO: assert that names are forceVald (with time)?
 instance Ord Val where
   compare = compare `on` name
 
@@ -504,7 +501,10 @@ lookupMeta (MkMetaRef r) = readRef r
 updateMeta :: MetaRef -> Val -> RefM Tup0
 updateMeta (MkMetaRef r) b = writeRef r $ Just b
 
-data MetaDep = MkMetaDep {metaDepName :: Name, metaRef :: MetaRef}
+data MetaDep = MkMetaDep Name MetaRef
+
+metaDepName (MkMetaDep n _) = n
+metaRef     (MkMetaDep _ r) = r
 
 instance Print MetaDep where print = print . metaDepName
 instance Ord MetaDep where compare = compare `on` metaDepName
@@ -538,7 +538,7 @@ vTm n t v
 mkBuiltin :: Arity -> Name -> Val
 mkBuiltin ar n = case n of
   "AppendStr" -> f 2 \d -> \case WString va :. WString vb :. Nil -> vString $ va <> vb; _ -> d
-  "EqStr"     -> f 2 \d -> \case WString va :. WString vb :. Nil -> if va == vb then pure CTrue else pure CFalse; _ -> d
+  "EqStr"     -> f 2 \d -> \case WString va :. WString vb :. Nil -> pure $ cBool (va == vb); _ -> d
   "TakeStr"   -> f 2 \d -> \case WNat va :. WString vb :. Nil -> vString $ takeStr va vb; _ -> d
   "DropStr"   -> f 2 \d -> \case WNat va :. WString vb :. Nil -> vString $ dropStr va vb; _ -> d
   "DecWord"    -> f 1 \d -> \case WNat va :. Nil -> vNat $ max 0 $ va -. 1; _ -> d
@@ -546,15 +546,18 @@ mkBuiltin ar n = case n of
   "MulWord"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va * vb; _ -> d
   "DivWord"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va `div` vb; _ -> d
   "ModWord"    -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> vNat $ va `mod` vb; _ -> d
-  "EqWord"     -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> if va == vb then pure CTrue else pure CFalse; _ -> d
+  "EqWord"     -> f 2 \d -> \case WNat va :. WNat vb :. Nil -> pure $ cBool (va == vb); _ -> d
   n -> vCon ar n
 -- TODO:  n -> error $ "Unknown builtin: " <<>> print n
  where
   f ar g = WDelta n ar g
 
+  cBool True = CTrue
+  cBool _    = CFalse
+
 vApp :: Val -> Val -> RefM Val
 vApp a_ u = do
-  T2 aa a <- force' a_
+  T2 aa a <- forceVal' a_
   let mkApp_ aa u l = mkValue "a" (rigid aa && rigid u && rigidAppKind l) (closed aa && closed u) $ VApp_ aa u l
       mkApp d u = do
         ad <- case snd <$> metaDep d of
@@ -571,7 +574,7 @@ vApp a_ u = do
         x -> mkApp_ aa u $ FunApp x
 
   case a of
-    (deltaArity -> Just ar) -> force u >>= \u -> case ar of
+    (deltaArity -> Just ar) -> forceVal u >>= \u -> case ar of
       _ | ar < 1     -> impossible
         | not (closed u && rigid u) -> mkApp u u
         | ar > 1     -> mkApp_ a u $ DeltaApp (ar - 1)
@@ -625,14 +628,14 @@ vLam_ n t = do
   vSup c (map vVar ns)
 
 vLam :: Name -> Val -> RefM Val
-vLam n v = force v >>= \case
-  WApp a b -> force b >>= \case
+vLam n v = forceVal v >>= \case
+  WApp a b -> forceVal b >>= \case
     WVar vn | vn == n -> do
       ta <- quoteTm' a
       T2 c _ <- mkCombinator n ta
-      if isConstComb c
-        then pure a
-        else def   -- TODO: optimize this
+      case isConstComb c of
+        True -> pure a
+        False -> def   -- TODO: optimize this
     _ -> def
   _ -> def
  where
@@ -703,7 +706,9 @@ compileRule lhs rhs = do
       TVar n -> gets st (memberIS n) >>= \case
         True -> pure $ Just n
         _ -> modify st (insertIS n) >> pure Nothing
-      TApp a b -> firstJust <$> f a <*> f b
+      TApp a b -> f a >>= \case
+        r@Just{} -> pure r
+        _        -> f b
       _ -> undefined
 
   compileLHS :: Tm -> Tm -> (Tm -> RefM Tm) -> RefM Tm
@@ -795,12 +800,12 @@ addDictSelector (TVal (unWTm -> WFun _ r)) dict args i = do
 addDictSelector _ _ _ _ = impossible
 
 vRet v = mkValue "ret" (rigid v) (closed v) $ VRet v
-vNoRet v_ = force v_ >>= \case
+vNoRet v_ = forceVal v_ >>= \case
   WRet v -> pure v
   v -> mkValue "noret" (rigid v) (closed v) $ VNoRet v
 
 vMatch :: ConInfo -> Val -> Val -> Val -> RefM Val
-vMatch n v_ ok fail = force v_ >>= \v -> case headCon v of
+vMatch n v_ ok fail = forceVal v_ >>= \v -> case headCon v of
   Just (T2 _{-TODO: 0-} c)
     | c == n -> vForce =<< vApps ok (spineCon v)
   Just (T2 _{-TODO: 0-} _)
@@ -828,7 +833,7 @@ headCon = \case
   WTm _ _ v -> headCon v
   _ -> Nothing
 
-matchCon' n v = force v <&> matchCon n
+matchCon' n v = forceVal v <&> matchCon n
 
 matchCon n v | headCon v == Just (T2 0 n) = Just $ spineCon v
 matchCon _ _ = Nothing
@@ -840,23 +845,23 @@ spineCon = f Nil where
   f acc (WTm _ _ v) = f acc v
   f _ e = error $ print $ pprint e
 
-spine' v = force v <&> spine where
+spine' v = forceVal v <&> spine where
 
   spine v = case headCon v of
     Just (T2 0 n) -> Just (T2 n (spineCon v))
     _ -> Nothing
 
-force, force_ :: Val -> RefM Val
-force_ v = force__ v pure
+forceVal, forceVal_ :: Val -> RefM Val
+forceVal_ v = forceVal__ v pure
 
-force__ v changed = case v of
+forceVal__ v changed = case v of
   WMeta_ _ ref -> lookupMeta ref >>= \case
     Nothing -> pure v
-    Just w_ -> force__ w_ \w -> do
+    Just w_ -> forceVal__ w_ \w -> do
       updateMeta ref w
       changed w
   _ | Just (T2 ref i) <- metaDep v -> lookupMeta ref >>= \case
-    Just w_ -> force__ w_ \w -> do
+    Just w_ -> forceVal__ w_ \w -> do
       updateMeta ref w
       changed w
     Nothing -> lookupMeta (metaRef i) >>= \case
@@ -870,17 +875,17 @@ force__ v changed = case v of
           changed r
   _ -> pure v
 
-force' v_ = force_ v_ >>= \case
+forceVal' v_ = forceVal_ v_ >>= \case
     v@(WTm _ _ z) -> f v z
     v -> pure (T2 v v)
  where
-  f w v_ = force_ v_ >>= \case
+  f w v_ = forceVal_ v_ >>= \case
     WTm _ _ z -> f w z
     v -> pure (T2 w v)
 
-force v = force' v <&> snd
+forceVal v = forceVal' v <&> snd
 
-vVal v = force' v >>= \(T2 a b) -> case b of
+vVal v = forceVal' v >>= \(T2 a b) -> case b of
   -- hack?
   WFun _ ref -> lookupRule ref >>= \case
     WRet x -> vVal x
@@ -892,7 +897,7 @@ vVal v = force' v >>= \(T2 a b) -> case b of
 -------------
 
 eval :: (Print a, Ord a, HasId a) => RefM String -> IntMap a Val -> Tm_ a -> RefM Val
-eval ~err = eval_ vVal pure pure vApp vSup (\x -> fail $ "not defined(" <<>> err <<>> "): " <<>> print x) vMatch vRet vNoRet
+eval err = eval_ vVal pure pure vApp vSup (\x -> fail $ "not defined(" <<>> err <<>> "): " <<>> print x) vMatch vRet vNoRet
 
 eval' :: IntMap Name Val -> Tm -> RefM Val
 eval' = eval_ vVal pure pure vApp vSup (pure . vVar) vMatch vRet vNoRet
@@ -902,7 +907,7 @@ evalClosed' v = evalClosed v >>= strictForce
 
 quoteNF :: Val -> RefM Scoped
 quoteNF = f where
-  f v_ = force v_ >>= \case
+  f v_ = forceVal v_ >>= \case
     WNat n   -> pure $ RNat n
     WString n-> pure $ RString n
     WDelta n _ _ -> pure $ RVar $ n
@@ -937,13 +942,13 @@ quoteTm_ lets vtm opt v =
   quoteTm__ lets vtm opt v <&> \(T2 vs x) -> tLets (reverse vs) x
 
 quoteTm__ lets vtm opt v_ = do
-  v <- force__ v_
+  v <- forceVal__ v_
   T2 ma_ vs_ <- runWriter $ go v  -- writer is needed for the right order
   let
-    ma v = fromMaybe False $ lookupIM v ma_
+    ma v = fromMaybe' False $ lookupIM v ma_
     vs = filter ma vs_
 
-    ff' = force__ >=> ff
+    ff' = forceVal__ >=> ff
 
     ff v | opt, closed v = pure $ TVal v
     ff v | ma v = pure $ TVar $ name v
@@ -971,7 +976,7 @@ quoteTm__ lets vtm opt v_ = do
   vs' <- mapM gg vs
   pure (T2 (zip (map name vs) vs') x)
  where
-  force__ = if vtm then force_ else force
+  forceVal__ = case vtm of True -> forceVal_; False -> forceVal
 
   go v wst = walkIM ch share up (v :. Nil) where
 
@@ -992,7 +997,7 @@ quoteTm__ lets vtm opt v_ = do
 
     up v sh _ = tell wst (v :. Nil) >> pure sh
 
-    ch v = (<$>) (T2 (sh v)) $ mapM force__ $ case v of
+    ch v = (<$>) (T2 (sh v)) $ mapM forceVal__ $ case v of
       _ | opt, closed v -> Nil
       WSup _ _ vs -> vs
       WApp a b -> a :. b :. Nil
@@ -1059,7 +1064,7 @@ replaceMetas get_ bv tt = do
           n <- varName c
           t <- evalCombinatorTm c $ ts ++ TVar n :. Nil
           tLam n =<< local rst (insertIS n) (f get t)
-      TGen t -> eval' t >>= force >>= \vns -> case get of
+      TGen t -> eval' t >>= forceVal >>= \vns -> case get of
         Left st -> case vns of
            WMeta d -> do
              n <- mkName "v"
@@ -1096,7 +1101,7 @@ replaceMetas get_ bv tt = do
             case lo of
               Nothing -> traceShow "" ("missed lookup: " <<>> showM' ns)
               _ -> pure T0
-            pure $ TGen $ fromMaybe ns lo
+            pure $ TGen $ fromMaybe' ns lo
       t -> fail $ "TODO(8): " <<>> print t
      where
       addSuperClasses st v d = do
@@ -1112,8 +1117,8 @@ replaceMetas get_ bv tt = do
       quote = metaToVar False (pure "TODO (21)")
 
       metaToVar :: Bool -> RefM String -> Val -> RefM Tm
-      metaToVar pat ~err = f where
-       f v_ = force v_ >>= \w -> case w of
+      metaToVar pat err = f where
+       f v_ = forceVal v_ >>= \w -> case w of
         WMeta _d | pat -> do
           pure $ TVal w
         WMetaApp_ _ _ _ _d | pat -> do
@@ -1137,7 +1142,7 @@ getProjections v = spine' v >>= \case
     Just (T2 "SuperClassNil" (_ :. Nil)) -> pure Nil
     _ -> undefined
 
-metaArgNum v_ = force v_ >>= \case
+metaArgNum v_ = forceVal v_ >>= \case
   WMeta _     -> pure 0
   WMetaApp a _ -> (+1) <$> metaArgNum a
   _ -> undefined
@@ -1199,7 +1204,7 @@ strictForce v = deepForce v >>= \case
 
 deepForce :: Val -> RefM Val
 deepForce v_ = do
-  v <- force_ v_
+  v <- forceVal_ v_
   m <- go (v :. Nil)
   pure $ fromJust $ lookupIM v m
  where
@@ -1222,7 +1227,7 @@ deepForce v_ = do
       WRet{}       -> undefined
       _ -> impossible
 
-    ret mn es = T2 mn <$> mapM force_ es
+    ret mn es = T2 mn <$> mapM forceVal_ es
 
     up :: Val -> Maybe Name -> List (Tup2 Val Val) -> RefM Val
     up v mn (map snd -> ts) = case v of

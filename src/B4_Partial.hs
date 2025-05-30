@@ -39,20 +39,20 @@ instance Print MainException where
 mainException :: Except MainException
 mainException = topM newExcept
 
-tagError :: Print s => s -> RefM a -> RefM a
-tagError ~s = catchError mainException (throwError mainException . MkTag (print s))
+tagError :: Print s => s -> Lazy (RefM a) -> RefM a
+tagError s m = catchError mainException (throwError mainException . MkTag (print s)) m
 
 instance MonadFail RefM where
-  fail ~s = throwError mainException (MkMainException s)
+  fail s = throwError mainException (MkMainException s)
 
 
 {-# noinline error #-}
 error :: HasCallStack => RefM String -> a
-error ~s = topM (fail s)
+error s = topM (fail s)
 
 {-# noinline error_ #-}
 error_ :: HasCallStack => String -> a
-error_ ~s = topM (throwError mainException (MkMainException (pure $ s <> "\n" <> fromString callStackRaw)))
+error_ s = topM (throwError mainException (MkMainException (pure $ s <> "\n" <> fromString callStackRaw)))
 
 undefined :: HasCallStack => a
 undefined = error_ "TODO"
@@ -62,7 +62,7 @@ impossible = error_ "impossible"
 
 traceShow :: String -> RefM String -> RefM Tup0
 --traceShow ~s m  | s `elem` [{-"56", "57"-} "1","2","3","4","5","6","7"] = m >>= \s -> mapM_ putChar (stringToList s) >> putChar '\n'
-traceShow ~_ ~_ = pure T0
+traceShow _ _ = pure T0
 
 
 

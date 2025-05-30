@@ -4,6 +4,7 @@ module B6_IntMap
   , walkIM, downUpIM, topDownIM, bottomUpIM
   ) where
 
+import B0_Builtins
 import B1_Basic
 import B2_String
 import B3_RefM
@@ -26,7 +27,7 @@ instance Tag (IntMap a b) where
 
 instance Ord b => Ord (IntMap a b) where
   compare (Zero _ b) (Zero _  b') = compare b b'
-  compare (Node a b) (Node a' b') = compare a a' &&& compare b b'
+  compare (Node a b) (Node a' b') = compare a a' &&& lazy (compare b b')
   compare a b = compareTag a b
 
 instance Semigroup (IntMap a b) where
@@ -152,8 +153,8 @@ walkIM children  down up xs = (<$>) snd (runState mempty go) where
         modify st (insertIM v r')
         walk ts
     walk (Right (T2 e ch):. ts) = do
-      m <- gets st (fromMaybe impossible . lookupIM e)
-      ms <- forM ch \v -> gets st (fromMaybe impossible . lookupIM v)
+      m <- gets st (fromMaybe (lazy impossible) . lookupIM e)
+      ms <- forM ch \v -> gets st (fromMaybe (lazy impossible) . lookupIM v)
       r <- up e m (zip ch ms)
       modify st (insertIM e r)
       walk ts

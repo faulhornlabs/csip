@@ -35,7 +35,7 @@ instance Monad IO where
   MkIO f >>= h = MkIO \g -> f \f -> unIO (h f) g
 
 instance MonadFail IO where
-  fail ~s = runRefM $ fail s
+  fail s = runRefM $ fail s
 
 catchErrors :: (MainException -> IO a) -> IO a -> IO a
 catchErrors a (MkIO h) = MkIO \g -> case mainException of
@@ -65,14 +65,14 @@ a </> b = a <> "/" <> b
 die                        f = MkIO \_   -> Die (toPreludeString f)
 getArgs                      = MkIO \end -> GetArgs \r -> end (map fromString $ foldrPrelude (:.) Nil r)
 getTemporaryDir              = MkIO \end -> GetTemporaryDir \f -> end (fromString f)
-presentationMode (MkIO m)    = MkIO \end -> PresentationMode (m \_ -> ProgEnd) (end T0)
-getTerminalSize              = MkIO \end -> GetTerminalSize \w h -> end (T2 w h)
+presentationMode (MkIO m)    = MkIO \end -> PresentationMode (lazy (m \_ -> ProgEnd)) (lazy (end T0))
+getTerminalSize              = MkIO \end -> GetTerminalSize (lazy (end (T2 119 131))) \w h -> end (T2 w h)
 
 -----------------------------------------------
 
 parseFile :: Parse a => FilePath -> FilePath -> IO (Maybe a)
 parseFile dir f = MkIO \end ->
-  ReadFile (toPreludeString $ dir </> f) (end Nothing) \s ->
+  ReadFile (toPreludeString $ dir </> f) (lazy (end Nothing)) \s ->
   Do (mkLocString f $ fromPreludeString s) (end . Just)
 
 parseDataFile :: Parse a => FilePath -> RefM a
@@ -83,10 +83,10 @@ parseDataFile f = do
 printFile :: Print a => FilePath -> a -> IO Tup0
 printFile f a = do
   s <- runRefM $ print a
-  MkIO \end -> WriteFile (toPreludeString f) (toPreludeString s) (end T0)
+  MkIO \end -> WriteFile (toPreludeString f) (toPreludeString s) (lazy (end T0))
 
 putStr :: String -> IO Tup0
-putStr s = MkIO \end -> PutStr (toPreludeString (fixANSI s)) (end T0)
+putStr s = MkIO \end -> PutStr (toPreludeString (fixANSI s)) (lazy (end T0))
 
 getChar :: IO Char
 getChar = MkIO GetChar

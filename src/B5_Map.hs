@@ -11,7 +11,7 @@ import B4_Partial
 
 data Colour = R | B
 
-data Map a b = E | N {-# UNPACK #-} Colour (Map a b) a b (Map a b)
+data Map a b = E | N Colour (Map a b) a b (Map a b)
 
 instance Functor (Map a) where
   _ <$> E = E

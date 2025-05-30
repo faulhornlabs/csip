@@ -9,6 +9,7 @@ module B8_OpSeq
   , foldMapOpSeq
   ) where
 
+import B0_Builtins
 import B1_Basic
 
 ----------------------------------------
@@ -16,7 +17,7 @@ import B1_Basic
 type Precedence = Word
 
 data SeqPrec
-  = ConsP {-# UNPACK #-} Precedence {-# UNPACK #-} Int SeqPrec
+  = ConsP Precedence Word SeqPrec
   | NilP
 
 instance Tag SeqPrec where
@@ -24,7 +25,7 @@ instance Tag SeqPrec where
   tag NilP    = 1
 
 instance Ord SeqPrec where
-  compare (ConsP a b c) (ConsP a' b' c') = compare a a' &&& compare b b' &&& compare c c'
+  compare (ConsP a b c) (ConsP a' b' c') = compare a a' &&& lazy (compare b' b &&& lazy (compare c c'))
   compare a b = compareTag a b
 
 singPrec :: Precedence -> SeqPrec
@@ -32,26 +33,26 @@ singPrec p = ConsP p 0 NilP
 
 minPrec :: Precedence -> SeqPrec -> SeqPrec
 minPrec a NilP = singPrec a
-minPrec a (ConsP b b' bs) = compareCase a b
-  (singPrec a)
-  (ConsP a (b' - 1) NilP)
-  (ConsP b b' (minPrec a bs))
+minPrec a (ConsP b b' bs) = case compare a b of
+  LT -> singPrec a
+  EQ -> ConsP a (b' + 1) NilP
+  GT -> ConsP b b' (minPrec a bs)
 
 ----------------------------------------
 
 data OpSeq b
   = Empty
-  | Node         SeqPrec
-                 (OpSeq b)
-  {-# UNPACK #-} Precedence
-                 b
-                 (Mid b)
-  {-# UNPACK #-} Precedence
-                 (OpSeq b)
-                 SeqPrec
+  | Node SeqPrec
+         (OpSeq b)
+         Precedence
+         b
+         (Mid b)
+         Precedence
+         (OpSeq b)
+         SeqPrec
 
 data Mid b
-  = MCons {-# UNPACK #-} Precedence (OpSeq b) {-# UNPACK #-} Precedence b (Mid b)
+  = MCons Precedence (OpSeq b) Precedence b (Mid b)
   | MNil
 
 instance Semigroup (Mid b) where
@@ -79,10 +80,10 @@ singOpSeq a b c = Node (singPrec a) Empty a b MNil c Empty (singPrec c)
 instance Semigroup (OpSeq b) where
   Empty <> a = a
   a <> Empty = a
-  x@(Node le a b c d e f _) <> y@(Node _ g h i j k l r) = compareCase (rightPrecSeq x) (leftPrecSeq y)
-    (mkNodeL le a b c d e (f <> y))
-    (Node le a b c (d <> MCons e (f <> g) h i j) k l r)
-    (mkNodeR (x <> g) h i j k l r)
+  x@(Node le a b c d e f _) <> y@(Node _ g h i j k l r) = case compare (rightPrecSeq x) (leftPrecSeq y) of
+    LT -> mkNodeL le a b c d e (f <> y)
+    EQ -> Node le a b c (d <> MCons e (f <> g) h i j) k l r
+    GT -> mkNodeR (x <> g) h i j k l r
 
 instance Monoid (OpSeq b) where
   mempty = Empty

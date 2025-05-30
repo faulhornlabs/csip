@@ -66,7 +66,7 @@ indexCtx (MkCtx _ v) i = readCharArray v i
 
 data String
   = NilStr
-  | ConsS {-# UNPACK #-} Word {-# UNPACK #-} Word CharCtx String
+  | ConsS Word Word CharCtx String
 
 consS a b c (ConsS a' b' c' s)
   | b == a', eqFS c c' = ConsS a b' c s
@@ -289,14 +289,13 @@ meld s = f (len s) s  where
   merge :: String -> String -> String
   merge NilStr s = s
   merge s NilStr = s
-  merge so@(ConsS a b c s) so'@(ConsS a' b' c' s') = compareCase c c'
-    (ConsS a b c (merge s so'))
-    (case T0 of
+  merge so@(ConsS a b c s) so'@(ConsS a' b' c' s') = case compare c c' of
+    LT -> ConsS a b c (merge s so')
+    EQ -> case T0 of
       _ | b < a' -> ConsS a b c (merge s so')
         | b' < a -> ConsS a' b' c' (merge so s')
         | True -> consS (min a a') (max b b') c (merge s s')
-    )
-    (ConsS a' b' c' (merge so s'))
+    GT -> ConsS a' b' c' (merge so s')
 
 showLoc :: String -> String
 showLoc s = splitFiles (meld s)
@@ -399,7 +398,7 @@ fixANSI cs = f (T4 0 39 49 False :. Nil) cs where
   f :: List (Tup4 Word Word Word Bool) -> String -> String
   f as@(T4 a x y z :. bs) (ConsChar '\ESC' (ConsChar i cs))
     | i == '|'         = sgr a (f bs cs)
-    | i == '#'         = sgr (if z then 27 else 7) (f (T4 (if z then 7 else 27) x y (not z) :. as) cs)
+    | i == '#'         = sgr (inv $ not z) (f (T4 (inv z) x y (not z) :. as) cs)
     | 'a' <= i, i <= 'h', j <- charToWord i -. 67 = sgr j (f (T4 x j y z :. as) cs)
     | 'A' <= i, i <= 'H', j <- charToWord i -. 25 = sgr j (f (T4 y x j z :. as) cs)
   f as (ConsStr s@"\ESC" cs) = s <> f as cs
@@ -408,3 +407,5 @@ fixANSI cs = f (T4 0 39 49 False :. Nil) cs where
 
   sgr a b = "\ESC[" <> showWord a <> "m" <> b
 
+  inv True = 7
+  inv False = 27

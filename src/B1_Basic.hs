@@ -1,13 +1,13 @@
 module B1_Basic
-  ( on, ($), (.), const, flip, id
+  ( on, ($), (.), flip, id
 
   , Semigroup, (<>), (<<>>), Monoid, mempty, mconcat, mreplicate
   , Endo (MkEndo), appEndo
 
   , Functor ((<$>)), (<&>), Applicative (pure, (<*>))
-  , Monad, when, (>>=), (>>), join, (>=>), (=<<), forM, forM_, foldM
+  , Monad, (>>=), (>>), join, (>=>), (=<<), forM, forM_, foldM
 
-  , Bool (True, False), (&&), (||), not, ifThenElse
+  , Bool (True, False), (&&), (||), not
 
   , Char, ord, digitToWord
   , isUpper, isLower, isDigit, isGraphic, isAlphaNum, isSpace
@@ -17,14 +17,14 @@ module B1_Basic
   , map, replicate, reverse, span, splitAt, revSplitAt, zip, zipWith, unzip, groupBy
   , intercalate, intersperse, stripPrefix, tails, everyNth, distribute
 
-  , Maybe (Just, Nothing), maybe, fromMaybe, maybeToList, listToMaybe, isJust, isNothing
+  , Maybe (Just, Nothing), maybe, fromMaybe, fromMaybe', maybeToList, listToMaybe, isJust, isNothing
   , firstJust
 
   , Void, Either (Left, Right), either
 
   , Tag (tag), compareTag
-  , Ordering, (&&&)
-  , Ord (compare), compareCase, (==), (/=), (<=), (>=), (<), (>), max, min
+  , Ordering (LT, EQ, GT), (&&&)
+  , Ord (compare), (==), (/=), (<=), (>=), (<), (>), max, min
 
   , Int, Word, intToWord, wordToInt, enumFromTo, numberWith
 
@@ -131,22 +131,16 @@ foldM f a l = foldl (\a b -> a >>= \a -> f a b) (pure a) l
 
 join m = m >>= \x -> x
 
-when :: Applicative m => Bool -> m Tup0 -> m Tup0
-when False ~_ = pure T0
-when _      m = m
-
 
 ---------------------------------------- Functions
 
 id = \x -> x
 
-const x = \ ~_ -> x
-
 flip f = \x y -> f y x
 
 f . g = \x -> f (g x)
 
-f $ ~x = f x
+f $ x = f x
 
 on f g = \x y -> f (g x) (g y)
 
@@ -174,7 +168,7 @@ instance Tag (List a) where
   tag (_ :. _) = 1
 
 instance Ord a => Ord (List a) where
-  compare (a :. as) (b :. bs) = compare a b &&& compare as bs
+  compare (a :. as) (b :. bs) = compare a b &&& lazy (compare as bs)
   compare a b = compareTag a b
 
 instance Semigroup (List a) where
@@ -261,7 +255,7 @@ instance Monoid Tup0 where
 data Tup2 a b = T2 a b
 
 instance (Ord a, Ord b) => Ord (Tup2 a b) where
-  T2 a b `compare` T2 a' b' = compare a a' &&& compare b b'
+  T2 a b `compare` T2 a' b' = compare a a' &&& lazy (compare b b')
 
 instance (Semigroup a, Semigroup b) => Semigroup (Tup2 a b) where
   T2 a b <> T2 a' b' = T2 (a <> a') (b <> b')
@@ -307,12 +301,10 @@ data Tup5 a b c d e = T5 a b c d e
 
 ---------------------------------------- Bool
 
-ifThenElse True a ~_ = a
-ifThenElse _    ~_ b = b
-
 not True = False
 not False = True
 
+(&&), (||) :: Bool -> {-Lazy-}Bool -> Bool
 False && ~_ = False
 True  && b  = b
 
@@ -344,8 +336,9 @@ null _   = False
 
 ---------------------------------------- Eq
 
-condCons False ~_ bs =      bs
-condCons _      a bs = a :. bs
+condCons :: Bool -> {-Lazy-}a -> List a -> List a
+condCons False _ bs =      bs
+condCons _     a bs = a :. bs
 
 filter _ Nil = Nil
 filter p (x :. xs) = condCons (p x) x (filter p xs)
@@ -386,11 +379,11 @@ data Ordering = EQ | LT | GT
 class Ord a where
   compare :: a -> a -> Ordering
 
-compareCase :: Ord a => a -> a -> b -> b -> b -> b
-compareCase x y ~lt ~eq ~gt = case compare x y of LT -> lt; EQ -> eq; GT -> gt
-
 instance Ord Char where compare a b = compare (charToWord a) (charToWord b)
-instance Ord Word where compare a b = compareWord a b LT EQ GT
+instance Ord Word where
+  compare a b | eqWord a b = EQ
+              | ltWord a b = LT
+              | True       = GT
 
 instance Ord Tup0 where compare _ _ = EQ
 
@@ -399,16 +392,17 @@ class Tag a where tag :: a -> Word
 
 compareTag a b = compare (tag a) (tag b)
 
-LT &&& ~_ = LT
-EQ &&&  x = x
-GT &&& ~_ = GT
+(&&&) :: Ordering -> Lazy Ordering -> Ordering
+LT &&& _ = LT
+EQ &&& x = force x
+GT &&& _ = GT
 
-a <  b = compareCase a b True  False False
-a <= b = compareCase a b True  True  False
-a >  b = compareCase a b False False True
-a >= b = compareCase a b False True  True
-a == b = compareCase a b False True  False
-a /= b = compareCase a b True  False True
+a <  b = case compare a b of LT -> True ; EQ -> False; GT -> False
+a <= b = case compare a b of LT -> True ; EQ -> True ; GT -> False
+a >  b = case compare a b of LT -> False; EQ -> False; GT -> True
+a >= b = case compare a b of LT -> False; EQ -> True ; GT -> True
+a == b = case compare a b of LT -> False; EQ -> True ; GT -> False
+a /= b = case compare a b of LT -> True ; EQ -> False; GT -> True
 
 max a b | a < b = b
 max a _ = a
@@ -441,15 +435,20 @@ isJust _ = False
 isNothing Nothing{} = True
 isNothing _ = False
 
-fromMaybe ~_ (Just a) = a
-fromMaybe a _ = a
+fromMaybe :: Lazy a -> Maybe a -> a
+fromMaybe _ (Just a) = a
+fromMaybe a _ = force a
 
-maybe ~_ b (Just c) = b c
-maybe a ~_ _ = a
+fromMaybe' _ (Just a) = a
+fromMaybe' a _ = a
 
-firstJust :: Maybe a -> Maybe a -> Maybe a
+maybe :: {-Lazy-}a -> (b -> a) -> Maybe b -> a
+maybe _ b (Just c) = b c
+maybe a  _ _ = a
+
+firstJust :: Maybe a -> {-Lazy-}Maybe a -> Maybe a
 firstJust Nothing x = x
-firstJust x ~_ = x
+firstJust x       _ = x
 
 instance Semigroup a => Semigroup (Maybe a) where
   Nothing <> a       = a

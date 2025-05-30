@@ -74,7 +74,9 @@ matchPi cov icit v = spine' v >>= \case
     T2 _ m2 <- freshMeta'
     let pi = case icit of Impl -> CHPi; Expl -> CPi; _ -> impossible
     v2 <- vApps pi (m1 :. m2 :. Nil)
-    f <- if cov then conv v v2 else conv v2 v
+    f <- case cov of
+      True -> conv v v2
+      _    -> conv v2 v
     pure (T4 f icit m1 m2)
 
 conArity :: Val -> RefM Arity
@@ -98,12 +100,10 @@ matchHPi v = spine' v <&> \case
 
 data TmTy = MkTmTy Tm Val{-type-}
 
-data DefData = MkDefData
-  { isConstructor :: Bool
-  , tmTy          :: TmTy
-  , classData     :: Maybe ClassData
-  }
+data DefData = MkDefData Bool{-constructor-} TmTy (Maybe ClassData)
 
+tmTy          (MkDefData _ t _) = t
+classData     (MkDefData _ _ c) = c
 
 -- TODO: switch to Ref
 {-# noinline envR #-}
@@ -156,7 +156,7 @@ getLocalVals = asks localsR id
 lhsR :: Reader Bool
 lhsR = topReader (pure False)
 
-setLHS = local lhsR (const True)
+setLHS = local lhsR \_ -> True
 askLHS = asks lhsR id
 
 isOnTop :: RefM Bool
@@ -170,13 +170,8 @@ bvR = topReader (pure Nil)
 addBoundVar n = local bvR (n :.)
 askBoundVars = asks bvR id
 
-
-data ClassData = MkClassData
-  { _classVal     :: Val
-  , _dictVal      :: Val
-  , _superClasses :: List Val
-  , _methods      :: List (Tup2 Name Val)    -- names and full (closed) types
-  }
+                          -- class dict superclasses methods
+data ClassData = MkClassData Val   Val  (List Val)   (List (Tup2 Name Val))
 
 addClass :: Name -> ClassData -> RefM a -> RefM a
 addClass n d m = do
@@ -196,7 +191,7 @@ defineGlob_ cstr haslet metatest n tv t_ cont = addName_ n do
   let co = cont v t
   top <- isOnTop
   case T0 of
-    _ | haslet || not top -> addGlobal cstr n (if haslet then TVar n else tv) t (insertLocalVal n v co)
+    _ | haslet || not top -> addGlobal cstr n (case haslet of True -> TVar n; _ -> tv) t (insertLocalVal n v co)
       | metatest && not (rigid t)
       -> fail $ "meta in global definition:\n" <<>> print n <<>> " : " <<>> print t
       | metatest && not (rigid v), n /= "lookupDict", n /= "superClasses"
@@ -231,7 +226,9 @@ askDef' n = lookupDefs n <&> (<$>) tmTy
 evalEnv :: Tm -> RefM Val
 evalEnv t = getLocalVals >>= \ls -> eval "env" ls t
 
-evalEnv' n t = evalEnv t >>= \v -> if closed v then vTm n t v else pure v
+evalEnv' n t = evalEnv t >>= \v -> case closed v of
+  True -> vTm n t v
+  _    -> pure v
 
 freshMeta_ :: RefM Tm
 freshMeta_ = do
@@ -263,7 +260,7 @@ typeName n = addSuffix n "_t"
 ---------
 
 evalId :: Maybe (a -> RefM a) -> a -> RefM a
-evalId = fromMaybe pure
+evalId = fromMaybe' pure
 
 conv
   :: Val                  -- actual type
@@ -404,7 +401,7 @@ getPi _ = Nothing
 check :: Raw -> Val -> RefM Tm
 check r ty = do
   traceShow "4" $ "check " <<>> print r <<>> "\n :? " <<>> print ty
-  tagError r $ do
+  tagError r $ lazy do
     t <- check_ r ty
     traceShow "5" $ "check end " <<>> print r <<>> "\n ==> " <> print t
     pure t
@@ -465,7 +462,9 @@ check_ r ty = case r of
             pure (MkTmTy ta vta)
         top <- isOnTop
         T2 n tb <- defineGlob' (not top) n ta vta \n -> T2 n <$> check b ty
-        pure $ if top then tb else TLet n ta tb
+        pure $ case top of
+          True -> tb
+          _    -> TLet n ta tb
       ROLet (EVarStr n) t a b -> isOnTop >>= \case
        True -> do
         vta <- checkType n t
@@ -525,12 +524,12 @@ getHPi v = getHPi__ v >>= \case
     pure $ Just (T2 (T2 n a) b)
 
 getApp :: Val -> RefM (Maybe (Tup2 Val Val))
-getApp v = force v <&> \case
+getApp v = forceVal v <&> \case
   WApp a b -> Just (T2 a b)
   _ -> Nothing
 
 getConName :: Val -> RefM (Maybe Name)
-getConName v = force v <&> \case
+getConName v = forceVal v <&> \case
   WCon _ n -> Just n
   _ -> Nothing
 
@@ -696,7 +695,7 @@ assertOnTop = isOnTop >>= \case
 infer :: Raw -> RefM TmTy
 infer r = do
   traceShow "6" $ "infer " <<>> print r
-  tagError r $ do
+  tagError r $ lazy do
     MkTmTy t v <- infer_ r
     traceShow "7" $ "infer end " <<>> print r <<>> "\n ==> " <<>> print t <<>> "\n :: " <<>> print v 
     pure (MkTmTy t v)
@@ -806,7 +805,7 @@ infer_ r = case r of
         pure (MkTmTy ta vta)
     top <- isOnTop
     T2 n (MkTmTy tb vtb) <- defineGlob' (not top) n ta vta \n -> T2 n <$> infer b
-    pure (MkTmTy (if top then tb else TLet n ta tb) vtb)
+    pure (MkTmTy (case top of True -> tb; _ -> TLet n ta tb) vtb)
   (getPi -> Just (T4 pi n_@"_" a b)) -> do
     ta <- check a CType
     n <- mkName n_

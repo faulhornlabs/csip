@@ -153,13 +153,13 @@ newExcept = MkExcept <$> (stateRef exceptCounter \i -> T2 (i+1) i)
 throwError :: Except e -> e -> RefM a
 throwError (MkExcept p) e = throwRefM p e
 
-catchError :: Except e -> (e -> RefM a) -> RefM a -> RefM a
-catchError (MkExcept p) f ~g = catchRefM p f g
+catchError :: Except e -> (e -> RefM a) -> Lazy (RefM a) -> RefM a
+catchError (MkExcept p) f g = catchRefM p f g
 
 runExcept :: (Except e -> RefM a) -> RefM (Either e a)
 runExcept f = do
   e <- newExcept
-  catchError e (pure . Left) (Right <$> f e)
+  catchError e (pure . Left) (lazy (Right <$> f e))
 
 
 -----------------------------------------------

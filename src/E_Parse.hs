@@ -8,7 +8,7 @@ module E_Parse
     ( Apps, RVar, (:@), Lam, RLam, RHLam, RPi, RHPi, RCPi, RIPi, RLet, ROLet, RLetTy, RConstructor, RBuiltin
     , Hole, RRule, RDot, RApp, RHApp, RView, RGuard
     , RClass, RInstance, RData, RNat, RString, REnd, RAnn, RCase, RCaseOf)
-  , zVar, Tokens(..), pattern (:!), pattern NilT
+  , zVar, Tokens(..)
 
   , Mixfix, addPrefix, addSuffix, addIntSuffix, HasArity (..), IsMixfix (..), showMixfix
   , TokenSeq, ExpTree'
@@ -37,13 +37,13 @@ negIntHash i = (intHash i) .|. 9223372036854775808
 ------------------------------------------------------
 
 
-data Precedences = Precs
-  { leftPrec  :: {-# UNPACK #-} Precedence
-  , rightPrec :: {-# UNPACK #-} Precedence
-  }
+data Precedences = Precs Precedence Precedence
+
+leftPrec  (Precs p _) = p
+rightPrec (Precs _ p) = p
 
 instance Ord Precedences where
-  Precs a b `compare` Precs a' b' = compare a a' &&& compare b b'
+  Precs a b `compare` Precs a' b' = compare a a' &&& lazy (compare b b')
 
 
 precedenceTableString :: String
@@ -111,7 +111,9 @@ isOperator = \case
 ---------------------------------------------------
 
 
-data IString = MkIString {unIString :: String}
+data IString = MkIString String
+
+unIString (MkIString s) = s
 
 instance IsString IString where
   fromString' s = MkIString <$> fromString' s
@@ -207,8 +209,8 @@ tokenMap = topStringMap \m -> do
   forM_ precedenceTableList \(T2 s (T2 l r)) -> lookupSM s m >>= \case
     Nothing -> do
       _n <- newId
-      insertSM s (MkTI True (negIntHash s) (Precs (fromMaybe 0 l) (fromMaybe 0 r))) m
-    Just (MkTI gl w (Precs l' r')) -> insertSM s (MkTI gl w (Precs (fromMaybe l' l) (fromMaybe r' r))) m
+      insertSM s (MkTI True (negIntHash s) (Precs (fromMaybe' 0 l) (fromMaybe' 0 r))) m
+    Just (MkTI gl w (Precs l' r')) -> insertSM s (MkTI gl w (Precs (fromMaybe' l' l) (fromMaybe' r' r))) m
   do
     let infixr 5 .+
         (.+) :: String -> RefM Tup0 -> RefM Tup0
@@ -516,11 +518,14 @@ smallNesting (MkNesting a b c) = b < 2 && (null a && all (< 1) c || null c && al
 -- optimized version
 data Nesting = MkNesting (List Word) Word Word | Big
 
+mkNesting True a b c = MkNesting a b c
+mkNesting _ _ _ _ = Big
+
 instance Semigroup Nesting where
-  MkNesting a x 0 <> MkNesting Nil      y d  | xy <- max x y = if xy < 2 && null a || d == 0 then MkNesting a xy d else Big
-  MkNesting a x 0 <> MkNesting (c:. cs) y d  | xc <- max x c = if xc < 2 then MkNesting (a ++ xc :. cs) y d else Big
-  MkNesting a x n <> MkNesting Nil      y d  = if y == 0 then MkNesting a x (d + n + 1) else Big
-  MkNesting a x n <> MkNesting (c:. cs) y d  | c1 <- c+1 = if c1 < 2 then MkNesting a x (n -. 1) <> MkNesting Nil (c + 1) 0 <> MkNesting cs y d else Big
+  MkNesting a x 0 <> MkNesting Nil      y d  | xy <- max x y = mkNesting (xy < 2 && null a || d == 0) a xy d
+  MkNesting a x 0 <> MkNesting (c:. cs) y d  | xc <- max x c = mkNesting (xc < 2) (a ++ xc :. cs) y d
+  MkNesting a x n <> MkNesting Nil      y d  = mkNesting (y == 0) a x (d + n + 1)
+  MkNesting a x n <> MkNesting (c:. cs) y d  | c + 1 < 2 = MkNesting a x (n -. 1) <> MkNesting Nil (c + 1) 0 <> MkNesting cs y d
   _               <> _                       = Big
 
 instance Monoid Nesting where
@@ -673,22 +678,22 @@ instance Print (TokenSeq Layout) where
 --------------------------------------------
 
 
-data Tokens a = MkTokens {getTokens :: List (Token a)}
-
-instance Ord (Tokens a) where compare (MkTokens a) (MkTokens b) = compare a b
-
-pattern (:!) :: Token a -> Tokens a -> Tokens a
-pattern a :! b <- MkTokens (a :. (MkTokens -> b))
-  where a :! b =  MkTokens (a :. getTokens b)
-
-pattern NilT = MkTokens Nil
-
-{-# COMPLETE (:!), NilT #-}
+data Tokens a
+  = NilT
+  | Token a :! Tokens a
 
 infixr 5 :!
 
+instance Tag (Tokens a) where
+  tag NilT     = 0
+  tag (_ :! _) = 1
+
+instance Ord (Tokens a) where
+  compare (a :! as) (b :! bs) = compare a b &&& lazy (compare as bs)
+  compare a b = compareTag a b
+
 instance Semigroup (Tokens a) where
-  NilT <> xs = xs
+  NilT      <> xs = xs
   (x :! xs) <> ys = x :! (xs <> ys)
 
 splitAt' :: Word -> Tokens a -> Tup2 (Tokens a) (Tokens a)
@@ -893,7 +898,7 @@ instance Ord a => Ord (ExpTree a) where
   compare (RNat_ _ a) (RNat_ _ a') = compare a a'
   compare (RString_ _ a) (RString_ _ a') = compare a a'
   compare (RVar a) (RVar a') = compare a a'
-  compare (EApp _ a b) (EApp _ a' b') = compare a a' &&& compare b b'
+  compare (EApp _ a b) (EApp _ a' b') = compare a a' &&& lazy (compare b b')
   compare a b = compareTag a b
 
 instance Functor ExpTree where
@@ -966,9 +971,9 @@ unop (topOp -> T4 (fromListTokens -> os) l ts r) = case os of
     _ :! xs -> last xs
     _ -> impossible
 
-  T2 lf fs = if leftPrec (precedence $ head_os) == leftPrec topPrec
-             then T2 (f l) id
-             else T2 id (l :.)
+  T2 lf fs = case leftPrec (precedence $ head_os) == leftPrec topPrec of
+             True  -> T2 (f l) id
+             False -> T2 id (l :.)
   rf x | rightPrec (precedence (last os)) == rightPrec topPrec, Empty <- r = x
   rf x = x :@ unop r
 
@@ -1357,10 +1362,10 @@ notDigitEnd _ = False
 
 type NameStr = Mixfix Desug
 
-data Name = MkName
-  { nameStr :: NameStr
-  , nameId  :: Word
-  }
+data Name = MkName NameStr Word
+
+nameStr (MkName n _) = n
+nameId  (MkName _ w) = w
 
 instance HasId Name where getId = nameId
 
@@ -1409,7 +1414,7 @@ unscope :: ExpTree Name -> RefM (ExpTree' Desug)
 unscope t = runReader (T2 (mempty :: IntMap Name Word) (emptyMap :: Map NameStr Word)) ff where
 
   addIndex n Nothing = nameStr n
-  addIndex (nameStr -> n) (Just i) = addIntSuffix (if notDigitEnd n then n else addSuffix n "_") i
+  addIndex (nameStr -> n) (Just i) = addIntSuffix (case notDigitEnd n of True -> n; False -> addSuffix n "_") i
 
   ff r = f t where
 
@@ -1431,7 +1436,7 @@ unscope t = runReader (T2 (mempty :: IntMap Name Word) (emptyMap :: Map NameStr 
           _ -> do
             k <- asks r (lookupMap n . snd)
             let m = addIndex v k
-            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insertMap n (1 + fromMaybe 0 k)) (f a)
+            GLam <$> mapM f es <*> pure m <*> local r (maybe id (insertIM v) k *** insertMap n (1 + fromMaybe' 0 k)) (f a)
       a :@ b -> (:@) <$> f a <*> f b
 
 
