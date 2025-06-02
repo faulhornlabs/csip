@@ -5,7 +5,6 @@
 # layout highlight
 # exptree highlight
 # sugar highlight
-# scope highlight
 # elab highlight
 u = Type             # Type universe
 

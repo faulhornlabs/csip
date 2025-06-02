@@ -5,7 +5,6 @@
 # space quote highlight
 # exptree quote highlight
 # sugar quote highlight
-# scope quote highlight
 u = Type
 
 const String Word (id String "Hello World!") 13

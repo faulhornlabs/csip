@@ -63,22 +63,22 @@ a </> b = a <> "/" <> b
 -----------------------------------------------
 
 die                        f = MkIO \_   -> Die (toPreludeString f)
-getArgs                      = MkIO \end -> GetArgs \r -> end (map fromString $ foldrPrelude (:.) Nil r)
-getTemporaryDir              = MkIO \end -> GetTemporaryDir \f -> end (fromString f)
+getArgs                      = MkIO \end -> GetArgs \r -> end (map mkString $ foldrPrelude (:.) Nil r)
+getTemporaryDir              = MkIO \end -> GetTemporaryDir \f -> end (mkString f)
 presentationMode (MkIO m)    = MkIO \end -> PresentationMode (lazy (m \_ -> ProgEnd)) (lazy (end T0))
-getTerminalSize              = MkIO \end -> GetTerminalSize (lazy (end (T2 119 131))) \w h -> end (T2 w h)
+getTerminalSize              = MkIO \end -> GetTerminalSize (lazy (end (T2 119 31))) \w h -> end (T2 w h)
 
 -----------------------------------------------
 
 parseFile :: Parse a => FilePath -> FilePath -> IO (Maybe a)
 parseFile dir f = MkIO \end ->
   ReadFile (toPreludeString $ dir </> f) (lazy (end Nothing)) \s ->
-  Do (mkLocString f $ fromPreludeString s) (end . Just)
+  Do (mkLocString f s) (end . Just)
 
 parseDataFile :: Parse a => FilePath -> RefM a
 parseDataFile f = do
   dir <- fromString <$> getDataDirRaw
-  readFileRaw (toPreludeString $ dir </> f) >>= \s -> mkLocString f (fromPreludeString s)
+  readFileRaw (toPreludeString $ dir </> f) >>= \s -> mkLocString f s
 
 printFile :: Print a => FilePath -> a -> IO Tup0
 printFile f a = do
@@ -134,18 +134,21 @@ cursorForward n       = "\ESC[" <> showWord n <> "C"
 setCursorPosition n m = "\ESC[" <> showWord (n + 1) <> ";" <> showWord (m + 1) <> "H"
 
 versionString :: String
-versionString = "1"
+versionString = "2"
 
 
 -------------------------------- command line interface
 
+                    --   subcommand help   action
+data Command = MkCommand String     String CLI
+
 data CLI
-  = Commands (List (Tup3 String String CLI)) CLI
+  = Commands (List Command)  CLI{-default action-}
   | Files (List String -> IO Tup0)
   | CEmpty
 
 command :: String -> String -> CLI -> CLI
-command a b c = Commands (T3 a b c :. Nil) CEmpty
+command a b c = Commands (MkCommand a b c :. Nil) CEmpty
 
 instance Semigroup CLI where
   CEmpty <> b = b
@@ -158,14 +161,14 @@ runCLI progname x = getArgs >>= eval Nil x
  where
   eval hs x (s:. _) | s == "-h" || s == "--help" = printHelp hs (usage x)
   eval hs (Commands ps _) (s:. ss)
-    | Just (T2 h x) <- lookupList s (ps <&> \(T3 a h c) -> T2 a (T2 h c)) = eval (h:. hs) x ss
+    | Just (T2 h x) <- lookupList s (ps <&> \(MkCommand a h c) -> T2 a (T2 h c)) = eval (h:. hs) x ss
   eval hs (Commands _ p) ss = eval hs p ss
   eval _ (Files io) s = io s
   eval _ _ _ = putStr $ unlines $ "Usage:" :. "" :. (usage x <&> \h -> "  " <> progname <> h)
 
   usage = \case
     Files _ -> " FILE..." :. Nil
-    Commands ps p -> (do (T3 a _b c) <- ps; r <- usage c; pure (" " <> a <> r)) <> usage p
+    Commands ps p -> (do (MkCommand a _b c) <- ps; r <- usage c; pure (" " <> a <> r)) <> usage p
     CEmpty -> Nil
 
   printHelp :: List String -> List String -> IO Tup0

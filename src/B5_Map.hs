@@ -1,6 +1,6 @@
 module B5_Map
   ( Map, emptyMap, insertMap, lookupMap
-  , walk, downUp, topDown, bottomUp
+  , downUp
   ) where
 
 import B1_Basic
@@ -51,8 +51,8 @@ emptyMap = E
 walk
   :: Ord a
   => (a -> RefM (Tup2 b (List a)))              -- down
-  -> (a -> b -> RefM b)                -- shared try
-  -> (a -> b -> List (Tup2 a b) -> RefM b)
+  -> (a -> b -> RefM b)                         -- shared try
+  -> (a -> b -> List (Tup2 a b) -> RefM b)      -- up
   -> List a
   -> RefM (Map a b)
 walk children  down up xs = (<$>) snd (runState emptyMap go) where
@@ -87,21 +87,3 @@ downUp down up as = walk down' (\_ -> pure) up' as <&> (<$>) g
   up' _ _ _ = impossible
   g (Right c) = c
   g _ = impossible
-
-topDown
-  :: Ord a
-  => (a -> RefM (Tup2 b (List a)))
-  -> List a
-  -> RefM (Map a b)
-topDown down
-  = walk down (\_ -> pure) (\_ b _ -> pure b)
-
-bottomUp
-  :: Ord a
-  => b
-  -> (a -> RefM (List a))
-  -> (a -> List (Tup2 a b) -> RefM b)
-  -> a
-  -> RefM (Map a b)
-bottomUp init children up x
-  = walk (\v -> T2 init <$> children v) (\_ -> pure) (\a _ b -> up a b) (x :. Nil)

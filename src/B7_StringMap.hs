@@ -67,17 +67,3 @@ updateSM (stringToList -> s) x (MkSM hm) | h <- hashString' s = do
 
 insertSM :: String -> a -> StringMap a -> RefM Tup0
 insertSM s a sm = updateSM s (YesHM a) sm
-
-{-
-runStringMap :: (StringMap a -> RefM b) -> RefM b
-runStringMap cont = newStringMap >>= cont
-
-localInsert :: StringMap a -> String -> a -> RefM b -> RefM b
-localInsert sm s a m = do
-  x <- lookupSM sm s
-  updateSM s (YesHM a) sm
-  b <- m
-  updateSM s x sm
-  pure b
--}
-

@@ -15,7 +15,7 @@ import B4_Partial
 half :: Word -> Word
 half i = shiftR i 1
 
-data IntMap a b
+data IntMap a b   -- a = key,  b = value
   = Empty
   | Zero a b               -- image of 0
   | Node (IntMap a b) (IntMap a b)  -- (*2), (+1).(*2)
@@ -60,29 +60,30 @@ pattern ENode l r <- (getNode -> T2 l r)
 lookupIM :: HasId k => k -> IntMap k a -> Maybe a
 lookupIM a m = (<$>) snd (lookup (getId a) m)  where
   lookup 0 (Zero a b) = Just (T2 a b)
-  lookup i (Node l r) | even i    = lookup (half i) l
-                      | True = lookup (half i) r
+  lookup i (Node l r) | even i = lookup (half i) l
+                      | True   = lookup (half i) r
   lookup _ _ = Nothing
 
 insertIM :: HasId k => k -> a -> IntMap k a -> IntMap k a
 insertIM a b m = insert (getId a) a b m  where
   insert 0 x y Empty  = Zero x y
   insert 0 x y Zero{} = Zero x y
-  insert i x y (ENode l r) | even i    = ENode (insert (half i) x y l) r
-                           | True = ENode l (insert (half i) x y r)
+  insert i x y (ENode l r) | even i = ENode (insert (half i) x y l) r
+                           | True   = ENode l (insert (half i) x y r)
 
 deleteIM :: HasId k => k -> IntMap k a -> IntMap k a
 deleteIM a m = delete (getId a) m  where
-  delete i (Node l r) | even i    = ENode (delete (half i) l) r
-                      | True = ENode l (delete (half i) r)
+  delete i (Node l r) | even i = ENode (delete (half i) l) r
+                      | True   = ENode l (delete (half i) r)
   delete _ _ = Empty
 
 unionWithIM :: (b -> b -> b) -> IntMap a b -> IntMap a b -> IntMap a b
 unionWithIM _ Empty x = x
 unionWithIM _ x Empty = x
-unionWithIM f (Zero a b) (Zero _ b') = Zero a (f b b')
+unionWithIM f (Zero a b)  (Zero _ b')   = Zero a (f b b')
 unionWithIM f (ENode l r) (ENode l' r') = Node (unionWithIM f l l') (unionWithIM f r r')
 
+-- TODO: make a variant with no ordering
 assocsIM :: IntMap a b -> List (Tup2 a b)
 assocsIM = map snd . go (1 :: Word) 0 where
   go _ _ Empty = Nil

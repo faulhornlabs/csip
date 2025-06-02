@@ -1,12 +1,12 @@
 module B8_OpSeq
-  ( Precedence
+  ( Precedence, Precedences (MkPrecedences), leftPrec, rightPrec, HasPrecedences(..)
   , OpSeq
     ( Empty
     , Node2, Node3, (:<), (:=), (:>)
     )
   , singOpSeq
   , topOp
-  , foldMapOpSeq
+  , foldMapOpSeq, filterOpSeq
   ) where
 
 import B0_Builtins
@@ -15,6 +15,19 @@ import B1_Basic
 ----------------------------------------
 
 type Precedence = Word
+
+data Precedences = MkPrecedences Precedence Precedence   -- left and right precedence
+
+leftPrec  (MkPrecedences p _) = p
+rightPrec (MkPrecedences _ p) = p
+
+instance Ord Precedences where
+  MkPrecedences a b `compare` MkPrecedences a' b' = compare a a' &&& lazy (compare b b')
+
+class HasPrecedences a where
+  precedences :: a -> Precedences
+
+
 
 data SeqPrec
   = ConsP Precedence Word SeqPrec
@@ -56,7 +69,7 @@ data Mid b
   | MNil
 
 instance Semigroup (Mid b) where
-  MNil <> ms = ms
+  MNil            <> ms = ms
   MCons a b c d e <> ms = MCons a b c d (e <> ms)
 
 ----------------------------------------
@@ -74,8 +87,8 @@ instance Ord (OpSeq b) where
 mkNodeL l a b c d e f   = Node l a b c d e f (e `minPrec` rightPrecSeq f)
 mkNodeR   a b c d e f r = Node (b `minPrec`  leftPrecSeq a) a b c d e f r
 
-singOpSeq :: Precedence -> b -> Precedence -> OpSeq b
-singOpSeq a b c = Node (singPrec a) Empty a b MNil c Empty (singPrec c)
+singOpSeq :: HasPrecedences b => b -> OpSeq b
+singOpSeq b@(precedences -> MkPrecedences l r) = Node (singPrec l) Empty l b MNil r Empty (singPrec r)
 
 instance Semigroup (OpSeq b) where
   Empty <> a = a
@@ -126,6 +139,11 @@ foldMapOpSeq fx s = f s
     MNil -> mempty
     MCons _ os _ a ms -> f os <> fx a <> g ms
 
+filterOpSeq :: HasPrecedences a => (a -> Bool) -> OpSeq a -> OpSeq a
+filterOpSeq p = foldMapOpSeq c where
+  c s | p s = singOpSeq s
+  c _ = mempty
+
 topOp :: OpSeq b -> Tup4 (List b) (OpSeq b) (List (OpSeq b)) (OpSeq b)
 topOp = \case
   Empty -> T4 Nil Empty Nil Empty
@@ -136,3 +154,4 @@ topOp = \case
 
   g (MCons _ x _ _ ms) = x :. g ms
   g MNil = Nil
+

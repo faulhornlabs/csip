@@ -61,7 +61,8 @@ impossible :: HasCallStack => a
 impossible = error_ "impossible"
 
 traceShow :: String -> RefM String -> RefM Tup0
---traceShow ~s m  | s `elem` [{-"56", "57"-} "1","2","3","4","5","6","7"] = m >>= \s -> mapM_ putChar (stringToList s) >> putChar '\n'
+--traceShow ~s m  | elem s $ "isString" :. Nil -- [{-"56", "57"-} "1","2","3","4","5","6","7"]
+--  = m >>= \s -> putStrRefM (toPreludeString (fixANSI s)) >> putStrRefM "\n"
 traceShow _ _ = pure T0
 
 

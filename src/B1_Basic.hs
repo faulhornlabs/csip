@@ -39,8 +39,6 @@ module B1_Basic
   , foldMap, foldr, foldl, null, length, elem, sum, all, and, any, or
   , mapM_, sequence, mapM, condCons, guard, lookupList
 
-  , Interval (MkInterval), mkInterval
-
   , IntHash (intHash)
   ) where
 
@@ -355,7 +353,7 @@ groupBy f xs | T2 as bs <- g xs = as:. groupBy f bs
   h _ (y:. ys) = T2 Nil (y:. ys)
 
 nub Nil = Nil
-nub (x:. xs) = x:. nub (filter (/= x) xs)
+nub (x:. xs) = x :. nub (filter (/= x) xs)
 
 
 lookupList _ Nil = Nothing
@@ -503,16 +501,6 @@ isGraphic c = c == '!' || c == '#'  || c == '$' || c == '%' || c == '&'
 
 isAlphaNum c
   = isLower c || isUpper c || isDigit c || c == '_' || c == '\''
-
-
------------------------------------------------
-
-data Interval a = MkInterval a a
-
-mkInterval a b = MkInterval a b
-
-instance Semigroup (Interval a) where
-  MkInterval a _ <> MkInterval _ b = MkInterval a b
 
 
 ---------------------------------------- Num

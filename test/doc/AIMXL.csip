@@ -28,7 +28,7 @@ Goals:
 
 
 
-The implementation of Csip is inspired by the prototypes of András Kovács:
+The implementation of Csip is inspired by the prototypes of Andras Kovacs:
 
 - https://github.com/AndrasKovacs/elaboration-zoo
 - https://github.com/AndrasKovacs/staged
@@ -458,7 +458,7 @@ data Code : Ty p -> Set where
   Lam    : (Code c -> Code io) -> Code (c --> io)
   App    : Code (c --> io) -> (Code c -> Code io)
 
-  Lit  : ℕ ->             Code ((Int --> IO) --> IO)
+  Lit  : Nat ->           Code ((Int --> IO) --> IO)
   Add  : Code (Int --> Int -->  (Int --> IO) --> IO)
   Less : Code (Int --> Int -->   IO  --> IO  --> IO)
 
@@ -582,7 +582,7 @@ Plans
 
 - implement a C-- backend (Csaba Hruska)
 - support polarized object codes
-- make bigger examples (with Balázs Kőműves and Csaba Hruska)
+- make bigger examples (with Balazs Komuves and Csaba Hruska)
 
 
 - implement pattern synonyms

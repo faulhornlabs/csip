@@ -66,11 +66,11 @@ topM :: RefM a -> a
 topM = unsafePerformRefM
 
 
+fail = 0  -- needed for GHC 9.10
+
 -------------------------------------------------- State
 
 data State a = MkState (Ref a)
-
-fail = 0  -- needed for GHC 9.10
 
 newState :: a -> RefM (State a)
 newState a = MkState <$> newRef a
@@ -128,14 +128,14 @@ data Writer a = MkWriter (Ref a)
 newWriter :: Monoid w => RefM (Writer w)
 newWriter = MkWriter <$> newRef mempty
 
-runWriter :: (Monoid w) => (Writer w -> RefM a) -> RefM (Tup2 a w)
+runWriter :: Monoid w => (Writer w -> RefM a) -> RefM (Tup2 a w)
 runWriter cont = do
   w@(MkWriter st) <- newWriter
   a <- cont w
   r <- readRef st
   pure (T2 a r)
 
-tell :: (Semigroup w) => Writer w -> w -> RefM Tup0
+tell :: Monoid w => Writer w -> w -> RefM Tup0
 tell (MkWriter st) x = modify (MkState st) (x <>)
 
 
@@ -150,16 +150,16 @@ exceptCounter = topM (newRef 0)
 newExcept :: RefM (Except e)
 newExcept = MkExcept <$> (stateRef exceptCounter \i -> T2 (i+1) i)
 
+runExcept :: (Except e -> RefM a) -> RefM (Either e a)
+runExcept f = do
+  e <- newExcept
+  catchError e (pure . Left) (lazy (Right <$> f e))
+
 throwError :: Except e -> e -> RefM a
 throwError (MkExcept p) e = throwRefM p e
 
 catchError :: Except e -> (e -> RefM a) -> Lazy (RefM a) -> RefM a
 catchError (MkExcept p) f g = catchRefM p f g
-
-runExcept :: (Except e -> RefM a) -> RefM (Either e a)
-runExcept f = do
-  e <- newExcept
-  catchError e (pure . Left) (lazy (Right <$> f e))
 
 
 -----------------------------------------------
@@ -247,6 +247,3 @@ newId = stateRef idRef \i -> T2 (i+1) i
 
 mkLocString :: (Parse a) => String -> CharArray -> RefM a
 mkLocString n s = newId <&> mkFileString n s >>= parse
-
-
-

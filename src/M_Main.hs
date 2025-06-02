@@ -46,9 +46,8 @@ doCmds_ cmd s = case cmd of
     "space"     -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Unspaced))
     "layout"    -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Layout))
     "op"        -> runRefM $ sh =<< (parse s :: RefM (ExpTree' Layout))
-    "exptree"   -> runRefM $ sh =<< (parse s :: RefM (ExpTree' POp))
+    "exptree"   -> runRefM $ sh =<< (parse s :: RefM (ExpTree' PatchedOp))
     "sugar"     -> runRefM $ sh =<< (parse s :: RefM (ExpTree' Desug))
-    "scope"     -> runRefM $ sh =<< (parse s :: RefM Raw)    -- TODO: remove
     "elab"      -> runRefM $ sh =<< (parse s :: RefM Tm)
     "eval"      -> runRefM $ sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF)
     "type"      -> runRefM $ sh =<< (parse s >>= inferTop <&> (\(MkTmTy _ t) -> t) >>= quoteNF')
