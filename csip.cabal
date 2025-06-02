@@ -65,7 +65,7 @@ executable csip
                     , KindSignatures
                     , FlexibleInstances
                     , FlexibleContexts
-                    , GADTs
+                    , ExistentialQuantification
 
   ghc-options:      -fobject-code
                     -Wall
@@ -73,3 +73,4 @@ executable csip
                     -Wno-missing-pattern-synonym-signatures
                     -Wno-name-shadowing
                     -Wno-orphans
+                    -Wno-unused-do-bind

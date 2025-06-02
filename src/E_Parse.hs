@@ -316,7 +316,7 @@ string :: TokenSeq Spaced -> TokenSeq Stringed
 string = \case
   Node2 l a@"\"" (Node2 s b@"\"" r) | not (hasNl s)
     -> coerce l <> singTS (MkLit $ showToken a <> appEndo (foldMapOpSeq (\t -> MkEndo (showToken t <>)) s) (showToken b)) <> string r
-  Node2 _ s@"\"" _ -> error $ print s <&> \r -> "Unterminated string\n" <> r
+  Node2 _ s@"\"" _ -> error $ "Unterminated string\n" <<>> print s
   a -> coerce a
  where
   hasNl (Node2 _ "\n" _) = True
@@ -627,7 +627,7 @@ sep w a@(MkDoc ia da _) b@(MkDoc ib db _) = a <> op <> b where
     , Just (MkInterval b _) <- ib
     , glueChars (lastStr $ showToken a) (headStr $ showToken b)
     || not (a `elem` ("(" :. "[" :. "{" :. "\\" :. Nil)
-         || b `elem` ("." :. "," :. ":" :. ";" :. "}" :. ")" :. "]" :. Nil)
+         || b `elem` ("," :. ";" :. "}" :. ")" :. "]" :. Nil)
            )
     = mkDoc " "
     | True = mempty

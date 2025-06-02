@@ -72,7 +72,7 @@ Instead of
 
 Csip has
 
-      lex . tree . space . op . sugar . scope
+      lex . tree . space . op . sugar
 
 where (.) is composition of bidirectional functions
 
@@ -82,7 +82,6 @@ where (.) is composition of bidirectional functions
   space      -- remove / add whitespace
   op         -- remove / add (mixfix) operators
   sugar      -- desugar / sugar syntactic constructs
-  scope      -- add unique ids to names / rename by need
 
 #####
 # source
@@ -283,10 +282,9 @@ Csip's precedence relation (half)
             +_
            _+
           else_
-        _->   _:
+        _->   _:   \_
          ->_   :_
            in_
-            \_
            _=
             =_
            _;
@@ -748,22 +746,6 @@ main
 
 #####
 # source
------------------------------
- Add unique ids to names and
-  rename names when needed
------------------------------
-
-#####
-# source
-# scope
-x = a + b
-x = x * b
-x = x ^ x
-f x
-
-
-#####
-# source
             Section II
             ==========
 
@@ -821,7 +803,7 @@ Layout rules (= replacing semicolons with indentation)
 are supported by adding two new phases:
 
 
-  indent . lex . tree . space . layout . op . sugar . scope
+  indent . lex . tree . space . layout . op . sugar
      |                             |
      |                             |
      v                             v
@@ -854,7 +836,7 @@ Handling of comments can be done at different places
 in the pipeline:
 
 
-   lex . tree . space . op . sugar . scope
+   lex . tree . space . op . sugar
     |     |       |     |
     |     v       v     v
     |    higher level comments
@@ -1007,11 +989,8 @@ x = "adfasdf
 
 
 #####
-# sugar
-
-a = b
-
-#####
+# source
+# elab
 
 f : Type -> Type = \x -> x
 
@@ -1058,7 +1037,6 @@ and it encloses the pretty printed result of (a) and (b).
 # op quote
 # exptree quote
 # sugar quote
-# scope quote
 (a: Type)-> a-> a
 
 #####
