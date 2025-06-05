@@ -358,8 +358,8 @@ foreign import ccall unsafe "stdio.h fread"        fread     :: CString -> Int -
 foreign import ccall unsafe "stdio.h fwrite"       fwrite    :: CString -> Int -> Int -> Ptr CFile -> IO Int
 foreign import ccall unsafe "stdio.h fseek"        fseek     :: Ptr CFile -> Word -> Word -> IO Int
 foreign import ccall unsafe "stdio.h ftell"        ftell     :: Ptr CFile -> IO Int
-foreign import ccall unsafe "stdio.h &stdout"      stdoutPtr :: Ptr (Ptr CFile)
-foreign import ccall unsafe "stdio.h &stdin"       stdinPtr  :: Ptr (Ptr CFile)
+foreign import ccall unsafe "getstdout"            stdoutPtr :: IO (Ptr CFile)
+foreign import ccall unsafe "getstdin"             stdinPtr  :: IO (Ptr CFile)
 foreign import ccall unsafe "stdio.h fclose"       fclose    :: Ptr CFile -> IO Int
 foreign import ccall unsafe "stdio.h fflush"       fflush    :: Ptr CFile -> IO Int
 foreign import ccall unsafe "stdio.h getchar"      getChar'  :: IO Char
@@ -417,12 +417,12 @@ stdin_NoBuffering err ok = do
     let p = plusPtr ptr 17{-c_cc-}
     poke (plusPtr p 6{-VMIN-}  :: Ptr Word8) 1
     poke (plusPtr p 5{-VTIME-} :: Ptr Word8) 0
-  sin <- peek stdinPtr
+  sin <- stdinPtr
   notErr err (setvbuf sin nullPtr 2{-_IONBF-} 0) do
   ok
 
 stdout_LineBuffering err ok = do
-  sout <- peek stdoutPtr
+  sout <- stdoutPtr
   notErr err (setvbuf sout nullPtr 1{-_IOLBF-} 10000) do
   ok
 
@@ -462,7 +462,7 @@ putStrRefM :: PreludeString -> RefM Tup0
 putStrRefM s = ioToRefM $ putStr' s ioerror (pure T0)
 
 putStr' s_ err ok = do
-  f <- peek stdoutPtr
+  f <- stdoutPtr
   newCStringLen s_ >>= \(s, len) -> do
   len' <- fwrite s 1 len f
   guardErr err (len' == len) do

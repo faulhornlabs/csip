@@ -30,6 +30,7 @@ executable csip
   build-depends:      base >= 4.16 && < 4.22
 
   hs-source-dirs:     src
+  c-sources:          src/cbits.c
   autogen-modules:    Paths_csip
   other-modules:      Paths_csip
                     , B0_Builtins
