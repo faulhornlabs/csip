@@ -1,0 +1,11 @@
+# elab
+
+a = Type -> Type
+
+f : Type -> Type
+f _ = a
+
+Type
+
+
+

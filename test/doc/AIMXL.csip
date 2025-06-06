@@ -174,7 +174,7 @@ class Functor m => Applicative m  where
   (<*>) : m (a -> b) -> m a -> m b
 
 class Applicative m => Monad m  where
-  (>>=) : m a -> (a -> m b) -> m b
+  builtin (>>=) : m a -> (a -> m b) -> m b
 
 
 {- defined in Prelude

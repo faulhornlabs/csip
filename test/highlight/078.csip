@@ -1,4 +1,8 @@
 # elab quote highlight
+
+constructor builtin Word   : Type
+constructor builtin String : Type
+
 u = Type   # Type universe
 
 id: (a: u) -> a -> a

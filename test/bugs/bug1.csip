@@ -1,0 +1,11 @@
+# source
+# eval
+# stage
+
+import Builtins
+
+f : OBool -> OBool
+f = \a -> a
+
+-- main expression
+((\x -> f (f x)) : Code _)

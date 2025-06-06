@@ -1,0 +1,12 @@
+# elab
+# eval
+# stage
+
+import Builtins
+
+g : Bool -> Code (OBool -> OBool)
+g _ a = a
+
+g1 := g True
+
+OTrue

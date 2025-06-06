@@ -1,16 +1,13 @@
 module B8_OpSeq
-  ( Precedence, Precedences (MkPrecedences), leftPrec, rightPrec, HasPrecedences(..)
-  , OpSeq
-    ( Empty
-    , Node2, Node3, (:<), (:=), (:>)
-    )
-  , singOpSeq
-  , topOp
-  , foldMapOpSeq, filterOpSeq
+  ( Precedence, Precedences (MkPrecedences), HasPrecedences (precedences), leftPrec, rightPrec
+  , OpSeq (Empty, Node2, Node3), singOpSeq
+  , foldMapOpSeq, foldMapTopOp, filterOpSeq
   ) where
 
 import B0_Builtins
 import B1_Basic
+import B2_String
+import B3_Mem
 
 ----------------------------------------
 
@@ -18,20 +15,17 @@ type Precedence = Word
 
 data Precedences = MkPrecedences Precedence Precedence   -- left and right precedence
 
-leftPrec  (MkPrecedences p _) = p
-rightPrec (MkPrecedences _ p) = p
-
-instance Ord Precedences where
-  MkPrecedences a b `compare` MkPrecedences a' b' = compare a a' &&& lazy (compare b b')
-
 class HasPrecedences a where
   precedences :: a -> Precedences
 
+instance HasPrecedences Precedences where precedences p = p
 
+leftPrec  (precedences -> MkPrecedences p _) = p
+rightPrec (precedences -> MkPrecedences _ p) = p
 
-data SeqPrec
-  = ConsP Precedence Word SeqPrec
-  | NilP
+----------------------------------------
+
+data SeqPrec = NilP | ConsP Precedence Word SeqPrec
 
 instance Tag SeqPrec where
   tag ConsP{} = 0
@@ -55,103 +49,55 @@ minPrec a (ConsP b b' bs) = case compare a b of
 
 data OpSeq b
   = Empty
-  | Node SeqPrec
-         (OpSeq b)
-         Precedence
-         b
-         (Mid b)
-         Precedence
-         (OpSeq b)
-         SeqPrec
+  | Node2_ SeqPrec (OpSeq b) b (OpSeq b) SeqPrec
+  | Node3_ SeqPrec (OpSeq b) b (OpSeq b) b (OpSeq b) SeqPrec
 
-data Mid b
-  = MCons Precedence (OpSeq b) Precedence b (Mid b)
-  | MNil
+pattern Node2 a b c     <- Node2_ _ a b c _
+pattern Node3 a b c d e <- Node3_ _ a b c d e _
 
-instance Semigroup (Mid b) where
-  MNil            <> ms = ms
-  MCons a b c d e <> ms = MCons a b c d (e <> ms)
-
-----------------------------------------
+{-# COMPLETE Empty, Node2, Node3 #-}
 
 leftPrecSeq Empty = NilP
-leftPrecSeq (Node a _ _ _ _ _ _ _) = a
+leftPrecSeq (Node2_ a _ _     _ _) = a
+leftPrecSeq (Node3_ a _ _ _ _ _ _) = a
 
 rightPrecSeq Empty = NilP
-rightPrecSeq (Node _ _ _ _ _ _ _ a) = a
+rightPrecSeq (Node2_ _ _ _     _ a) = a
+rightPrecSeq (Node3_ _ _ _ _ _ _ a) = a
 
 -- not a proper Ord instance!
 instance Ord (OpSeq b) where
   compare a b = compare (rightPrecSeq a) (leftPrecSeq b)
 
-mkNodeL l a b c d e f   = Node l a b c d e f (e `minPrec` rightPrecSeq f)
-mkNodeR   a b c d e f r = Node (b `minPrec`  leftPrecSeq a) a b c d e f r
-
 singOpSeq :: HasPrecedences b => b -> OpSeq b
-singOpSeq b@(precedences -> MkPrecedences l r) = Node (singPrec l) Empty l b MNil r Empty (singPrec r)
+singOpSeq b@(precedences -> MkPrecedences l r) = Node2_ (singPrec l) Empty b Empty (singPrec r)
 
-instance Semigroup (OpSeq b) where
+instance HasPrecedences b => Semigroup (OpSeq b) where
   Empty <> a = a
   a <> Empty = a
-  x@(Node le a b c d e f _) <> y@(Node _ g h i j k l r) = case compare (rightPrecSeq x) (leftPrecSeq y) of
-    LT -> mkNodeL le a b c d e (f <> y)
-    EQ -> Node le a b c (d <> MCons e (f <> g) h i j) k l r
-    GT -> mkNodeR (x <> g) h i j k l r
+  x@(Node2_ ll l a     r _) <> y | x < y, z <- r <> y = Node2_ ll l a     z (rightPrec a `minPrec` rightPrecSeq z)
+  x@(Node3_ ll l a m b r _) <> y | x < y, z <- r <> y = Node3_ ll l a m b z (rightPrec b `minPrec` rightPrecSeq z)
+  x <> y@(Node2_ _ l a     r rr) | x > y, z <- x <> l = Node2_ (leftPrec a `minPrec` leftPrecSeq z) z a     r rr
+  x <> y@(Node3_ _ l a m b r rr) | x > y, z <- x <> l = Node3_ (leftPrec a `minPrec` leftPrecSeq z) z a m b r rr
+  x@(Node2_ ll l a ml _) <> y@(Node2_ _ mr b r rr) | x == y = Node3_ ll l a (ml <> mr) b r rr
+  _ <> _ = $impossible
 
-instance Monoid (OpSeq b) where
+instance HasPrecedences b => Monoid (OpSeq b) where
   mempty = Empty
 
 
 ---------------------------------------- derived
 
-infixr 2 :<, :=, :>
-
-getLeft (Node _ a b c d e f r) = Just (T2 a (mkNodeR Empty b c d e f r))
-getLeft _ = Nothing
-
-pattern (:<) :: OpSeq b -> OpSeq b -> OpSeq b
-pattern a :< b <- (getLeft -> Just (T2 a b))
-
-getRight (Node _ Empty _ a MNil _ b _) = Just (T2 a b)
-getRight _ = Nothing
-
-pattern (:>) :: b -> OpSeq b -> OpSeq b
-pattern a :> b <- (getRight -> Just (T2 a b))
-
-getMid (Node _ Empty _ a (MCons _ b c d e) f g r) = Just (T2 a (mkNodeR b c d e f g r))
-getMid _ = Nothing
-
-pattern (:=) :: b -> OpSeq b -> OpSeq b
-pattern a := b <- (getMid -> Just (T2 a b))
-
-{-# COMPLETE Empty, (:<) #-}
-
-pattern Node2 a b c <- Node _ a _ b MNil _ c _
-pattern Node3 a b c d e <- Node _ a _ b (MCons _ c _ d MNil) _ e _
+foldMapTopOp :: Monoid m => (a -> m) -> (OpSeq a -> m) -> OpSeq a -> m
+foldMapTopOp fx gx = \case
+  Empty  -> mempty
+  Node2 l a r     -> gx l <> fx a <> gx r
+  Node3 l a m b r -> gx l <> fx a <> gx m <> fx b <> gx r
 
 foldMapOpSeq :: Monoid m => (a -> m) -> OpSeq a -> m
-foldMapOpSeq fx s = f s
- where
-  f = \case
-    Empty  -> mempty
-    Node _ l _ a os _ r _ -> f l <> fx a <> g os <> f r
-  g = \case
-    MNil -> mempty
-    MCons _ os _ a ms -> f os <> fx a <> g ms
+foldMapOpSeq fx = foldMapTopOp fx (foldMapOpSeq fx)
 
 filterOpSeq :: HasPrecedences a => (a -> Bool) -> OpSeq a -> OpSeq a
 filterOpSeq p = foldMapOpSeq c where
   c s | p s = singOpSeq s
   c _ = mempty
-
-topOp :: OpSeq b -> Tup4 (List b) (OpSeq b) (List (OpSeq b)) (OpSeq b)
-topOp = \case
-  Empty -> T4 Nil Empty Nil Empty
-  Node _ a _ c d _ f _ -> T4 (c :. h d) a (g d) f
- where
-  h (MCons _ _ _ x ms) = x :. h ms
-  h MNil = Nil
-
-  g (MCons _ x _ _ ms) = x :. g ms
-  g MNil = Nil
-

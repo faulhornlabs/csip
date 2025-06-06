@@ -1,0 +1,6 @@
+# elab
+
+app : (A : Type) (B : A -> Type) -> ((x : A) -> B x) -> ((x : A) -> B _)
+app _ _ f x = f x
+
+Type

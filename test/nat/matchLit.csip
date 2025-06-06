@@ -1,6 +1,8 @@
 # elab
 # eval
 
+constructor builtin Word : Type
+
 f : Word -> Word
 f 3 = 1
 f 1 = 2

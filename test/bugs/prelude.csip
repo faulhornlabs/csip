@@ -1,0 +1,163 @@
+# scope quote
+# elab
+
+
+data builtin Type : Type where
+
+-- (~>) is constructor application
+constructor builtin Ap : (a ~> b) -> a -> b
+
+
+data builtin Bool : Type where
+  builtin True  : Bool
+  builtin False : Bool
+
+constructor builtin Word : Type
+constructor builtin DecWord    : Word -> Word
+constructor builtin AddWord    : Word -> Word -> Word
+constructor builtin MulWord    : Word -> Word -> Word
+constructor builtin ModWord    : Word -> Word -> Word
+constructor builtin DivWord    : Word -> Word -> Word
+constructor builtin EqWord     : Word -> Word -> Bool
+
+data WSucView : Type where
+  builtin WSucOk    : Word -> WSucView
+  builtin WSucFail  : WSucView
+
+builtin succView : Word -> WSucView
+succView 0 = WSucFail
+succView n = WSucOk (DecWord n)
+
+constructor builtin WSuc : Word -> Word
+
+-- pattern WSuc n <- (succView --> WSucOk n)
+-- WSuc = \n -> AddWord 1 n
+
+
+constructor builtin String : Type
+
+constructor builtin AppendStr : String -> String -> String
+constructor builtin EqStr     : String -> String -> Bool
+constructor builtin TakeStr   : Word -> String -> String
+constructor builtin DropStr   : Word -> String -> String
+
+data builtin ConsView : Type where
+  builtin ConsOk    : String -> String -> ConsView
+  builtin ConsFail  : ConsView
+
+builtin consView : String -> ConsView
+consView "" = ConsFail
+consView n = ConsOk (TakeStr 1 n) (DropStr 1 n)
+
+constructor builtin ConsStr : String -> String -> String
+-- pattern ConsStr a b <- (consView --> ConsOk a b)
+
+
+data builtin Nat : Type where
+  Zero : Nat
+  Suc  : Nat -> Nat
+
+builtin wordToNat : Word -> Nat
+wordToNat 0 = Zero
+wordToNat (WSuc i) = Suc (wordToNat i)
+
+
+-- Object code
+
+constructor builtin Ty : Type
+constructor builtin Code : Ty -> Type
+
+constructor builtin Arr : Ty -> Ty -> Ty
+constructor builtin Lam : {a b : Ty} -> (a -> b) -> Arr a b
+constructor builtin App : Arr a b -> a -> b
+constructor builtin Let : {a b : Ty} -> a -> (a -> b) -> b
+constructor builtin TopLet : {a b : Ty} -> a -> a -> b -> b
+
+constructor builtin Prod : Ty -> Ty -> Ty
+constructor builtin Pair : {a b : Ty} -> a -> b -> Prod a b
+constructor builtin Fst : Prod a b -> a
+constructor builtin Snd : Prod a b -> b
+
+data builtin OBool : Ty where
+  builtin OTrue  : OBool
+  builtin OFalse : OBool
+
+data builtin OString : Ty where
+  builtin MkOString : String -> OString
+
+constructor builtin OEqStr : OString -> OString -> OBool
+
+data builtin OWord : Ty where
+  builtin MkOWord : Word -> OWord
+
+constructor builtin OEqWord : OWord -> OWord -> OBool
+
+-- Type classes
+
+builtin lookupDict : (a : Type) -> a
+
+data builtin SuperClassList : (a : Type) -> Type where
+  builtin SuperClassNil  : (a : Type) -> SuperClassList a
+  builtin SuperClassCons : (a : Type) -> (b : Type) -> (a -> b) -> SuperClassList a -> SuperClassList a
+
+builtin superClasses : (a : Type) -> SuperClassList a
+
+appendStr = AppendStr
+
+class Eq (a : Type) where
+  (==) : a -> a -> Bool
+
+instance Eq Word where
+  a == b = EqWord a b
+
+instance Eq String where
+  a == b = EqStr a b
+
+class Num (a : Type) where
+  (+)     : a -> a -> a
+  (*)     : a -> a -> a
+  fromWord : Word -> a
+
+instance Num Word where
+  a + b = AddWord a b
+  a * b = MulWord a b
+  fromWord n = n
+
+even : Word -> Bool
+  = \n -> ModWord n 2 == 0
+odd  : Word -> Bool
+  = \n -> ModWord n 2 == 1
+
+div = DivWord
+
+
+the : (a : Type) -> a -> a
+  = \_ x -> x
+
+
+data Unit : Type where
+  TT : Unit
+
+data Tuple2 : Type -> Type -> Type where
+  T2 : a -> b -> Tuple2 a b
+
+first : (a -> b) -> Tuple2 a c -> Tuple2 b c
+first f (T2 x y) = T2 (f x) y
+
+second : (a -> b) -> Tuple2 c a -> Tuple2 c b
+second f (T2 x y) = T2 x (f y)
+
+
+data Tuple3 : Type -> Type -> Type -> Type where
+  T3 : a -> b -> c -> Tuple3 a b c
+
+data Maybe : Type ~> Type where
+  Nothing : Maybe a
+  Just    : a -> Maybe a
+
+data List : Type ~> Type where
+  Nil    : List a
+  Cons  : a -> List a -> List a
+{-
+
+-}

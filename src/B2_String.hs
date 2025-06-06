@@ -1,33 +1,23 @@
 module B2_String
-  ( HasId (getId)
-
-  , String (NilStr, ConsStr, ConsChar)
+  ( String (NilStr, ConsStr, ConsChar, SnocChar)
   , mkString, mkFileString
   , showLoc, appendLoc, stripSource
-  , lengthStr, stringToList, stripSuffix
+  , lengthStr, stripSuffix
   , splitAtStr, revSplitAtStr, spanStr, revSpanStr, takeStr, revTakeStr, dropStr, revDropStr
-  , nullStr, groupStr, allStr
-  , unlines, lines, words, renameString
-  , showWord, readWord
-  , hashString
+  , nullStr, groupStr
+  , unlines, lines, renameString
+  , showWord, readWord, hashString
 
   , Color, black, red, green, yellow, blue, magenta, cyan, white
-  , invertColors, background, foreground
-  , lengthANSI, fixANSI
+  , invertColors, background, foreground, lengthANSI, fixANSI
+
   , toPreludeString
+  , IsString, fromString
   ) where
 
 import B0_Builtins
 import B1_Basic
 
-
--------------------
-
-class HasId k where
-  getId :: k -> Word
-
-instance HasId Word where
-  getId i = i
 
 ----------------------------------------
 
@@ -82,22 +72,19 @@ instance Semigroup String where
 instance Monoid String where
   mempty = NilStr
 
-stringToList :: String -> List Char
-stringToList s = go s  where
-  go NilStr = Nil
-  go (ConsS i j c s) = (indexCtx c <$> enumFromTo i j) ++ go s
+instance Tag String where
+  tag NilStr = 0
+  tag _      = 1
 
 instance Ord String where
-  compare = compare `on` stringToList
-
-instance IntHash String where
-  intHash = intHash . stringToList
+  compare (ConsChar c s) (ConsChar c' s') = compare c c' &&& lazy (compare s s')
+  compare a b = compareTag a b
 
 ----------------------------------------
 
 lengthStr = f 0 where
    f acc NilStr = acc
-   f acc (ConsS i j _ s) = f (acc + (j -. i)) s
+   f acc (ConsS i j _ s) = f (acc + (j - i)) s
 
 nullStr NilStr = True
 nullStr _ = False
@@ -105,15 +92,15 @@ nullStr _ = False
 
 ----------------------------------------
 
-allStr p s = all p (stringToList s)
-
 toPreludeString :: String -> PreludeString
-toPreludeString s = foldr consPrelude nilPrelude (stringToList s)
+toPreludeString NilStr = nilPrelude
+toPreludeString (ConsChar c s) = consPrelude c (toPreludeString s)
 
 readWord :: String -> Maybe Word
-readWord (stringToList -> cs)
-  | all isDigit cs = Just (foldl (\i c -> 10*i + digitToWord c) 0 cs)
-  | True = Nothing
+readWord = f 0  where
+  f acc NilStr = Just acc
+  f acc (ConsChar c s) | isDigit c = f (10*acc + ord c - ord '0') s
+  f _ _ = Nothing
 
 
 ----------------------------------------
@@ -137,9 +124,7 @@ mkLocString_ n v = ConsS 0 (lengthCharArray v) (MkCtx n v) NilStr
 mkString :: CharArray -> String
 mkString s = mkLocString_ NoSource s
 
-fromString :: PreludeString -> String
-fromString cs = mkString $ fromPreludeString cs
-
+mkFileString :: String -> CharArray -> Word -> String
 mkFileString n s i = mkLocString_ (FileSource $ MkHandler i n) s
 
 
@@ -150,14 +135,14 @@ groupCh_ p ss = f' ss  where
 
   f' NilStr = T2 NilStr NilStr
   f' (ConsS i j c ss) = g (indexCtx c i) (i+1)  where
-    g l x | x == j, T2 as bs <- f (j -. i) l ss = T2 (ConsS i j c as) bs
-          | l' <- indexCtx c x, p (x -. i) l l' = g l' (x+1)
+    g l x | x == j, T2 as bs <- f (j - i) l ss = T2 (ConsS i j c as) bs
+          | l' <- indexCtx c x, p (x - i) l l' = g l' (x+1)
           | True = T2 (ConsS i x c NilStr) (ConsS x j c ss)
 
   f _ _ NilStr = T2 NilStr NilStr
   f offs l s@(ConsS i j c ss) = g l i  where
-    g l x | x == j, T2 as bs <- f (offs + j -. i) l ss = T2 (ConsS i j c as) bs
-          | l' <- indexCtx c x, p (offs + x -. i) l l' = g l' (x+1)
+    g l x | x == j, T2 as bs <- f (offs + j - i) l ss = T2 (ConsS i j c as) bs
+          | l' <- indexCtx c x, p (offs + x - i) l l' = g l' (x+1)
           | x == i    = T2 NilStr s
           | True = T2 (ConsS i x c NilStr) (ConsS x j c ss)
 
@@ -166,8 +151,8 @@ spanCh_ p ss = f 0 ss  where
 
   f _ NilStr = T2 NilStr NilStr
   f offs s@(ConsS i j c ss) = g i  where
-    g x | x == j, T2 as bs <- f (offs + j -. i) ss = T2 (ConsS i j c as) bs
-        | p (offs + x -. i) (indexCtx c x) = g (x+1)
+    g x | x == j, T2 as bs <- f (offs + j - i) ss = T2 (ConsS i j c as) bs
+        | p (offs + x - i) (indexCtx c x) = g (x+1)
         | x == i    = T2 NilStr s
         | True = T2 (ConsS i x c NilStr) (ConsS x j c ss)
 
@@ -180,8 +165,8 @@ revSpanCh_ p ss | T2 as bs <- f 0 (reverseS ss) = T2 (reverseS bs) (reverseS as)
 
   f _ NilStr = T2 NilStr NilStr
   f offs s@(ConsS j i c ss) = g i  where
-    g x | x == j, T2 as bs <- f (offs + i -. j) ss = T2 (ConsS j i c as) bs
-        | p (offs + i -. x) (indexCtx c (x-.1)) = g (x-.1)
+    g x | x == j, T2 as bs <- f (offs + i - j) ss = T2 (ConsS j i c as) bs
+        | p (offs + i - x) (indexCtx c (x-1)) = g (x-1)
         | x == i    = T2 NilStr s
         | True = T2 (ConsS x i c NilStr) (ConsS j x c ss)
 
@@ -209,17 +194,7 @@ stripSuffix a b
 ----------------------------------------
 
 wordToDigit :: Word -> String
-wordToDigit 0 = "0"
-wordToDigit 1 = "1"
-wordToDigit 2 = "2"
-wordToDigit 3 = "3"
-wordToDigit 4 = "4"
-wordToDigit 5 = "5"
-wordToDigit 6 = "6"
-wordToDigit 7 = "7"
-wordToDigit 8 = "8"
-wordToDigit 9 = "9"
-wordToDigit _ = ""
+wordToDigit i = takeStr 1 $ dropStr i "0123456789"
 
 showWord :: Word -> String
 showWord i | i == 0 = wordToDigit i
@@ -254,13 +229,18 @@ pattern ConsChar c s <- (getConsChar -> Just (T2 c s))
 
 {-# COMPLETE ConsChar, NilStr #-}
 
+initLastStr :: String -> Maybe (Tup2 String Char)
+initLastStr NilStr = Nothing
+initLastStr s = case revSplitAtStr 1 s of
+  T2 s (ConsChar c _) -> Just (T2 s c)
+  _ -> Nothing
+
+pattern SnocChar s c <- (initLastStr -> Just (T2 s c))
+
+{-# COMPLETE SnocChar, NilStr #-}
+
 
 ----------------------------------------
-
-words :: String -> List String
-words (spanStr isSpace -> T2 _ bs) = g bs where
-  g NilStr = Nil
-  g (spanStr (not . isSpace) -> T2 as bs) = as :. words bs
 
 lines :: String -> List String
 lines (spanStr (/= '\n') -> T2 as xs) = as :. h xs  where
@@ -277,14 +257,14 @@ meld s = f (len s) s  where
   len (ConsS _ _ _ s) = 1 + len s
 
   drop 0 s = s
-  drop i (ConsS _ _ _ s) = drop (i-.1) s
+  drop i (ConsS _ _ _ s) = drop (i-1) s
   drop _ s = s
 
   f 0 _ = NilStr
   f 1 (ConsS _ _ (MkCtx NoSource _) _) = NilStr
   f 1 (ConsS _ _ (MkCtx (StringSource s) _) _) = meld s
   f 1 (ConsS a b c _) = ConsS a b c NilStr
-  f l s | i <- l `div` 2 = f i s `merge` f (l -. i) (drop i s)
+  f l s | i <- l `div` 2 = f i s `merge` f (l - i) (drop i s)
 
   merge :: String -> String -> String
   merge NilStr s = s
@@ -301,19 +281,19 @@ showLoc :: String -> String
 showLoc s = splitFiles (meld s)
  where
   splitFiles s@(ConsS _ _ (MkCtx (FileSource h@(MkHandler _ fn)) v) _)
-    = matchT2 (splitFile h s) \is rest -> title fn <> hh v is <> splitFiles rest
+    | T2 is rest <- splitFile h s = title fn <> hh v is <> splitFiles rest
   splitFiles _ = mempty
 
   splitFile h (ConsS a b (MkCtx (FileSource h') _) s)
-    | h' == h = matchT2 (splitFile h s) \is rest -> T2 (a :. b :. is) rest
+    | h' == h, T2 is rest <- splitFile h s = T2 (a :. b :. is) rest
   splitFile _ s = T2 Nil s
 
-  diffs is = zipWith (-.) is (0 :. is)
+  diffs is = zipWith (-) is (0 :. is)
 
   splits Nil s = s .+ \_ -> Nil
-  splits (i :. is) s = matchT2 (splitAtStr i s) \as bs -> as .+ splits is bs
+  splits (i :. is) s | T2 as bs <- splitAtStr i s = as .+ splits is bs
 
-  ((lines -> as) .+ b) i = numberWith T2 i as :. b (i + length as -. 1)
+  ((lines -> as) .+ b) i = numberWith T2 i as :. b (i + length as - 1)
 
   hh v is = mconcat . mapHead (hrest 0) (hrest 2) . everyNth 2 $ splits (diffs is) (mkString v) 1
 
@@ -350,17 +330,18 @@ hashString :: String -> String
 hashString s = f v2 <> f v1 where
 
   f = mconcat . map char . base 11
-  MkWord128 v1 v2 = hash (stringToList s)
 
-  hash :: List Char -> Word128
-  hash = foldl (\h c -> add (ord c) (mul 33 h)) (MkWord128 0 5381)   -- djb2
+  -- djb2
+  MkWord128 v1 v2 = hash (MkWord128 0 5381) s  where
+    hash acc NilStr = acc
+    hash acc (ConsChar c s) = hash (add (ord c) (mul 33 acc)) s 
 
   mul t (MkWord128 a b) = mulWordCarry t b \c tb -> MkWord128 (t * a + c) tb
   add t (MkWord128 a b) = addWordCarry t b \c tb -> MkWord128 (    a + c) tb
 
   base :: Word -> Word -> List Word
   base 0 _ = Nil
-  base n i = (i .&. 63) :. base (n-.1) (shiftR i 6)
+  base n i = andWord i 63 :. base (n-1) (shiftR i 6)
 
   char i = takeStr 1 $ dropStr i "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
@@ -385,22 +366,24 @@ foreground (MkColor n _) = endsgr n
 background (MkColor _ n) = endsgr n
 
 lengthANSI :: String -> Word
-lengthANSI s = f 0 $ stringToList s where
+lengthANSI s = f 0 s where
 
   f acc = \case
-    '\ESC' :. _ :. cs -> f acc cs
-    _ :. cs -> f (acc + 1) cs
-    Nil -> acc
+    ConsChar '\ESC' (ConsChar _ cs) -> f acc cs
+    ConsChar _ cs -> f (acc + 1) cs
+    NilStr -> acc
+
+data ANSISt = MkAS Word Word Word Bool
 
 fixANSI :: String -> String
-fixANSI cs = f (T4 0 39 49 False :. Nil) cs where
+fixANSI cs = f (MkAS 0 39 49 False :. Nil) cs where
 
-  f :: List (Tup4 Word Word Word Bool) -> String -> String
-  f as@(T4 a x y z :. bs) (ConsChar '\ESC' (ConsChar i cs))
+  f :: List ANSISt -> String -> String
+  f as@(MkAS a x y z :. bs) (ConsChar '\ESC' (ConsChar i cs))
     | i == '|'         = sgr a (f bs cs)
-    | i == '#'         = sgr (inv $ not z) (f (T4 (inv z) x y (not z) :. as) cs)
-    | 'a' <= i, i <= 'h', j <- charToWord i -. 67 = sgr j (f (T4 x j y z :. as) cs)
-    | 'A' <= i, i <= 'H', j <- charToWord i -. 25 = sgr j (f (T4 y x j z :. as) cs)
+    | i == '#'         = sgr (inv $ not z) (f (MkAS (inv z) x y (not z) :. as) cs)
+    | 'a' <= i, i <= 'h', j <- ord i - 67 = sgr j (f (MkAS x j y z :. as) cs)
+    | 'A' <= i, i <= 'H', j <- ord i - 25 = sgr j (f (MkAS y x j z :. as) cs)
   f as (ConsStr s@"\ESC" cs) = s <> f as cs
   f _  NilStr = mempty
   f as (spanStr (/= '\ESC') -> T2 bs cs) = bs <> f as cs
@@ -409,3 +392,21 @@ fixANSI cs = f (T4 0 39 49 False :. Nil) cs where
 
   inv True = 7
   inv False = 27
+
+---------------------------
+
+class IsString a where
+  fromString :: PreludeString -> a
+
+instance IsString CharArray where
+  fromString = fromPreludeString
+
+instance IsString String where
+  fromString cs = mkString $ fromString cs
+
+instance (IsString a, Semigroup a) => IsString (Endo a) where
+  fromString s = MkEndo (fromString s <>)
+
+-- needed for ghci
+instance IsString PreludeString where
+  fromString s = s

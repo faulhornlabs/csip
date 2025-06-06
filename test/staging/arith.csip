@@ -1,3 +1,5 @@
+# elab
+# eval
 # stage
 # haskell_stage
 
@@ -10,15 +12,15 @@ natMul : Word -> Word -> Word
 natMul a b = MulWord a b
 
 -- obj lang primitive to support recursion
-builtin Dec : {a b : Ty} -> (a -> b) -> b
-builtin Def : {a b : Ty} -> a -> a -> b -> b
+constructor builtin Dec : {a b : Ty} -> (a -> b) -> b
+constructor builtin Def : {a b : Ty} -> a -> a -> b -> b
 
-builtin AddOp : OWord -> OWord -> OWord
-builtin MulOp : OWord -> OWord -> OWord
-builtin OAppendStr : OString -> OString -> OString
+constructor builtin AddOp : OWord -> OWord -> OWord
+constructor builtin MulOp : OWord -> OWord -> OWord
+constructor builtin OAppendStr : OString -> OString -> OString
 
 -- TODO: pattern synonym
-builtin OConsStr : OString -> OString -> OString
+constructor builtin OConsStr : OString -> OString -> OString
 
 data Arg : Type where
   Num : Word    -> Arg

@@ -1,6 +1,13 @@
+# scope quote
 # elab
 # eval
 
-import Builtins
+data builtin Bool : Type where
+  builtin True  : Bool
+  builtin False : Bool
+
+constructor builtin Word : Type
+constructor builtin AddWord    : Word -> Word -> Word
+constructor builtin EqWord     : Word -> Word -> Bool
 
 EqWord (AddWord 1 10) 11

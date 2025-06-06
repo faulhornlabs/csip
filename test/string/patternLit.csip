@@ -1,6 +1,8 @@
 # elab
 # eval
 
+constructor builtin String : Type
+
 f : String -> String
 f "x" = "y"
 f "z" = "x"

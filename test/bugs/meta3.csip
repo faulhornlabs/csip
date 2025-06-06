@@ -1,7 +1,7 @@
 # elab
 # eval
 
-List   : Type -> Type
+constructor List : Type -> Type
 
 mapList : {a b : Type} -> (a -> b) -> List a -> List b
 

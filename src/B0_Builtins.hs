@@ -1,42 +1,39 @@
-{-# language MagicHash, UnboxedTuples, ForeignFunctionInterface #-}
+{-# language UnboxedTuples, ForeignFunctionInterface #-}
 module B0_Builtins
-  ( Word, andWord, orWord, addWord, mulWord, subWord, divWord, modWord, shiftRWord, shiftLWord
+  ( Word, andWord, orWord, addWord, mulWord, subWord, div, mod, shiftR, shiftL
   , addWordCarry, mulWordCarry, eqWord, ltWord
   , CharArray, readCharArray, lengthCharArray
-  , RefM, pureRefM, bindRefM, unsafePerformRefM
-  , throwRefM, catchRefM
+  , Mem, pureMem, bindMem, unsafePerformMem
+  , throwMem, catchMem
   , Ref, newRef, readRef, writeRef
-  , Array, newArray, readArray, writeArray
-  , Prog (..), runProg, readFileRaw, getDataDirRaw, putStrRefM
-  , HasCallStack, callStackRaw
+  , Array, newArray_, newArray, readArray, writeArray
+  , Prog (..), runProg, putStrMem
 
   , Tup0 (T0)
   , Lazy, lazy, force
-  , Char, charToWord
+  , Char, ord
   , Bool (True, False)
   , integerToWord
   , nilPrelude, consPrelude, foldrPrelude
   , PreludeString, fromPreludeString
   , coerce
+  , Addr#, addrToCharArray
   ) where
 
-import Prelude hiding (mapM)
+import Prelude hiding (mapM, div, mod)
 import Control.Exception
 import Data.Coerce
 import System.Exit (exitFailure)
-import Foreign hiding (newArray)
+import Foreign hiding (newArray, shiftL, shiftR)
 --import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
 import qualified GHC.Base as P (lazy)
-import GHC.Base hiding (lazy)
+import GHC.Base hiding (lazy, ord)
 import GHC.Num (integerToWord)
-import GHC.Word
-import GHC.Stack
 --import GHC.Storable
 import GHC.Exts (Ptr (..))
 import Unsafe.Coerce
-import Paths_csip
 
 
 -------------------------------------------------- Tup0
@@ -73,16 +70,16 @@ fromString s = s
 
 -------------------------------------------------- Word
 
-andWord, orWord, addWord, mulWord, subWord, divWord, modWord, shiftRWord, shiftLWord :: Word -> Word -> Word
+andWord, orWord, addWord, mulWord, subWord, div, mod, shiftR, shiftL :: Word -> Word -> Word
 andWord    (W# a) (W# b) = W# (and#       a b)
 orWord     (W# a) (W# b) = W# (or#        a b)
 addWord    (W# a) (W# b) = W# (plusWord#  a b)
 mulWord    (W# a) (W# b) = W# (timesWord# a b)
 subWord    (W# a) (W# b) = W# (minusWord# a b)
-divWord    (W# a) (W# b) = W# (quotWord#  a b)
-modWord    (W# a) (W# b) = W# (remWord#   a b)
-shiftRWord (W# a) (W# b) = W# (uncheckedShiftRL# a (word2Int# b))
-shiftLWord (W# a) (W# b) = W# (uncheckedShiftL#  a (word2Int# b))
+div        (W# a) (W# b) = W# (quotWord#  a b)
+mod        (W# a) (W# b) = W# (remWord#   a b)
+shiftR     (W# a) (W# b) = W# (uncheckedShiftRL# a (word2Int# b))
+shiftL     (W# a) (W# b) = W# (uncheckedShiftL#  a (word2Int# b))
 
 addWordCarry :: Word -> Word -> (Word -> Word -> a) -> a
 addWordCarry (W# a) (W# b) cont = case plusWord2# a b of
@@ -95,8 +92,8 @@ mulWordCarry (W# a) (W# b) cont = case timesWord2# a b of
 
 -------------------------------------------------- Char
 
-charToWord :: Char -> Word
-charToWord (C# c#) = W# (int2Word# (ord# c#))
+ord :: Char -> Word
+ord (C# c) = W# (int2Word# (ord# c))
 
 
 -------------------------------------------------- CharArray
@@ -104,10 +101,10 @@ charToWord (C# c#) = W# (int2Word# (ord# c#))
 data CharArray = MkCharArray ByteArray#
 
 readCharArray :: CharArray -> Word -> Char
-readCharArray (MkCharArray v#) (W# w#) = C# (indexCharArray# v# (word2Int# w#))
+readCharArray (MkCharArray v) (W# w) = C# (indexCharArray# v (word2Int# w))
 
 lengthCharArray :: CharArray -> Word
-lengthCharArray (MkCharArray v#) = W# (int2Word# (sizeofByteArray# v#))
+lengthCharArray (MkCharArray v) = W# (int2Word# (sizeofByteArray# v))
 
 runRW :: (State# RealWorld -> (# State# RealWorld, a #)) -> a
 runRW f = case runRW# f of
@@ -116,92 +113,97 @@ runRW f = case runRW# f of
 {-# noinline emptyCharArray #-}
 emptyCharArray :: CharArray
 emptyCharArray = runRW
-  \s# -> case newByteArray# 0# s# of
-    (# s#, marr# #) -> case unsafeFreezeByteArray# marr# s# of
-      (# s, arr# #) -> (# s, MkCharArray arr# #)
+  \s -> case newByteArray# 0# s of
+    (# s, marr #) -> case unsafeFreezeByteArray# marr s of
+      (# s, arr #) -> (# s, MkCharArray arr #)
 
 fromPreludeString :: PreludeString -> CharArray
 fromPreludeString [] = emptyCharArray
 fromPreludeString cs = runRW
-  \s# -> case length cs of
-    I# l# -> case newByteArray# l# s# of
-      (# s#, marr# #) -> let
-          go (C# c# : cs) i# s# = go cs (i# +# 1#) (writeCharArray# marr# i# c# s#)
-          go [] _ s# = case unsafeFreezeByteArray# marr# s# of
-            (# s, arr# #) -> (# s, MkCharArray arr# #)
-        in go cs 0# s#
+  \s -> case length cs of
+    I# l -> case newByteArray# l s of
+      (# s, marr #) -> let
+          go (C# c : cs) i s = go cs (i +# 1#) (writeCharArray# marr i c s)
+          go [] _ s = case unsafeFreezeByteArray# marr s of
+            (# s, arr #) -> (# s, MkCharArray arr #)
+        in go cs 0# s
+
+lengthCString (Ptr adr) = IO \s -> let
+    go i s = case readInt8OffAddr# adr i s of
+      (# s, w #)
+        | isTrue# (int8ToInt# w ==# 0#) -> (# s, I# i #)
+        | True -> go (i +# 1#) s
+  in go 0# s
 
 peekCStringLen' :: CStringLen -> IO CharArray
-peekCStringLen' (Ptr adr#, I# l#) = IO
-    \s# -> case newByteArray# l# s# of
-      (# s#, marr# #) -> let
-          go i# s# | isTrue# (i# ==# l#) = case unsafeFreezeByteArray# marr# s# of
-            (# s#, arr# #) -> (# s#, MkCharArray arr# #)
-          go i# s# = case readWord8OffAddr# adr# i# s# of
-            (# s#, w# #) -> go (i# +# 1#) (writeCharArray# marr# i# (chr# (word2Int# (word8ToWord# w#))) s#)
-        in go 0# s#
+peekCStringLen' (Ptr adr, I# l) = IO
+  \s -> case newByteArray# l s of
+    (# s, marr #) -> let
+        go i s | isTrue# (i ==# l) = case unsafeFreezeByteArray# marr s of
+          (# s, arr #) -> (# s, MkCharArray arr #)
+        go i s = case readWord8OffAddr# adr i s of
+          (# s, w #) -> go (i +# 1#) (writeCharArray# marr i (chr# (word2Int# (word8ToWord# w))) s)
+      in go 0# s
 
 peekCString' :: CString -> IO CharArray
 peekCString' cs = do
   l <- lengthCString cs
   peekCStringLen' (cs, l)
 
-lengthCString (Ptr adr#) = IO
-    \s# -> let
-          go i# s# = case readInt8OffAddr# adr# i# s# of
-            (# s#, w# #)
-              | isTrue# (int8ToInt# w# ==# 0#) -> (# s#, I# i# #)
-              | True -> go (i# +# 1#) s#
-        in go 0# s#
+addrToCharArray :: Addr# -> Mem CharArray
+addrToCharArray adr = ioToMem $ peekCString' (Ptr adr)
 
 
--------------------------------------------------- RefM
+-------------------------------------------------- Mem
 
-data RefM a = MkRefM (State# RealWorld -> (# State# RealWorld, a #))
+data Mem a = MkMem (State# RealWorld -> (# State# RealWorld, a #))
 
-unRefM (MkRefM f) = f
+unMem (MkMem f) = f
 
-refMToIO (MkRefM f) = IO f
-ioToRefM (IO f) = MkRefM f
+memToIO (MkMem f) = IO f
+ioToMem (IO f) = MkMem f
 
-pureRefM :: a -> RefM a
-pureRefM a = MkRefM \s -> (# s, a #)
+pureMem :: a -> Mem a
+pureMem a = MkMem \s -> (# s, a #)
 
-bindRefM :: RefM a -> (a -> RefM b) -> RefM b
-bindRefM (MkRefM a) f = MkRefM \s -> case a s of (# s, b #) -> unRefM (f b) s
+bindMem :: Mem a -> (a -> Mem b) -> Mem b
+bindMem (MkMem a) f = MkMem \s -> case a s of (# s, b #) -> unMem (f b) s
 
-unsafePerformRefM :: RefM a -> a
-unsafePerformRefM (MkRefM m) = case runRW# m of (# _, a #) -> P.lazy a
+unsafePerformMem :: Mem a -> a
+unsafePerformMem (MkMem m) = case runRW# m of (# _, a #) -> P.lazy a
 
 
 -------------------------------------------------- Ref
 
 data Ref a = MkRef (MutVar# RealWorld a)
 
-newRef :: a -> RefM (Ref a)
-newRef a = MkRefM \s# -> case newMutVar# a s# of
-  (# s#, arr# #) -> (# s#, MkRef arr# #)
+newRef :: a -> Mem (Ref a)
+newRef a = MkMem \s -> case newMutVar# a s of
+  (# s, arr #) -> (# s, MkRef arr #)
 
-readRef :: Ref a -> RefM a
-readRef (MkRef arr#) = MkRefM \s# -> readMutVar# arr# s#
+readRef :: Ref a -> Mem a
+readRef (MkRef arr) = MkMem \s -> readMutVar# arr s
 
-writeRef :: Ref a -> a -> RefM Tup0
-writeRef (MkRef arr#) e = MkRefM \s# -> (# writeMutVar# arr# e s#, T0 #)
+writeRef :: Ref a -> a -> Mem Tup0
+writeRef (MkRef arr) e = MkMem \s -> (# writeMutVar# arr e s, T0 #)
 
 
 -------------------------------------------------- Array
 
 data Array a = MkArray (MutableArray# RealWorld a)
 
-newArray :: Word -> e -> RefM (Array e)
-newArray (W# n#) def = MkRefM \s# -> case newArray# (word2Int# n#) def s# of
-  (# s#, arr# #) -> (# s#, MkArray arr# #)
+newArray :: Word -> e -> Mem (Array e)
+newArray (W# n#) def = MkMem \s -> case newArray# (word2Int# n#) def s of
+  (# s, arr #) -> (# s, MkArray arr #)
 
-readArray :: Array e -> Word -> RefM e
-readArray (MkArray arr#) (W# i#) = MkRefM \s# -> readArray# arr# (word2Int# i#) s#
+newArray_ :: Word -> Mem (Array e)
+newArray_ w = bindMem (newArray w (unsafeCoerce () :: Any)) (pureMem . unsafeCoerce)
 
-writeArray :: Array e -> Word -> e -> RefM Tup0
-writeArray (MkArray arr#) (W# i#) e = MkRefM \s# -> (# writeArray# arr# (word2Int# i#) e s#, T0 #)
+readArray :: Array e -> Word -> Mem e
+readArray (MkArray arr) (W# i) = MkMem \s -> readArray# arr (word2Int# i) s
+
+writeArray :: Array e -> Word -> e -> Mem Tup0
+writeArray (MkArray arr) (W# i) e = MkMem \s -> (# writeArray# arr (word2Int# i) e s, T0 #)
 
 -------------------------------------------------- exceptions
 
@@ -209,16 +211,16 @@ writeArray (MkArray arr#) (W# i#) e = MkRefM \s# -> (# writeArray# arr# (word2In
 
 data Exception = MkException Word Any
 
-throwRefM :: Word -> e -> RefM a
-throwRefM w e = MkRefM \s# -> raiseIO# (MkException w (unsafeCoerce e)) s#
+throwMem :: Word -> e -> Mem a
+throwMem w e = MkMem \s -> raiseIO# (MkException w (unsafeCoerce e)) s
 
-catchRefM :: Word -> (e -> RefM a) -> Lazy (RefM a) -> RefM a
-catchRefM w f g = MkRefM \s# -> catch# io handler s#  where
+catchMem :: Word -> (e -> Mem a) -> Lazy (Mem a) -> Mem a
+catchMem w f g = MkMem \s -> catch# io handler s  where
 
-  io s# = case (bindRefM (force g) \a -> pureRefM a) of MkRefM f -> f s#
+  io s = case (bindMem (force g) \a -> pureMem a) of MkMem f -> f s
 
   handler e@(MkException w' c) s
-    | w' == w = unRefM (f (unsafeCoerce c)) s
+    | w' == w = unMem (f (unsafeCoerce c)) s
     | True    = raiseIO# e s
 
 finally :: IO a -> IO b -> IO a
@@ -237,26 +239,15 @@ instance Show GException where show _ = "<<exception>>"
 
 instance Exception GException
 
-throwRefM :: Word -> e -> RefM a
-throwRefM w e = ioToRefM $ throwIO (MkGException w (unsafeCoerce e))
+throwMem :: Word -> e -> Mem a
+throwMem w e = ioToMem $ throwIO (MkGException w (unsafeCoerce e))
 
-catchRefM :: Word -> (e -> RefM a) -> Lazy (RefM a) -> RefM a
-catchRefM w f g = ioToRefM $ catch (refMToIO (force g) >>= \a -> pure a) handler
+catchMem :: Word -> (e -> Mem a) -> Lazy (Mem a) -> Mem a
+catchMem w f g = ioToMem $ catch (memToIO (force g) >>= \a -> pure a) handler
  where
   handler e@(MkGException w' v)
-    | w' == w = refMToIO $ f (unsafeCoerce v)
+    | w' == w = memToIO $ f (unsafeCoerce v)
     | True    = throwIO e
-
-
--------------------------------------------------- callstack
-
-callStackRaw :: HasCallStack => PreludeString
-callStackRaw = printCallStack (getCallStack callStack)
- where
-  printCallStack cs@(_:_) | (name, loc) <- last cs
-    = "  " ++ name ++ " called at "
-     ++ srcLocModule loc ++ ":" ++ show (srcLocStartLine loc) ++ ":" ++ show (srcLocStartCol loc)
-  printCallStack _ = "<empty callstack>"
 
 
 -------------------------------------------------- I/O
@@ -265,45 +256,39 @@ data Prog
   = ProgEnd
   | Die PreludeString
   | GetArgs (PreludeList CharArray -> Prog)
-
   | PutStr PreludeString (Lazy Prog)
   | GetChar (Char -> Prog)
   | PresentationMode (Lazy Prog) (Lazy Prog)
   | GetTerminalSize (Lazy Prog) (Word -> Word -> Prog)
-
   | ReadFile PreludeString (Lazy Prog) (CharArray -> Prog)
   | WriteFile PreludeString PreludeString (Lazy Prog)
   | GetTemporaryDir (CharArray -> Prog)
-
-  | forall a. Do (RefM a) (a -> Prog)
-
+  | forall a. Do (Mem a) (a -> Prog)
   | forall e a. CatchError Word (e -> (a -> Prog) -> Prog) ((a -> Prog) -> Prog) (a -> Prog)
 
 
 runProg :: Prog -> IO ()
 runProg m = do
+  setbuffering
   _ <- go m
   pure ()
  where
   go :: Prog -> IO Tup0
   go = \case
 
-    ProgEnd   -> pure T0
-    Die s     -> putStr' s ioerror exitFailure
-    GetArgs f -> getArgs >>= go . f
-
+    ProgEnd    -> pure T0
+    Die s      -> putStr' s exitFailure
+    GetArgs f  -> getArgs >>= go . f
     GetChar f  -> getChar' >>= go . f
-    PutStr s m -> putStr' s ioerror (go (force m))
-
+    PutStr s m -> putStr' s (go (force m))
     ReadFile f fail cont -> readF f (go (force fail)) \s -> go (cont s)
- 
-    WriteFile f s c -> writeF f s ioerror (go (force c))
-
-    Do m f -> refMToIO m >>= go . f
+    WriteFile f s c -> writeF f s (go (force c))
+    Do m f     -> memToIO m >>= go . f
 
     GetTemporaryDir cont -> do
       t <- lookupEnv "TMPDIR"
-      go $ cont $ maybe (fromPreludeString "/tmp") id t
+      tmp <- memToIO $ addrToCharArray "/tmp"#
+      go $ cont $ maybe tmp id t
 
     PresentationMode m c -> do
       setterm
@@ -313,54 +298,30 @@ runProg m = do
     GetTerminalSize def ret -> termSize (go (force def)) \w h -> go (ret w h)
 
     CatchError w fail m ok -> do
-      r <- refMToIO $ newRef $ unsafeCoerce False
+      r <- memToIO $ newRef $ unsafeCoerce False
       let cont x = Do (writeRef r $ unsafeCoerce x) \_ -> ProgEnd
-      _ <- refMToIO $ catchRefM w (\e -> ioToRefM $ go $ fail e cont) (lazy (ioToRefM $ go $ m cont))
-      x <- refMToIO $ readRef r
+      _ <- memToIO $ catchMem w (\e -> ioToMem $ go $ fail e cont) (lazy (ioToMem $ go $ m cont))
+      x <- memToIO $ readRef r
       go $ ok $ unsafeCoerce x
 
 
--------------------------------------------------- I/O in RefM
-
-readFileRaw :: PreludeString -> RefM CharArray
-readFileRaw f = ioToRefM (readF f ioerror pure)
-
-getDataDirRaw :: RefM PreludeString
-getDataDirRaw = ioToRefM getDataDir
-
 --------------------------------------------------
 
--- type Addr = Ptr () --MkAddr Addr#
-
-{-
-data Addr = MkAddr Addr#
-
-nullAddr :: Addr
-nullAddr = MkAddr nullAddr#
-
-instance Storable Addr where
-  sizeOf _ = 8
-  alignment _ = 8
-  peekElemOff a b = readPtrOffPtr (castPtr a) b >>= \(Ptr a) -> pure (MkAddr a)
-  pokeElemOff a b (MkAddr x) = writePtrOffPtr (castPtr a) b (Ptr x)
--}
---------------------------------------------------
-
-foreign import ccall unsafe "stdio.h fopen"        fopen     :: CString -> CString -> IO (Ptr CFile)
-foreign import ccall unsafe "stdio.h fread"        fread     :: CString -> Int -> Int -> Ptr CFile -> IO Int
-foreign import ccall unsafe "stdio.h fwrite"       fwrite    :: CString -> Int -> Int -> Ptr CFile -> IO Int
-foreign import ccall unsafe "stdio.h fseek"        fseek     :: Ptr CFile -> Word -> Word -> IO Int
-foreign import ccall unsafe "stdio.h ftell"        ftell     :: Ptr CFile -> IO Int
-foreign import ccall unsafe "getstdout"            stdoutPtr :: IO (Ptr CFile)
-foreign import ccall unsafe "stdio.h fclose"       fclose    :: Ptr CFile -> IO Int
-foreign import ccall unsafe "stdio.h fflush"       fflush    :: Ptr CFile -> IO Int
-foreign import ccall unsafe "stdio.h getchar"      getChar'  :: IO Char
-foreign import ccall unsafe "sys/ioctl.h ioctl"    ioctl     :: Int -> Int -> Ptr Word8 -> IO Int
-foreign import ccall unsafe "getProgArgv"          getProgArgv :: Ptr CInt -> Ptr (Ptr CString) -> IO ()
-foreign import ccall unsafe "getenv"               c_getenv  :: CString -> IO (Ptr CChar)
-
-foreign import ccall unsafe "setterm"              setterm   :: IO ()
-foreign import ccall unsafe "resetterm"            resetterm :: IO ()
+foreign import ccall unsafe "fopen"                fopen        :: CString -> CString -> IO (Ptr CFile)
+foreign import ccall unsafe "fread"                fread        :: CString -> Int -> Int -> Ptr CFile -> IO Int
+foreign import ccall unsafe "fwrite"               fwrite       :: CString -> Int -> Int -> Ptr CFile -> IO Int
+foreign import ccall unsafe "fseek"                fseek        :: Ptr CFile -> Word -> Word -> IO Int
+foreign import ccall unsafe "ftell"                ftell        :: Ptr CFile -> IO Int
+foreign import ccall unsafe "getstdout"            stdoutPtr    :: IO (Ptr CFile)
+foreign import ccall unsafe "fclose"               fclose       :: Ptr CFile -> IO Int
+foreign import ccall unsafe "fflush"               fflush       :: Ptr CFile -> IO Int
+foreign import ccall unsafe "getProgArgv"          getProgArgv  :: Ptr CInt -> Ptr (Ptr CString) -> IO ()
+foreign import ccall unsafe "getenv"               c_getenv     :: CString -> IO (Ptr CChar)
+foreign import ccall unsafe "setbuffering"         setbuffering :: IO ()
+foreign import ccall unsafe "getachar"             getChar'     :: IO Char
+foreign import ccall unsafe "setterm"              setterm      :: IO ()
+foreign import ccall unsafe "resetterm"            resetterm    :: IO ()
+foreign import ccall unsafe "termsize"             termsize     :: IO Word
 
 --------------------------------------------------
 
@@ -379,18 +340,17 @@ notNull def m next = m >>= \p -> guardErr def (p /= nullPtr) (next p)
 --------------------------------------------------
 
 termSize err ok = do
-  allocaBytes 8 \ptr -> do
-  notErr err (ioctl 1{-STDOUT_FILENO-} 0x5413{-TIOCGWINSZ-} ptr) do
-  W16# h <- peekByteOff ptr 0
-  W16# w <- peekByteOff ptr 2
-  ok (W# (word16ToWord# w)) (W# (word16ToWord# h))
+  wh <- termsize
+  case wh of
+    0 -> err
+    _ -> ok (shiftR wh 32) (wh .&. 0xffffffff)
 
 readF :: String -> IO a -> (CharArray -> IO a) -> IO a
 readF n err ok = do
   fn <- newCString n
   notNull err (fopen fn (Ptr "r"#)) \f -> do
   let err' = fclose f >> err
-  notErr  err' (fseek f 0 2 {- SEEK_END -}) do
+  notErr err' (fseek f 0 2 {- SEEK_END -}) do
   len <- ftell f
   notErr err' (fseek f 0 0 {- SEEK_SET -}) do
   allocaBytes len $ \s -> do
@@ -399,26 +359,26 @@ readF n err ok = do
   guardErr err (len' == len) do
   peekCStringLen' (s, len) >>= ok
 
-writeF :: String -> String -> IO a -> IO a -> IO a
-writeF n s_ err ok = do
+writeF :: String -> String -> IO a -> IO a
+writeF n s_ ok = do
   fn <- newCString n
-  notNull err (fopen fn (Ptr "w"#)) \f -> do
-  -- let err' = fclose f >> err
+  notNull ioerror (fopen fn (Ptr "w"#)) \f -> do
   newCStringLen s_ >>= \(s, len) -> do
   len' <- fwrite s 1 len f
-  notErr err (fclose f) do
-  guardErr err (len' == len) do
+  notErr ioerror (fclose f) do
+  guardErr ioerror (len' == len) do
   ok
 
-putStrRefM :: PreludeString -> RefM Tup0
-putStrRefM s = ioToRefM $ putStr' s ioerror (pure T0)
+-- only for debugging
+putStrMem :: PreludeString -> Mem Tup0
+putStrMem s = ioToMem $ putStr' s (pure T0)
 
-putStr' s_ err ok = do
+putStr' s_ ok = do
   f <- stdoutPtr
   newCStringLen s_ >>= \(s, len) -> do
   len' <- fwrite s 1 len f
-  guardErr err (len' == len) do
-  notErr err (fflush f) do
+  guardErr ioerror (len' == len) do
+  notErr ioerror (fflush f) do
   ok
 
 getArgs :: IO (PreludeList CharArray)

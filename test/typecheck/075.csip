@@ -1,6 +1,9 @@
-# source
+# scope
 # elab
-u = Type             # Type : Type
+
+constructor builtin String : Type
+
+u = Type
 
 id: (a: u) -> a -> a
   = \_ x -> x

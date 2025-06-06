@@ -1,5 +1,7 @@
 # elab
 
+constructor builtin Word : Type
+
 data Env : Type -> Type where
   EntryEnv : Word -> (a : Type) -> a -> Env a
 

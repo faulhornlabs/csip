@@ -1,5 +1,7 @@
 # eval
 
+builtin Word : Type
+
 data Tup : Type where
   MkTup : Word -> Word -> Tup
 

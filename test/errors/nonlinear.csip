@@ -1,3 +1,5 @@
 
+builtin Word : Type
+
 f : Word -> Word -> Word
 f x x = x

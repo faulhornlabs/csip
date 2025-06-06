@@ -4,9 +4,9 @@ import Builtins
 
 data Int : Ty where
 
-builtin F : (Code Int -> Code Int -> Code Int) -> Code Int
+constructor builtin F : (Code Int -> Code Int -> Code Int) -> Code Int
 
-builtin G : Code Int -> Code (Int -> Int)
+constructor builtin G : Code Int -> Code (Int -> Int)
 
 -- F (\x y -> App (G x) y)
 F G

@@ -1,0 +1,9 @@
+# scope
+# elab
+
+constructor builtin Word : Type
+
+builtin succView : Word -> Word
+succView 0 = 0
+
+Type

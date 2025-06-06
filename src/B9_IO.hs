@@ -1,11 +1,12 @@
 module B9_IO
   ( IO
-  , runRefM, runIO
+  , runMem, runIO
   , fail, catchErrors
   , putStr, presentationMode, getKey, askYN, getTerminalSize, clearScreen, setCursorPosition, cursorForward
   
   , FilePath, (</>)
-  , parseFile, printFile, getTemporaryDir, parseDataFile
+  , mkFileString', parseFile, printFile, getTemporaryDir
+  , Parse (parse)
   
   , versionString
   , CLI (Files), command, runCLI
@@ -15,8 +16,7 @@ module B9_IO
 import B0_Builtins
 import B1_Basic
 import B2_String
-import B3_RefM
-import B4_Partial
+import B3_Mem
 
 -----------------------------------------------
 
@@ -27,26 +27,23 @@ unIO (MkIO f) = f
 instance Functor IO where
   f <$> MkIO h = MkIO \g -> h (g . f)
 
-instance Applicative IO where
-  pure a = MkIO \g -> g a
-  MkIO f <*> MkIO h = MkIO \g -> f \f -> h (g . f)
-
 instance Monad IO where
+  pure a = MkIO \g -> g a
   MkIO f >>= h = MkIO \g -> f \f -> unIO (h f) g
 
 instance MonadFail IO where
-  fail s = runRefM $ fail s
+  fail s = runMem $ fail s
 
 catchErrors :: (MainException -> IO a) -> IO a -> IO a
 catchErrors a (MkIO h) = MkIO \g -> case mainException of
   MkExcept w -> CatchError w (\e -> unIO (a e)) h g
 
 
-runRefM :: RefM a -> IO a
-runRefM m = MkIO \end -> Do m end
+runMem :: Mem a -> IO a
+runMem m = MkIO \end -> Do m end
 
 runIO m = runProg $ unIO
-  (catchErrors (\e -> runRefM (print e) >>= die . appendLoc) m)
+  (catchErrors (\e -> runMem (print e) >>= die . appendLoc) m)
   \_ -> ProgEnd
 
 
@@ -56,13 +53,13 @@ type FilePath = String
 
 (</>) :: FilePath -> FilePath -> FilePath
 "" </> b = b
-a </> b | lastStr a == '/' = a <> b
+a@(SnocChar _ '/') </> b = a <> b
 a </> b = a <> "/" <> b
 
 
 -----------------------------------------------
 
-die                        f = MkIO \_   -> Die (toPreludeString f)
+die                        s = MkIO \_   -> Die (toPreludeString $ fixANSI s)
 getArgs                      = MkIO \end -> GetArgs \r -> end (map mkString $ foldrPrelude (:.) Nil r)
 getTemporaryDir              = MkIO \end -> GetTemporaryDir \f -> end (mkString f)
 presentationMode (MkIO m)    = MkIO \end -> PresentationMode (lazy (m \_ -> ProgEnd)) (lazy (end T0))
@@ -70,19 +67,28 @@ getTerminalSize              = MkIO \end -> GetTerminalSize (lazy (end (T2 119 3
 
 -----------------------------------------------
 
-parseFile :: Parse a => FilePath -> FilePath -> IO (Maybe a)
-parseFile dir f = MkIO \end ->
-  ReadFile (toPreludeString $ dir </> f) (lazy (end Nothing)) \s ->
-  Do (mkLocString f s) (end . Just)
+{-# noinline fileIdRef #-}
+fileIdRef :: Ref Word
+fileIdRef = topMem $ newRef 0
 
-parseDataFile :: Parse a => FilePath -> RefM a
-parseDataFile f = do
-  dir <- fromString <$> getDataDirRaw
-  readFileRaw (toPreludeString $ dir </> f) >>= \s -> mkLocString f s
+newFileId :: Mem Word
+newFileId = stateRef fileIdRef \i -> T2 (i+1) i
+
+mkFileString' :: Parse a => String -> CharArray -> IO a
+mkFileString' f s = do
+  i <- runMem newFileId
+  parse (mkFileString f s i)
+
+parseFile :: Parse a => FilePath -> FilePath -> IO (Maybe a)
+parseFile dir f = do
+  ms <- MkIO \end -> ReadFile (toPreludeString $ dir </> f) (lazy (end Nothing)) (end . Just)
+  case ms of
+    Just s -> Just <$> mkFileString' f s
+    _ -> pure Nothing
 
 printFile :: Print a => FilePath -> a -> IO Tup0
 printFile f a = do
-  s <- runRefM $ print a
+  s <- runMem $ print a
   MkIO \end -> WriteFile (toPreludeString f) (toPreludeString s) (lazy (end T0))
 
 putStr :: String -> IO Tup0
@@ -119,7 +125,7 @@ getKey = getChar >>= \case
       T2 _ 'D' -> pure "Left"
       _ -> getKey
     _ -> pure "Esc"
-  c -> pure $ takeStr 1 $ dropStr (charToWord c -. 32)
+  c -> pure $ takeStr 1 $ dropStr (ord c - 32)
     " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
  where
   getArgs = first (reverse . map reverse) <$> f Nil Nil
@@ -136,7 +142,7 @@ cursorForward n       = "\ESC[" <> showWord n <> "C"
 setCursorPosition n m = "\ESC[" <> showWord (n + 1) <> ";" <> showWord (m + 1) <> "H"
 
 versionString :: String
-versionString = "2"
+versionString = "3"
 
 
 -------------------------------- command line interface
@@ -178,3 +184,10 @@ runCLI progname x = getArgs >>= eval Nil x
     hs | all nullStr hs -> Nil
     _  -> "" :. "Options:" :. hs
 
+--------------------------
+
+class Parse a where
+  parse :: String -> IO a
+
+instance Parse String where
+  parse s = pure s

@@ -1,5 +1,7 @@
 # elab
 
+constructor builtin Word : Type
+
 f : (a : Type) -> a -> Word
 f _ x = f _ x
 

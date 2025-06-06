@@ -4,10 +4,23 @@
 
 import Prelude
 
-f : OBool -> OBool
+builtin AddOp : OWord -> OWord -> OWord
+
+f : OWord -> OWord
 f := \x -> x
 
-f OTrue
+dbg : OString -> OWord -> OWord
+dbg := \_ n -> n
+
+--dbg "msg" (f 3)
+
+c_and : Code (OBool -> OBool -> OBool)
+c_and OTrue a = a
+c_and _     _ = OFalse
+
+and := c_and
+
+and OTrue OTrue
 
 {-
 natPlus : Word -> Word -> Word
@@ -20,7 +33,6 @@ natMul a b = MulWord a b
 builtin Dec : {a b : Ty} -> (a -> b) -> b
 builtin Def : {a b : Ty} -> a -> a -> b -> b
 
-builtin AddOp : OWord -> OWord -> OWord
 builtin MulOp : OWord -> OWord -> OWord
 builtin OAppendStr : OString -> OString -> OString
 
@@ -61,10 +73,6 @@ data OEnv : Ty -> Ty where
   OEmptyEnv : {a} -> OEnv a
   OEntryEnv : {a : Ty} -> OString -> a -> OEnv a -> OEnv a
 
-
-
-dbg : OString -> OWord -> OWord
-dbg := \_ n -> n
 
 
 -- TODO: remove (missing laziness)

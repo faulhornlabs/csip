@@ -1,6 +1,8 @@
-dist-newstyle
 tmp
 other
+csip
+*.hi
+*.o
 *.agdai
 *.swp
 *~

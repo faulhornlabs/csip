@@ -6,6 +6,9 @@
 # exptree highlight
 # sugar highlight
 # elab highlight
+
+constructor builtin String : Type
+
 u = Type             # Type universe
 
 id: (a: Type) -> a -> a

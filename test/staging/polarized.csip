@@ -1,0 +1,67 @@
+# eval
+# pstage
+
+import Prelude
+
+data builtin Polarity : Type where
+  builtin Value       : Polarity
+  builtin Computation : Polarity
+
+constructor builtin PTy : Polarity -> Type
+
+constructor builtin IO      : PTy Computation
+constructor builtin PWord   : PTy Value
+constructor builtin PString : PTy Value
+
+constructor builtin PCode : {p} -> PTy p -> Type
+
+constructor builtin PArr : {p} -> PTy p -> PTy Computation -> PTy Computation
+constructor builtin PLam : {p} {c : PTy p} {io : PTy Computation} -> (PCode c -> PCode io) -> PCode (PArr c io)
+constructor builtin PApp : {p} {c : PTy p} {io : PTy Computation} -> PCode (PArr c io) -> (PCode c -> PCode io)
+
+constructor builtin PLet   : {io : PTy Computation} -> PCode io -> (PCode io -> PCode IO) -> PCode IO
+constructor builtin TopLet : {io : PTy Computation} -> PCode io ->  PCode io -> PCode IO  -> PCode IO
+
+constructor builtin MkPWord   : Word   -> (PCode PWord   -> PCode IO) -> PCode IO
+constructor builtin MkPString : String -> (PCode PString -> PCode IO) -> PCode IO
+
+constructor builtin PEqWord   : PCode PWord   -> PCode PWord   -> PCode IO -> PCode IO -> PCode IO
+constructor builtin PEqString : PCode PString -> PCode PString -> PCode IO -> PCode IO -> PCode IO
+
+constructor Halt : PCode IO
+constructor Put :  PCode PWord -> PCode IO  -> PCode IO
+constructor Get : (PCode PWord -> PCode IO) -> PCode IO
+
+constructor Mul : PCode PWord -> PCode PWord -> (PCode PWord -> PCode IO) -> PCode IO
+
+sqr : PCode PWord -> (PCode PWord -> PCode IO) -> PCode IO
+sqr a = Mul a a
+
+power : Word -> PCode PWord -> (PCode PWord -> PCode IO) -> PCode IO
+power 0 _ c = MkPWord 1 c
+power 1 a c = c a
+power n        a c | even n = power (div n 2) a \r -> sqr r c
+power (WSuc n) a c          = power n a \r -> Mul a r c
+
+test1 = PLam \a -> power 10 a \r -> Put r Halt
+
+sqr2 : PCode (PArr PWord (PArr (PArr PWord IO) IO))
+sqr2 = PLam \a -> PLam \c -> Mul a a \r -> PApp c r
+
+power2 : PCode (PArr PWord (PArr (PArr PWord IO) IO)) -> Word -> PCode PWord -> (PCode PWord -> PCode IO) -> PCode IO
+power2 _ 0 _ c = MkPWord 1 c
+power2 _ 1 a c = c a
+power2 s n        a c | even n = power2 s (div n 2) a \r -> PApp (PApp s r) (PLam c)
+power2 s (WSuc n) a c          = power2 s n a \r -> Mul a r c
+
+test2 = PLet sqr2 \s -> Get \a -> power2 s 10 a \r -> Put r Halt
+
+power3 : PCode (PArr PWord (PArr (PArr PWord IO) IO)) -> Word -> PCode PWord -> (PCode PWord -> PCode IO) -> PCode IO
+power3 _ 0 _ = MkPWord 1
+power3 _ 1 a = \c -> c a
+power3 s n        a | even n = \c -> power3 s (div n 2) a \r -> PApp (PApp s r) (PLam c)
+power3 s (WSuc n) a          = \c -> power3 s n a \r -> Mul a r c
+
+test3 = PLet sqr2 \s -> Get \a -> power3 s 10 a \r -> Put r Halt
+
+test2

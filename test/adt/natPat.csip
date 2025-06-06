@@ -1,6 +1,6 @@
+# scope quote
 # elab
 # eval
-# type
 
 data N : Type where
   Z : N

@@ -2,6 +2,9 @@
 # eval
 # type
 
+constructor builtin Word   : Type
+constructor builtin String : Type
+
 data Bool  : Type where
   True  : Bool
   False : Bool

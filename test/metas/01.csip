@@ -1,5 +1,8 @@
 # source
 # elab
+
+constructor builtin Word   : Type
+
 id: (a: Type) -> a -> a
   = \_ x -> x
 

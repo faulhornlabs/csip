@@ -3,6 +3,9 @@
 # eval
 # type
 
+constructor builtin Word   : Type
+constructor builtin String : Type
+
 id : {A : Type} -> A -> A = \x -> x
 
 f : (Word -> Word) -> Type = \_ -> String

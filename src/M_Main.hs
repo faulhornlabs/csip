@@ -1,20 +1,19 @@
-import B_Base
-import E_Parse
-import F_Eval
-import H_Elab
-import I_Stage
+
+import D_Calculus
+import E3_Elab
+import E4_Stage
 
 ----------------------------
 
-getCmd :: String -> RefM (Tup2 (List (List String)) String)
+getCmd :: String -> IO (Tup2 (List (List String)) String)
 getCmd = \case
   ConsChar '#' (ConsChar ' ' (spanStr (/= '\n') -> T2 cmd (ConsChar '\n' s))) -> do
-    cmd <- parse cmd >>= f
+    cmd <- parse cmd >>= runMem . f
     T2 cmds s <- getCmd s
     pure (T2 (cmd:. cmds) s)
   s -> pure (T2 Nil s)
  where
-  f :: Raw -> RefM (List String)
+  f :: Raw -> Mem (List String)
   f (a :@ b) = print b >>= \b -> f a <&> \as -> as ++ b :. Nil
   f n = print n <&> (:.Nil)
 
@@ -23,8 +22,8 @@ showCmd = mconcat . intersperse " "
 
 doCmds :: List String -> String -> IO String
 doCmds cmd s = do
- T0 <- runRefM $ reset mainReset
- catchErrors (\e -> runRefM $ appendLoc <$> print e) (doCmds_ cmd s)
+ T0 <- runMem $ reset mainReset
+ catchErrors (\e -> runMem $ appendLoc <$> print e) (doCmds_ cmd s)
 
 doCmds_ :: List String -> String -> IO String
 doCmds_ cmd s = case cmd of
@@ -36,32 +35,38 @@ doCmds_ cmd s = case cmd of
  where
   doCmd :: Bool -> String -> String -> IO String
   doCmd quote cmd s = case cmd of
-    "source"    -> runRefM $ sh =<< (parse s :: RefM String)
-    "indent"    -> runRefM $ sh =<< (parse s :: RefM IString)
-    "lex"       -> runRefM $ sh =<< (parse s :: RefM (List (Token Spaced)))
-    "structure" -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Spaced))
-    "string"    -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Stringed))
-    "comment"   -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Uncomment))
-    "comments"  -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Uncomments))
-    "space"     -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Unspaced))
-    "layout"    -> runRefM $ sh =<< (parse s :: RefM (TokenSeq Layout))
-    "op"        -> runRefM $ sh =<< (parse s :: RefM (ExpTree' Layout))
-    "exptree"   -> runRefM $ sh =<< (parse s :: RefM (ExpTree' PatchedOp))
-    "sugar"     -> runRefM $ sh =<< (parse s :: RefM (ExpTree' Desug))
-    "elab"      -> runRefM $ sh =<< (parse s :: RefM Tm)
-    "eval"      -> runRefM $ sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF)
-    "type"      -> runRefM $ sh =<< (parse s >>= inferTop <&> (\(MkTmTy _ t) -> t) >>= quoteNF')
-    "evalquote" -> runRefM $ sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= quoteNF')
-    "stage"     -> runRefM $ sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage)
+    "source"    -> runMem . sh =<< (parse s :: IO String)
+    "indent"    -> runMem . sh =<< (parse s :: IO IString)
+    "lex"       -> runMem . sh =<< (parse s :: IO (List (Name Spaced)))
+    "structure" -> runMem . sh =<< (parse s :: IO (NameSeq Spaced))
+    "string"    -> runMem . sh =<< (parse s :: IO (NameSeq Stringed))
+    "comment"   -> runMem . sh =<< (parse s :: IO (NameSeq Uncomment))
+    "comments"  -> runMem . sh =<< (parse s :: IO (NameSeq Uncomments))
+    "space"     -> runMem . sh =<< (parse s :: IO (NameSeq Unspaced))
+    "layout"    -> runMem . sh =<< (parse s :: IO (NameSeq Layout))
+    "op"        -> runMem . sh =<< (parse s :: IO (ExpTree' Layout))
+    "exptree"   -> runMem . sh =<< (parse s :: IO (ExpTree' PatchedOp))
+    "sugar1"    -> runMem . sh =<< (parse s :: IO (ExpTree' Desug))
+    "sugar"     -> runMem . sh =<< (parse s :: IO (ExpTree' Import))
+    "scope"     -> runMem . sh =<< (parse s :: IO (ExpTree' Scope))
+    "elab"      -> runMem . sh =<< ((parse s :: IO Tm) >>= runMem . (walkTm True >=> unscope False))
+    "eval"      -> runMem . sh =<< ((parse s :: IO Tm) >>= runMem . (evalClosed' >=> quoteNF >=> walkTm False >=> unscope False))
+    "evalquote" -> runMem . sh =<< ((parse s :: IO Tm) >>= runMem . evalClosed' >>= runMem . quoteLets)
+    "type"      -> runMem . sh =<< (parse s >>= runMem . infer <&> (\(MkTmTy _ t) -> t))
+    "stage"     -> runMem . sh =<< (parse s >>= runMem . evalClosed' . getCode >>= runMem . stage)
+    "pstage"    -> runMem . sh =<< (parse s >>= runMem . evalClosed' . getPCode >>= runMem . pstage)
     "haskell_stage"
-                -> runRefM $ sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stageHaskell)
-    "stage_eval"-> runRefM $ sh =<< ((parse s :: RefM Tm) >>= evalClosed' >>= stage_eval)
+                -> runMem . sh =<< (parse s >>= runMem . evalClosed' . getCode >>= runMem . stageHaskell)
+    "stage_eval"-> runMem . sh =<< (parse s >>= runMem . evalClosed' . getCode >>= runMem . stage_eval)
     _ -> fail $ pure $ "Unknown command: " <> cmd
    where
-    sh :: (PPrint a, Print a) => a -> RefM String
+    sh :: (PPrint a, Print a) => a -> Mem String
     sh x = case quote of
-      True -> print (pprint x)
+      True -> pprint' x
       _    -> print x
+
+    getCode (MkCodeTm t) = t
+    getPCode (MkPCodeTm t) = t
 
 
 ----------------------------
@@ -81,7 +86,7 @@ splitFile fn s = case go s of
   find n (ConsChar '\n' s)
     | T2 a (ConsChar '\n' _) <- spanStr (== '#') s
     , len <- lengthStr a + 1
-    , len >= 6
+    , 6 <= len
     = Just (T2 n len)
   find n (ConsChar _ s) = find (n+1) s
   find _ _ = Nothing
@@ -92,10 +97,11 @@ testNames files = do
   l <- mconcat <$> forM (filter (isJust . stripSuffix ".csip") files) \fn -> parseFile "" fn >>= \case
     Nothing -> pure Nil
     Just s -> forM (splitFile fn s) \(T2 fn s) -> do
-      T2 cmds s <- runRefM (getCmd s)
+      T2 cmds s <- getCmd s
       let n = length cmds
       rs <- forM (maybeElab cmds) \cmd -> do
-        let out = hashString ("# " <> showCmd cmd <> " # " <> fn <> " # " <> showWord n <> " # " <> versionString <> "\n" <> s) <> ".csipout"
+        let str = "# " <> showCmd cmd <> " # " <> fn <> " # " <> showWord n <> " # " <> versionString <> "\n" <> s
+        let out = hashString str <> ".csipout"
         tdir <- getTemporaryDir
         r <- parseFile tdir out
         pure $ MkCommand s cmd (printFile (tdir </> out)) r
@@ -133,7 +139,7 @@ testFiles accept files = do
           Just True -> printres r
           _         -> pure T0
 
-repNl as bs = zip (as ++ replicate (c-.a) "") (bs ++ replicate (c-.b) "") where
+repNl as bs = zipWith T2 (as ++ replicate (c-a) "") (bs ++ replicate (c-b) "") where
 
   a = length as; b = length bs; c = max a b
 
@@ -148,10 +154,10 @@ present files beg = do
         wh <- getTerminalSize
         disp (snd wh) (mkScreen True wh cyan rs) wait
        where
-        T2 fn cmds = fs !! i
+        T2 fn cmds = fromMaybe (lazy $impossible) $ fs !! i
         wait k
           | k == " " || k == "\n" || k == "Right", i+1 < l = Just (f (i+ 1))
-          | k == "Backspace"      || k == "Left" , i > 0   = Just (f (i-.1))
+          | k == "Backspace"      || k == "Left" , i > 0   = Just (f (i-1))
           | k == "Esc" || k == "q"  = Just (pure T0)
           | k == "r"                = Just (present files fn)
           | True                    = Nothing
@@ -172,15 +178,15 @@ export files = do
 
 mkScreen :: Bool -> Tup2 Word Word -> Color -> List (Tup2 String String) -> List String
 mkScreen rich (T2 w h) color ts
-  = mconcat $ zip os tls <&> \case
+  = mconcat $ zipWith T2 os tls <&> \case
     T2 o (t:. ls) ->
       let o1 = o `div` 2 in
-      let o2 = o -. o1   in
+      let o2 = o - o1   in
          t:. replicate o1 "" ++ ls ++ replicate o2 ""
-    _ -> impossible
+    _ -> $impossible
  where
-  mh = sum $ map length tls
-  os = distribute (length tls) $ h -. mh
+  mh = foldl (+) 0 $ map length tls
+  os = distribute (length tls) $ h - mh
   tls = map f ts
 
   f :: Tup2 String String -> List String
@@ -194,21 +200,21 @@ mkScreen rich (T2 w h) color ts
     spaces = "                                                                                                                                          "
 
     ls = lines s
-    mw = maximum (0:. map lengthANSI ls)
-    ow = (w -. mw) `div` 2
-    t1 = (w -. lengthANSI title) `div` 2
-    t2 = w -. t1 -. lengthANSI title
+    mw = foldl max 0 (map lengthANSI ls)
+    ow = (w - mw) `div` 2
+    t1 = (w - lengthANSI title) `div` 2
+    t2 = w - t1 - lengthANSI title
 
 disp :: Word -> List String -> (String -> Maybe (IO Tup0)) -> IO Tup0
 disp h ls' cont = wait 0  where
 
-  mz = length ls' -. h
+  mz = length ls' - h
   wait z = do
-    putStr $ clearScreen <> mconcat (zip (enumFromTo 0 h) (drop z ls') <&> \(T2 i l) -> setCursorPosition i 0 <> l)
+    putStr $ clearScreen <> mconcat (zipWith T2 (enumFromTo 0 h) (drop z ls') <&> \(T2 i l) -> setCursorPosition i 0 <> l)
     getKey >>= \case
-      "Up"       | z > 0  -> wait (z -. 1)
+      "Up"       | z > 0  -> wait (z - 1)
       "Down"     | z < mz -> wait (z +  1)
-      "PageUp"   | z > 0  -> wait (z -. h)
+      "PageUp"   | z > 0  -> wait (z - h)
       "PageDown" | z < mz -> wait (min mz $ z + h)
       s -> case cont s of
         Just m -> m
@@ -220,5 +226,5 @@ disp h ls' cont = wait 0  where
 main = runIO $ runCLI "csip"
    $ command "show"    "present files"           (Files \files -> presentationMode $ present files "")
   <> command "export"  "export presentation"     (Files \files -> export files >>= putStr)
-  <> command "diff"    "compare compiled output" (Files $ testFiles False)
+  <> command "diff"    "compare compiled output" (Files \files -> testFiles False files)
   <> Files (testFiles True)
