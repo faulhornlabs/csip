@@ -15,7 +15,8 @@ infoTable s = snd <$> runState mempty go
   go st = f s  where
     f = \case
       a :@ b -> f a >> f b
-      RVar n | not $ elem (nameStr n) $ "App" :. "Arr" :. "Lam" :. "Let" :. "TopLet" :. Nil -> gets st (lookupIM n) >>= \case
+      RVar n | not $ elem (nameStr n) $ "App" :. "Arr" :. "Lam" :. "Let" :. "TopLet" :. Nil
+       -> gets st (lookupIM n) >>= \case
         Just{} -> pure T0
         Nothing -> lookupDefs n >>= \case
           Just (MkDefData True (MkTmTy _ t) _) -> do
@@ -37,7 +38,7 @@ stage_ t = do
   pure (T2 r' (do T2 n r <- assocsIM m; t <- maybeToList (unquoteTy r); pure (T2 n t)))
 
 stage :: Val -> RefM Scoped
-stage t = stage_ t <&> \(T2 a _ds) -> a --foldr (\(T2 n t) -> RLetTy n t) a ds
+stage t = stage_ t <&> \(T2 a _ds) -> a
 
 
 pShow = f 10 . (\e -> appEndo e NilStr) . show  where
@@ -75,13 +76,14 @@ unquoteTy = f where
     a :@ b -> (:@) <$> f a <*> f b
     _ -> Nothing
 
-
+-- Work in progress
 stage_eval :: Val -> RefM Scoped
 stage_eval v = do
   t <- quoteTm_ True True False v
   v' <- evalClosed =<< unquoteTm t
   quoteNF v'
 
+-- Work in progress
 unquoteTm :: Tm -> RefM Tm
 unquoteTm t = runReader mempty (g t) where
  g t st = f t  where
@@ -207,13 +209,13 @@ data Exp
 
 instance Show Exp where
   show_ p = parens p . \case
-    Lam' a b -> "Lam" <+> show a <+> show b
+    Lam' a b  -> "Lam" <+> show a <+> show b
     Let a b c -> "Let" <+> show a <+> show b <+> show c
-    App a b -> "App" <+> show a <+> show b
-    Var a -> "Var" <+> show a
-    Con a -> "Con" <+> show a
-    String a -> "String" <+> show a
-    Nat a -> "Word" <+> show a
+    App a b   -> "App" <+> show a <+> show b
+    Var a     -> "Var" <+> show a
+    Con a     -> "Con" <+> show a
+    String a  -> "String" <+> show a
+    Nat a     -> "Word" <+> show a
 
 data Ty
   = TCon HName
@@ -224,11 +226,11 @@ data Ty
 
 instance Show Ty where
   show_ p = parens p . \case
-    Pi a b -> "Pi" <+> show a <+> show b
+    Pi a b    -> "Pi" <+> show a <+> show b
     HPi a b c -> "HPi" <+> show a <+> show b <+> show c
     TApp' a b -> "TApp" <+> show a <+> show b
-    TVar' a -> "TVar" <+> show a
-    TCon a -> "TCon" <+> show a
+    TVar' a   -> "TVar" <+> show a
+    TCon a    -> "TCon" <+> show a
 
 data Data
   = Data HName Ty (List (Tup2 HName Ty))
@@ -252,14 +254,14 @@ name' n = case nameId n of
 convert :: Scoped -> RefM Exp
 convert = f  where
   f = \case
-    Lam n e -> Lam' (name' n) <$> f e
+    Lam n e         -> Lam' (name' n) <$> f e
     RLet n Hole a b -> Let (name' n) <$> f a <*> f b
-    a :@ b -> App <$> f a <*> f b
-    RNat n    -> pure $ Nat n
-    RString s -> pure $ String s
-    RVar n -> isCN n <&> \case
-      True  -> Con $ name' n
-      _ -> Var $ name' n
+    a :@ b          -> App <$> f a <*> f b
+    RNat n          -> pure $ Nat n
+    RString s       -> pure $ String s
+    RVar n          -> isCN n <&> \case
+      True          -> Con $ name' n
+      _             -> Var $ name' n
     _ -> impossible
 
 convertTy :: Scoped -> RefM Ty
@@ -270,7 +272,7 @@ convertTy = f  where
     a :@ b -> TApp' <$> f a <*> f b
     RVar n -> isCN n <&> \case
       True -> TCon $ name' n
-      _ -> TVar' $ name' n
+      _    -> TVar' $ name' n
     _ -> impossible
 
 

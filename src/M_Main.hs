@@ -28,11 +28,11 @@ doCmds cmd s = do
 
 doCmds_ :: List String -> String -> IO String
 doCmds_ cmd s = case cmd of
-  cmd :. Nil                       -> doCmd False cmd s
-  cmd :. "highlight" :. Nil          -> doCmd False cmd s <&> appendLoc
-  cmd :. "quote" :. Nil              -> doCmd True  cmd s
+  cmd :. Nil                           -> doCmd False cmd s
+  cmd :. "highlight" :. Nil            -> doCmd False cmd s <&> appendLoc
+  cmd :. "quote" :. Nil                -> doCmd True  cmd s
   cmd :. "quote" :. "highlight" :. Nil -> doCmd True  cmd s <&> appendLoc
-  cmds ->  fail $ pure $ "Unknown commands: " <> mconcat (intersperse " " cmds)
+  cmds -> fail $ pure $ "Unknown commands: " <> mconcat (intersperse " " cmds)
  where
   doCmd :: Bool -> String -> String -> IO String
   doCmd quote cmd s = case cmd of
@@ -60,11 +60,8 @@ doCmds_ cmd s = case cmd of
    where
     sh :: (PPrint a, Print a) => a -> RefM String
     sh x = case quote of
-      True -> sh' x
+      True -> print (pprint x)
       _    -> print x
-
-  sh' :: PPrint a => a -> RefM String
-  sh' m = print (pprint m)
 
 
 ----------------------------
@@ -78,14 +75,17 @@ splitFile fn s = case go s of
  where
   go s = case find 0 s of
     Nothing -> s :. Nil
-    Just i | T2 as bs <- splitAtStr i s -> as :. go (dropStr 7 bs)
+    Just (T2 i j) | T2 as bs <- splitAtStr i s -> as :. go (dropStr (j+1) bs)
 
-  find :: Word -> String -> Maybe Word
-  find n (ConsChar '\n' (ConsChar '#' (ConsChar '#' (ConsChar '#' (ConsChar '#' (ConsChar '#' (ConsChar '\n' _))))))) = Just n
+  find :: Word -> String -> Maybe (Tup2 Word Word)
+  find n (ConsChar '\n' s)
+    | T2 a (ConsChar '\n' _) <- spanStr (== '#') s
+    , len <- lengthStr a + 1
+    , len >= 6
+    = Just (T2 n len)
   find n (ConsChar _ s) = find (n+1) s
   find _ _ = Nothing
 
-  
 
 testNames :: List FilePath -> IO (List (Tup2 FilePath (List Command)))
 testNames files = do
@@ -130,8 +130,8 @@ testFiles accept files = do
                 <> mconcat (take 1 do T2 a b <- repNl (lines r') (lines r); guard (a /= b); pure ("\n" <> a <> "\n" <> b <> "\n"))
                _    -> "") r2
         askYN "accept" >>= \case
-          True -> printres r
-          _    -> pure T0
+          Just True -> printres r
+          _         -> pure T0
 
 repNl as bs = zip (as ++ replicate (c-.a) "") (bs ++ replicate (c-.b) "") where
 
@@ -151,7 +151,7 @@ present files beg = do
         T2 fn cmds = fs !! i
         wait k
           | k == " " || k == "\n" || k == "Right", i+1 < l = Just (f (i+ 1))
-          | k == "Backspace     " || k == "Left" , i > 0   = Just (f (i-.1))
+          | k == "Backspace"      || k == "Left" , i > 0   = Just (f (i-.1))
           | k == "Esc" || k == "q"  = Just (pure T0)
           | k == "r"                = Just (present files fn)
           | True                    = Nothing

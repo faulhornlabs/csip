@@ -693,6 +693,7 @@ unWTm v = v
 
 compileRule :: Tm -> Tm -> RefM Tup0
 compileRule lhs rhs = do
+  T2 fn r <- getFun lhs
   T0 <- runState mempty (linear lhs) >>= \case
     T2 (Just a) _ -> fail $ "non-linear lhs: " <<>> print a
     _ -> pure T0
@@ -701,13 +702,13 @@ compileRule lhs rhs = do
   updateRule fn r =<< evalClosed new
   pure T0
  where
-  T2 fn r = getFun lhs
 
   getFun = \case
-    TVal (unWTm -> WFun fn r) -> T2 fn r
+    TVal (unWTm -> WFun fn r) -> pure $ T2 fn r
     TGuard a _ -> getFun a
     TVal (unWTm -> WCon _ "App") :@. _ :@. _ :@. a :@. _ -> getFun a
     TApp a _ -> getFun a
+    TVar n -> tagError n $ error $ "not in scope"  -- TODO: better highlighting
     _ -> impossible
 
   linear t st = f t  where
@@ -1186,7 +1187,7 @@ instance PPrint Val where
     WCon _ n -> "Constr" :@ pprint n
     WMeta_ n _ -> "Meta" :@ pprint n
     WApp a b -> "App" :@ pprint a :@ pprint b
-    WTm n a b -> "Term" :@ pprint a
+    WTm _ a _ -> "Term" :@ pprint a
     WDelta n _ _ -> "Delta" :@ pprint n
     WFun n _ -> "Funct" :@ pprint n
     _ -> "TODO"

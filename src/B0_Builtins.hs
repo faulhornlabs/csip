@@ -282,8 +282,6 @@ data Prog
 
 runProg :: Prog -> IO ()
 runProg m = do
-  stdin_NoBuffering ioerror do
-  stdout_LineBuffering ioerror do
   _ <- go m
   pure ()
  where
@@ -308,13 +306,8 @@ runProg m = do
       go $ cont $ maybe (fromPreludeString "/tmp") id t
 
     PresentationMode m c -> do
-      -- hide cursor, turn on bracketed paste mode, enable alternative screen buffer, turn line wrap off
-      putStr' "\ESC[?25l\ESC[?2004h\ESC[?1049h\ESC[?7l" ioerror do
-      setEcho 0{-stdin-} False
-      go (force m) `finally` do
-        setEcho 0{-stdin-} True
-        putStr' "\ESC[?7h\ESC[?1049l\ESC[?2004l\ESC[?25h" ioerror do
-        pure ()
+      setterm
+      go (force m) `finally` resetterm
       go (force c)
 
     GetTerminalSize def ret -> termSize (go (force def)) \w h -> go (ret w h)
@@ -359,18 +352,15 @@ foreign import ccall unsafe "stdio.h fwrite"       fwrite    :: CString -> Int -
 foreign import ccall unsafe "stdio.h fseek"        fseek     :: Ptr CFile -> Word -> Word -> IO Int
 foreign import ccall unsafe "stdio.h ftell"        ftell     :: Ptr CFile -> IO Int
 foreign import ccall unsafe "getstdout"            stdoutPtr :: IO (Ptr CFile)
-foreign import ccall unsafe "getstdin"             stdinPtr  :: IO (Ptr CFile)
 foreign import ccall unsafe "stdio.h fclose"       fclose    :: Ptr CFile -> IO Int
 foreign import ccall unsafe "stdio.h fflush"       fflush    :: Ptr CFile -> IO Int
 foreign import ccall unsafe "stdio.h getchar"      getChar'  :: IO Char
-foreign import ccall unsafe "stdio.h setvbuf"      setvbuf   :: Ptr CFile -> Ptr Word8 -> CInt -> CSize -> IO Int
 foreign import ccall unsafe "sys/ioctl.h ioctl"    ioctl     :: Int -> Int -> Ptr Word8 -> IO Int
 foreign import ccall unsafe "getProgArgv"          getProgArgv :: Ptr CInt -> Ptr (Ptr CString) -> IO ()
 foreign import ccall unsafe "getenv"               c_getenv  :: CString -> IO (Ptr CChar)
-foreign import ccall unsafe "termios.h tcgetattr"  tcgetattr :: Int -> Ptr Int32 -> IO Int
-foreign import ccall unsafe "termios.h tcsetattr"  tcsetattr :: Int -> Int -> Ptr Int32 -> IO Int
-foreign import ccall unsafe "HsBase.h __hscore_sizeof_termios"  sizeof_termios :: Int
 
+foreign import ccall unsafe "setterm"              setterm   :: IO ()
+foreign import ccall unsafe "resetterm"            resetterm :: IO ()
 
 --------------------------------------------------
 
@@ -387,44 +377,6 @@ notNull :: IO a -> IO (Ptr b) -> (Ptr b -> IO a) -> IO a
 notNull def m next = m >>= \p -> guardErr def (p /= nullPtr) (next p)
 
 --------------------------------------------------
-
-set True  m x = x .|. m
-set False m x = x .&. complement m
-
-type Termios = Int32
-
-with_termios :: IO () -> Int -> (Ptr Termios -> IO ()) -> IO ()
-with_termios err fd m = do
-  allocaBytes sizeof_termios \ptr -> do
-  notErr err (tcgetattr fd ptr) do
-  m ptr
-  notErr err (tcsetattr fd 0{-TCSANOW-} ptr) do
-  pure ()
-
-set_c_lflag :: Ptr Termios -> Int32 -> Bool -> IO ()
-set_c_lflag ptr mask b = do
-  let c_lflag = plusPtr ptr 12 :: Ptr Int32
-  x <- peek c_lflag
-  poke c_lflag (set b mask x)
-
-setEcho :: Int -> Bool -> IO ()
-setEcho fd b = with_termios ioerror fd \ptr -> set_c_lflag ptr 8{-ECHO-} b
-
-stdin_NoBuffering err ok = do
-  -- man termios
-  with_termios err 0{-stdin-} \ptr -> do
-    set_c_lflag ptr 2{-ICANON-} False
-    let p = plusPtr ptr 17{-c_cc-}
-    poke (plusPtr p 6{-VMIN-}  :: Ptr Word8) 1
-    poke (plusPtr p 5{-VTIME-} :: Ptr Word8) 0
-  sin <- stdinPtr
-  notErr err (setvbuf sin nullPtr 2{-_IONBF-} 0) do
-  ok
-
-stdout_LineBuffering err ok = do
-  sout <- stdoutPtr
-  notErr err (setvbuf sout nullPtr 1{-_IOLBF-} 10000) do
-  ok
 
 termSize err ok = do
   allocaBytes 8 \ptr -> do

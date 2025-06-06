@@ -35,9 +35,9 @@ pattern CLet    = WCon 4 "Let"
 data Icit = Impl | ImplClass | Expl
 
 instance Tag Icit where
-  tag Impl = 0
+  tag Impl      = 0
   tag ImplClass = 1
-  tag Expl = 2
+  tag Expl      = 2
 
 instance Ord Icit where
   compare = compareTag
@@ -114,9 +114,9 @@ insertDefs n a m = modify envR (insertIM n a) >> m
 lookupDefs n = gets envR (lookupIM n)
 
 memptyEnv
-  = def "Word" CNat
+  = def "Word"   CNat
   $ def "String" CString
-  $ def "Type" CType
+  $ def "Type"   CType
   $ pure mempty
  where
   def n_ v me = do
@@ -186,7 +186,7 @@ addGlobal cstr n v t = insertDefs n (MkDefData cstr (MkTmTy v t) Nothing)
 
 defineGlob_ :: Bool -> Bool -> Bool -> Name -> Tm -> Val -> (Val -> Val -> RefM b) -> RefM b
 defineGlob_ cstr haslet metatest n tv t_ cont = addName_ n do
-  v <- deepForce =<< evalEnv' (nameStr n) tv
+  v <- deepForce =<< evalEnvGlued (nameStr n) tv
   t <- deepForce t_
   let co = cont v t
   top <- isOnTop
@@ -226,7 +226,8 @@ askDef' n = lookupDefs n <&> (<$>) tmTy
 evalEnv :: Tm -> RefM Val
 evalEnv t = getLocalVals >>= \ls -> eval "env" ls t
 
-evalEnv' n t = evalEnv t >>= \v -> case closed v of
+-- glued version of evalEnv
+evalEnvGlued n t = evalEnv t >>= \v -> case closed v of
   True -> vTm n t v
   _    -> pure v
 
@@ -492,15 +493,17 @@ check_ r ty = case r of
         f <- conv t ty
         f a
 
+----------------------------------------- tools for class elaboration
+
 codomain = \case
-  RPi _ _ e -> codomain e
+  RPi _ _  e -> codomain e
   RHPi _ _ e -> codomain e
-  RCPi _ e -> codomain e
-  RIPi _ e -> codomain e
+  RCPi _   e -> codomain e
+  RIPi _   e -> codomain e
   t -> t
 
 appHead = \case
-  RApp a _ -> appHead a
+  RApp  a _ -> appHead a
   RHApp a _ -> appHead a
   a -> a
 
@@ -631,19 +634,6 @@ filterM p (a :. b) = p a >>= \case
   True -> (a :.) <$> filterM p b
   False -> filterM p b
 
-addRule' :: Raw -> Raw -> RefM Tup0
-addRule' a b = do
-  ns <- filterM notDefined (fvs a)
-  flip (foldr addName) ns $ do
-    MkTmTy lhs vta <- insertH $ setLHS $ infer a
-    bv <- askBoundVars <&> fromListIS
-    T2 lhs' (T2 st' vs) <- runState (T2 emptyMap Nil) \st -> replaceMetas (Left st) bv lhs
-    flip (foldr addName') (reverse vs) $ do
-      rhs <- check b vta
-      bv <- askBoundVars <&> fromListIS
-      rhs' <- replaceMetas (Right st') bv rhs
-      compileRule lhs' rhs'
-
 addLookupDictRule :: ClassData -> List (Tup2 Name Val) -> List Val -> Val -> List Val -> RefM Tup0
 addLookupDictRule (MkClassData classVal dictVal supers _) (map fst -> ns) is_ arg_ mns = do
   lookupDict <- mkFun "lookupDict"
@@ -687,6 +677,21 @@ inferConstructors r cont = case r of
     defineConstructor n ff vta \_ _ _ -> inferConstructors b cont
   REnd -> cont
   _ -> fail "can't infer constructor"
+
+------------------------------------------------
+
+addRule' :: Raw -> Raw -> RefM Tup0
+addRule' a b = do
+  ns <- filterM notDefined (fvs a)
+  flip (foldr addName) ns $ do
+    MkTmTy lhs vta <- insertH $ setLHS $ infer a
+    bv <- askBoundVars <&> fromListIS
+    T2 lhs' (T2 st' vs) <- runState (T2 emptyMap Nil) \st -> replaceMetas (Left st) bv lhs
+    flip (foldr addName') (reverse vs) $ do
+      rhs <- check b vta
+      bv <- askBoundVars <&> fromListIS
+      rhs' <- replaceMetas (Right st') bv rhs
+      compileRule lhs' rhs'
 
 assertOnTop = isOnTop >>= \case
   True -> pure T0
@@ -813,7 +818,7 @@ infer_ r = case r of
     pure (MkTmTy (pi `TApp` ta `TApp` tb) CType)
   (getPi -> Just (T4 pi n a b)) -> do
     ta <- check a CType
-    va <- evalEnv' (typeName n) ta
+    va <- evalEnvGlued (typeName n) ta
     defineBound' n va \n -> do
       tb <- check b CType
       l <- tLam n tb
@@ -860,7 +865,7 @@ infer_ r = case r of
        | icit == i -> do
         tb <- check b pa
         n <- lamName "t" pb
-        v <- evalEnv' n tb
+        v <- evalEnvGlued n tb
         b <- vApp pb v
         pure (MkTmTy (TApp fav tb) b)
        | Impl <- icit -> do
@@ -980,7 +985,7 @@ addForalls r = do
 
 checkType n t = do
   t <- addForalls t
-  check t CType >>= evalEnv' (typeName n)
+  check t CType >>= evalEnvGlued (typeName n)
 
 checkType' t = do
   t <- addForalls t

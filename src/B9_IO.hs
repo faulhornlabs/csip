@@ -91,13 +91,15 @@ putStr s = MkIO \end -> PutStr (toPreludeString (fixANSI s)) (lazy (end T0))
 getChar :: IO Char
 getChar = MkIO GetChar
 
+askYN :: String -> IO (Maybe Bool)
 askYN s = do
   putStr $ s <> " (Y/N)? "
   c <- getChar
   putStr "\n"
   case c of
-    'y' -> pure True
-    'n' -> pure False
+    c | c == 'y' || c == 'Y' -> pure $ Just True
+    c | c == 'n' || c == 'N' -> pure $ Just False
+    c | c == 'q'             -> pure Nothing
     _ -> askYN s
 
 getKey :: IO String
