@@ -2,7 +2,9 @@ tmp
 other
 csip
 *.hi
+*.hi-boot
 *.o
+*.o-boot
 *.agdai
 *.swp
 *~
