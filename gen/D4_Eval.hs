@@ -270,7 +270,7 @@ deepForce v_ = do
       ret mn es = T2 mn <$> mapM forceVal es
 
     up :: Val -> Maybe SName -> List (Tup2 Val Val) -> Mem Val
-    up v mn (map snd -> ts) = case v of
+    up v _mn (map snd -> ts) = case v of
       _ | rigid v -> pure v
       WMeta{}     -> pure v
       WFun{}      -> pure v
@@ -282,7 +282,7 @@ deepForce v_ = do
 strictForce :: Val -> Mem Val
 strictForce v = deepForce v >>= \case
   v {- TODO! | rigid v -} -> pure v
-  v -> fail $ "meta in value:\n" <> print v
+--  v -> fail $ "meta in value:\n" <> print v
 
 evalClosed' v = evalClosed v >>= strictForce
 

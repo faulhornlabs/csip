@@ -144,7 +144,7 @@ cursorForward n       = "\ESC[" <> showWord n <> "C"
 setCursorPosition n m = "\ESC[" <> showWord (n + 1) <> ";" <> showWord (m + 1) <> "H"
 
 versionString :: String
-versionString = "3"
+versionString = "4"
 
 
 -------------------------------- command line interface
