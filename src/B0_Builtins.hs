@@ -292,7 +292,7 @@ runProg m = do
 
     PresentationMode m c -> do
       setterm
-      go (force m) `finally` resetterm
+      _ <- go (force m) `finally` resetterm
       go (force c)
 
     GetTerminalSize def ret -> termSize (go (force def)) \w h -> go (ret w h)
