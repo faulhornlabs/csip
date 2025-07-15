@@ -27,13 +27,11 @@ import Control.Exception
 import Data.Coerce
 import System.Exit (exitFailure)
 import Foreign hiding (newArray, shiftL, shiftR)
---import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
 import qualified GHC.Base as P (lazy)
 import GHC.Base hiding (lazy, ord)
 import GHC.Num (integerToWord)
---import GHC.Storable
 import GHC.Exts (Ptr (..))
 import Unsafe.Coerce
 
@@ -207,33 +205,8 @@ readArray (MkArray arr) (W# i) = MkMem \s -> readArray# arr (word2Int# i) s
 writeArray :: Array e -> Word -> e -> Mem Tup0
 writeArray (MkArray arr) (W# i) e = MkMem \s -> (# writeArray# arr (word2Int# i) e s, T0 #)
 
+
 -------------------------------------------------- exceptions
-
-{- does not work with -O2
-
-data Exception = MkException Word Any
-
-throwMem :: Word -> e -> Mem a
-throwMem w e = MkMem \s -> raiseIO# (MkException w (unsafeCoerce e)) s
-
-catchMem :: Word -> (e -> Mem a) -> Lazy (Mem a) -> Mem a
-catchMem w f g = MkMem \s -> catch# io handler s  where
-
-  io s = case (bindMem (force g) \a -> pureMem a) of MkMem f -> f s
-
-  handler e@(MkException w' c) s
-    | w' == w = unMem (f (unsafeCoerce c)) s
-    | True    = raiseIO# e s
-
-finally :: IO a -> IO b -> IO a
-finally (IO io) end = IO \s -> case catch# io handler s of
-   (# s, a #) -> case unIO end s of
-     (# s, _ #) -> (# s, a #)
- where
-  handler e s = case unIO end s of
-     (# s, _ #) -> raiseIO# e s
-
--}
 
 data GException = MkGException Word Any
 

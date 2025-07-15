@@ -97,7 +97,7 @@ main = do
 ------------------------
 
 precedenceTable :: [(String, (Int, Int))]
-precedenceTable = mkTable (lines precedences) where
+precedenceTable = mkTable precedences where
 
   mkTable
     = map f
@@ -107,6 +107,7 @@ precedenceTable = mkTable (lines precedences) where
     . zipWith (\p f -> f p) [1..]
     . reverse
     . map (mconcat . map g . words)
+    . lines
 
   f [(s, Left l), (_, Right r)] = (s, (l, r))
 
