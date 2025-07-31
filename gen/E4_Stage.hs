@@ -77,7 +77,7 @@ unquoteTm t = runReader emptyIS (g t) where
     N146 :@. _ :@. _ :@. TVal (name -> n) :@. d :@. e -> tLet n <$> f d <*> local st (insertIS n) (f e)
     N146 -> (impossible "src/E4_Stage.hs" 76)
     N113 :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
-    N151 :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
+--    N151 :@. _ :@. _ :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
     N112 :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
     N152 :@. _ :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
     N57 :@. _ :@. _ :@. a -> f a

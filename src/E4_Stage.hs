@@ -75,7 +75,7 @@ unquoteTm t = runReader emptyIS (g t) where
     "TopLet"B :@. _ :@. _ :@. TVal (name -> n) :@. d :@. e -> tLet n <$> f d <*> local st (insertIS n) (f e)
     "TopLet"B -> $impossible
     "Let"B :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
-    "PLet"B :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
+--    "PLet"B :@. _ :@. _ :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
     "Lam"B :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
     "PLam"B :@. _ :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
     "App"B :@. _ :@. _ :@. a -> f a
