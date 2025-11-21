@@ -1,0 +1,11 @@
+
+Bool : Type
+False : Bool
+True  : Bool
+
+not :: Bool -> Bool
+not True = False
+not False = True
+
+not (not True)
+

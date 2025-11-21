@@ -1,0 +1,9 @@
+List : Type -> Type
+Nil  : List aa
+Cons : e -> List e -> List e
+
+map :: (a -> b) -> List a -> List b
+map f Nil         = Nil
+map g (Cons c as) = Cons (g c) (map g as)
+
+Type

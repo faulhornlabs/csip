@@ -1,0 +1,12 @@
+
+f : Type -> Type = t . (
+  A : Type;
+  A
+ )
+
+Eq : {a : Type} -> a -> a -> Type
+Refl : {a : Type} -> {x : a} -> Eq x x
+
+-- should fail
+x : Eq (f Type) (f Type) = Refl
+x

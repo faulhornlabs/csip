@@ -1,0 +1,45 @@
+N : Type
+Z : N
+S : N -> N
+
+add :: N -> N -> N
+add Z m = m
+add (S n) m = S (add n m)
+
+Fin : (n : N) -> Type
+FZ : Fin (S k)
+FS : Fin k -> Fin (S k)
+
+finToNat :: Fin n -> N
+finToNat FZ = Z
+finToNat (FS k) = S (finToNat k)
+
+weaken :: Fin n -> Fin (S n)
+weaken FZ     = FZ
+weaken (FS k) = FS (weaken k)
+
+shift :: (m : N) -> Fin n -> Fin (add m n)
+shift Z f = f
+shift (S m) f = FS (shift m f)
+
+last :: {n} -> Fin (S n)
+last {Z} = FZ
+last {S _} = FS last
+
+complement :: {n} -> Fin n -> Fin n
+complement FZ = last
+complement (FS x) = weaken (complement x)
+
+List : Type -> Type
+Nil  : List a
+Cons : a -> List a -> List a
+
+map :: (a -> b) -> List a -> List b
+map f Nil = Nil
+map f (Cons x xs) = Cons (f x) (map f xs)
+
+allFins :: (n : N) -> List (Fin n)
+allFins Z = Nil
+allFins (S n) = Cons (FZ {_}) (map FS (allFins n))
+
+allFins (S (S Z))

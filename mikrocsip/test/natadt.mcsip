@@ -1,0 +1,17 @@
+#Nat : Type
+#Zero : Nat
+#Suc  : Nat -> Nat
+
+add :: Nat -> Nat -> Nat
+add Zero n = n
+add (Suc m) n = Suc (add m n)
+
+mul :: Nat -> Nat -> Nat
+mul Zero n = Zero
+mul (Suc m) n = add n (mul m n)
+
+two     : Nat = Suc (Suc Zero)
+five    : Nat = Suc (add two two)
+ten     : Nat = add five five
+hundred : Nat = mul ten ten
+hundred

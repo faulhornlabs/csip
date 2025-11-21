@@ -1,0 +1,56 @@
+
+#Polarity    : Type
+#Value       : Polarity
+#Computation : Polarity
+
+#Ty   : Polarity -> Type
+#Arr  : Value -> Ty p -> Computation
+
+#Code : Ty p -> Type
+#PApp : {p} -> {a : Value} -> {b : Ty p} -> Arr a b ->  a -> b
+#PLam : {p} -> {a : Value} -> {b : Ty p} -> (a -> b) -> Arr a b
+#Let  : {p q} -> {a : Ty p}  -> {b : Ty q} -> a -> (a -> b) -> b
+#Dec  : {p q} -> {a : Ty p}  -> {b : Ty q} -> (a -> b) -> b
+#Def  : {p q} -> {a : Ty p}  -> {b : Ty q} -> a -> a -> b -> b
+
+-- Bool  : Type
+-- True  : Bool
+-- False : Bool
+
+--ite :: {a} -> Bool -> a -> a -> a
+--ite True  t e = t
+--ite False t e = e
+
+OBool  : Value
+OTrue  : OBool
+OFalse : OBool
+
+-- ONot :: Code (Arr OBool OBool)
+-- ONot OTrue  = OFalse
+-- ONot OFalse = OTrue
+
+-- oNot : _ := ONot
+
+
+oite : (a : Ty Value) -> Code (Arr OBool (Arr a (Arr a a)))
+  = a. (
+    f ::: Code (Arr OBool (Arr a (Arr a a)));
+    f OTrue  t _ = t;
+    f OFalse _ e = e;
+    Def f;
+    f
+  )
+
+oite OBool OTrue OFalse OTrue
+
+
+-- matchT : {a : Ty p} -> OBool -> a -> (OBool -> a) -> a
+
+-- oite : {a : Value} -> Code (Arr OBool (Arr a (Arr a a)))
+--     = a. matchT a (t e. t) (_ t e. e)
+
+-- onot : Code _ = b. oite b OFalse OTrue
+
+{-
+PApp (PApp (PApp f_495 (Con OTrue_279)) (Con OFalse_282)) (Con OTrue_279)
+-}

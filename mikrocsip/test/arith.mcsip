@@ -1,0 +1,55 @@
+
+#Polarity    : Type
+#Value       : Polarity
+#Computation : Polarity
+
+#Ty   : Polarity -> Type
+#Arr  : Value -> Ty p -> Computation
+
+#Code : Ty p -> Type
+#PApp : {p} -> {a : Value} -> {b : Ty p} -> Arr a b ->  a -> b
+#PLam : {p} -> {a : Value} -> {b : Ty p} -> (a -> b) -> Arr a b
+#Let  : {p q} -> {a : Ty p}  -> {b : Ty q} -> a -> (a -> b) -> b
+#Dec  : {p q} -> {a : Ty p}  -> {b : Ty q} -> (a -> b) -> b
+#Def  : {p q} -> {a : Ty p}  -> {b : Ty q} -> a -> a -> b -> b
+
+OBool  : Value
+OTrue  : OBool
+OFalse : OBool
+
+oite : (a : Ty Value) -> Code (Arr OBool (Arr a (Arr a a)))
+  = a. (
+    f :: Code (Arr OBool (Arr a (Arr a a)));    -- Code (OBool -> a -> a)
+    -- id1@f = id2@(Fun m)     -- m is a new meta
+    f OTrue  t _ = t;
+    f OFalse _ e = e;
+    -- Def f;      --        f = f body meta solution  (may contain f)
+    f
+  )
+
+-- fn : _ := oite OBool
+-- fn OTrue OFalse OTrue
+
+
+List : Type -> Type
+Nil  : {a} -> List a
+Cons : {a} -> a -> List a -> List a
+
+Nat  : Type
+Zero : Nat
+Suc  : Nat -> Nat
+
+words_collect :: List Nat -> List Nat -> List (List Nat)
+
+words :: List Nat -> List (List Nat)
+words Nil = Nil
+words (Cons Zero cs) = words cs
+words (Cons c cs)    = words_collect (Cons c Nil) cs
+
+words_collect w Nil = Cons w Nil
+words_collect w (Cons Zero cs) = Cons w (words cs)
+words_collect w (Cons c cs) = words_collect (Cons c w) cs
+
+words (Cons (Suc Zero) (Cons Zero (Cons (Suc Zero) Nil)))
+
+

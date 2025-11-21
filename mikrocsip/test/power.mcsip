@@ -1,0 +1,54 @@
+Nat  : Type
+Zero : Nat
+Succ : Nat -> Nat
+
+Maybe   : Type -> Type
+Nothing : Maybe a
+Just    : a -> Maybe a
+
+half :: Nat -> Maybe Nat
+half Zero = Just Zero
+half (Succ (Succ n)) | Just k <- half n = Just (Succ k)
+half _ = Nothing
+Close half
+
+#Polarity    : Type
+#Value       : Polarity
+#Computation : Polarity
+
+#Ty   : Polarity -> Type
+--             ::= _. Type
+#Arr  : Value -> Ty p -> Computation
+--             ::= a b. a -> b
+
+#Code : Ty p -> Type
+--             ::= t. t
+#PApp : {a : Value} -> {b : Ty p} -> Arr a b ->  a -> b
+--             ::= x y. x y
+#PLam : {a : Value} -> {b : Ty p} -> (a -> b) -> Arr a b
+--             ::= f. f
+#Let  : {a : Ty p}  -> {b : Ty q} -> a -> (a -> b) -> b
+--             ::= a f. f a
+
+Int : Value
+--  ::= Nat
+One : Int
+--    ::= Suc Zero
+Mul : Int -> Int -> Int
+--             ::= mul
+
+sqr : Arr Int Int := c . Mul c c
+
+pow :: Nat -> Int -> Int
+pow Zero        _ = One
+pow (Succ Zero) c = c
+pow n c | Just k <- half n = sqr (pow k c)
+pow (Succ n) c             = Mul c (pow n c)
+
+-- TODO: remove PLam
+main : _ := PLam (c. pow (Succ (Succ (Succ (Succ (Succ Zero))))) c)
+
+-- test1 ::= main 2 == 32
+
+main
+

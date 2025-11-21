@@ -1,0 +1,27 @@
+
+Nat  : Type
+Zero : Nat
+Suc  : Nat -> Nat
+
+Res   : Type -> Type
+MkRes : (nil : t) -> (cons : a -> t -> t) -> (length : t -> Nat) -> Res a
+
+mkRes : (a : Type) -> Res a
+  = a. (
+
+    List : Type;
+    Nil  : List;
+    Cons : a -> List -> List;
+
+    length :: List -> Nat;
+    length Nil = Zero;
+    length (Cons _ xs) = Suc (length xs);
+
+    MkRes Nil Cons length
+  )
+
+main :: Res Nat -> Nat
+main (MkRes nil con len) = len (con Zero nil)
+
+main (mkRes Nat)
+

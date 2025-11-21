@@ -1,0 +1,9 @@
+
+f1 :: Type -> Type
+f1 t = t
+
+Eq : {a : Type} -> a -> a -> Type
+Refl : {a : Type} -> {x : a} -> Eq x x
+
+x : Eq f1 f1 = Refl
+x

@@ -1,0 +1,14 @@
+
+Bool : Type
+False : Bool
+True  : Bool
+
+f :: Bool -> Bool
+f True = False
+
+g : Bool -> Bool = f
+
+f False = True
+
+g False
+-- should be True

@@ -1,0 +1,13 @@
+
+f : Type -> Type = t . (
+  A: Type;
+  A
+ )
+
+Eq : {a : Type} -> a -> a -> Type
+Refl : {a : Type} -> {x : a} -> Eq x x
+
+g : _ = f Type
+
+x : Eq g g = Refl {_} {g}
+x

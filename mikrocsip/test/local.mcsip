@@ -1,0 +1,12 @@
+Bool : Type
+False : Bool
+True  : Bool
+
+f : Bool -> Bool -> Bool = b. (
+  g :: Bool -> Bool;
+  g True = False;
+  g False = b;
+  g
+ )
+
+f False False

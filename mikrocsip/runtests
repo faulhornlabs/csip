@@ -1,0 +1,1 @@
+time ghc -odir tmp -outputdir tmp -O2 -o tmp/MikroCsip MikroCsip.hs && time ./tmp/MikroCsip diff `find test -name "*.mcsip"`

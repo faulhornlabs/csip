@@ -1,0 +1,13 @@
+
+f1 :: Type -> Type
+f1 t = t
+
+f2 :: Type -> Type
+f2 t = t
+
+Eq : {a : Type} -> a -> a -> Type
+Refl : {a : Type} -> {x : a} -> Eq x x
+
+-- should fail
+x : Eq f1 f2 = Refl
+x

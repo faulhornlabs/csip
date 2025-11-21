@@ -1,0 +1,9 @@
+Tree : Type
+Leaf : Tree
+Node : Tree -> Tree -> Tree
+
+f :: Tree -> Tree
+f (Node Leaf (Node m Leaf)) = m
+f _ = Leaf
+
+f (Node (Node Leaf Leaf) Leaf)
