@@ -1,0 +1,50 @@
+Nat  : Type
+Zero : Nat
+Suc  : Nat -> Nat
+
+Bool  : Type
+False : Bool
+True  : Bool
+
+add :: Nat -> Nat -> Nat
+add Zero    n = n
+add (Suc m) n = Suc (add m n)
+
+--mul :: Nat -> Nat -> Nat
+--mul Zero    n = Zero
+--mul (Suc m) n = add n (mul m n)
+
+Tup2 : Type -> Type -> Type
+T2 : {a b : Type} -> a -> b -> Tup2 a b
+
+half :: Nat -> Tup2 Bool Nat
+half Zero           =  T2 False Zero
+half (Suc Zero)     =  T2 True  Zero
+half (Suc (Suc n))  = half n => T2 odd k =  T2 odd (Suc k)
+
+Polarity    : Type
+Value       : Polarity
+Computation : Polarity
+
+Ty   : Polarity -> Type
+Arr  : {p : Polarity} -> Ty Value -> Ty p -> Ty Computation
+
+Code : {p : Polarity} -> Ty p -> Type
+PApp : {p : Polarity} -> {a : Ty Value} -> {b : Ty p} -> Code (Arr a b) -> Code a -> Code b
+PLam : {p : Polarity} -> {a : Ty Value} -> {b : Ty p} -> (Code a -> Code b) -> Code (Arr a b)
+-- #Let  : {a : Ty p}  -> {b : Ty q} -> a -> (a -> b) -> b
+
+Int : Ty Value
+One : Code Int
+Mul : Code Int -> Code Int -> Code Int
+Sqr : Code Int -> Code Int
+
+pow :: Nat -> Code Int -> Code Int
+pow Zero _ = One
+pow (Suc Zero) m = m
+pow k m =  half k => T2 False n  = Sqr (pow n m)
+pow (Suc n) m = Mul m (pow n m)
+
+A : Code Int
+
+pow (Suc (Suc (Suc (Suc (Suc Zero))))) A

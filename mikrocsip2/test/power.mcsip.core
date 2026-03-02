@@ -1,0 +1,25 @@
+Nat : Type
+Zero : Nat
+Suc : Pi Nat (__14. Nat)
+Bool : Type
+False : Bool
+True : Bool
+add :: Pi Nat (__35. Pi Nat (__46. Nat))
+add Zero n  =  n
+add (Suc m) n  =  Suc (add m n)
+mul :: Pi Nat (__95. Pi Nat (__106. Nat))
+mul Zero n  =  Zero
+mul (Suc m) n  =  add n (mul m n)
+Tup2 : Pi Type (__159. Pi Type (__170. Type))
+T2 : Pi Type (a_187. Pi Type (b. Pi a_187 (__209. Pi b (__220. Tup2 a_187 b))))
+half :: Pi Nat (__249. Tup2 Bool Nat)
+half Zero  =  T2 Bool Nat False Zero
+half (Suc Zero)  =  T2 Bool Nat True Zero
+half (Suc (Suc n))  =  half n => T2 var_322 var_326 odd k  =  T2 Bool Nat odd (Suc k)
+sqr :: Pi Nat (__366. Nat)
+sqr n  =  mul n n
+pow :: Pi Nat (__394. Pi Nat (__405. Nat))
+pow Zero var_418  =  Suc Zero
+pow k m  =  half k => T2 var_439 var_443 False n  =  sqr (pow n m)
+pow (Suc n) m  =  mul m (pow n m)
+pow (Suc (Suc (Suc Zero))) (Suc (Suc Zero)) : Nat

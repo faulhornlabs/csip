@@ -1,0 +1,13 @@
+Bool : Type
+False : Bool
+
+Nat : Type
+Zero : Nat
+
+Tup2 : Type -> Type -> Type
+T2 : {u v : Type} -> u -> v -> Tup2 u v
+
+swap :: {a b : Type} -> Tup2 a b -> Tup2 b a
+swap (T2 x y) = T2 y x
+
+swap (T2 Zero False) : Tup2 Bool Nat

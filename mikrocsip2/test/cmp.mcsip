@@ -1,0 +1,22 @@
+Nat  : Type
+Zero : Nat
+Suc  : Nat -> Nat
+
+add :: Nat -> Nat -> Nat
+add Zero    n = n
+add (Suc m) n = Suc (add m n)
+
+Cmp : Nat -> Nat -> Type
+CmpLT : (x : Nat) -> (k : Nat) -> Cmp x (add x (Suc k))
+CmpEQ : (x : Nat) -> Cmp x x
+CmpGT : (x : Nat) -> (k : Nat) -> Cmp (add x (Suc k)) x
+
+cmp :: (x y : Nat) -> Cmp x y
+cmp Zero    (Suc k)  = CmpLT Zero k
+cmp Zero    Zero     = CmpEQ Zero
+cmp (Suc k) Zero     = CmpGT Zero k
+cmp (Suc x) (Suc y)  = cmp x y => CmpLT xx k =  CmpLT (Suc xx) k
+cmp (Suc x) (Suc y)  = cmp x y => CmpEQ xx   =  CmpEQ (Suc xx)
+cmp (Suc x) (Suc y)  = cmp x y => CmpGT yy k =  CmpGT (Suc yy) k
+
+cmp (Suc Zero) (Suc (Suc (Suc Zero)))

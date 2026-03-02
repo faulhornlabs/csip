@@ -1,0 +1,9 @@
+Bool : Type
+False : Bool
+Nat : Type
+Zero : Nat
+Tup2 : Pi Type (__18. Pi Type (__29. Type))
+T2 : Pi Type (u. Pi Type (v. Pi u (__68. Pi v (__79. Tup2 u v))))
+swap :: Pi Type (a_108. Pi Type (b. Pi (Tup2 a_108 b) (__138. Tup2 b a_108)))
+swap var_158 var_162 (T2 var_169 var_173 x_177 y)  =  T2 var_162 var_158 y x_177
+swap Nat Bool (T2 Nat Bool Zero False) : Tup2 Bool Nat

@@ -1,0 +1,32 @@
+Nat  : Type
+Zero : Nat
+Suc  : Nat -> Nat
+
+Bool  : Type
+False : Bool
+True  : Bool
+
+add :: Nat -> Nat -> Nat
+add Zero    n = n
+add (Suc m) n = Suc (add m n)
+
+mul :: Nat -> Nat -> Nat
+mul Zero    n = Zero
+mul (Suc m) n = add n (mul m n)
+
+Tup2 : Type -> Type -> Type
+T2 : {a b : Type} -> a -> b -> Tup2 a b
+
+half :: Nat -> Tup2 Bool Nat
+half Zero           =  T2 False Zero
+half (Suc Zero)     =  T2 True  Zero
+half (Suc (Suc n))  = half n => T2 odd k =  T2 odd (Suc k)
+
+-- n = add (Suc Zero) (Suc (Suc Zero))
+
+-- half (mul n n)
+
+f :: Nat -> Tup2 Bool Nat
+f n = half (mul n n)
+
+f (add (Suc Zero) (Suc (Suc Zero)))

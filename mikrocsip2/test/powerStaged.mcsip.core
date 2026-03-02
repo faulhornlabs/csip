@@ -1,0 +1,34 @@
+Nat : Type
+Zero : Nat
+Suc : Pi Nat (__14. Nat)
+Bool : Type
+False : Bool
+True : Bool
+add :: Pi Nat (__35. Pi Nat (__46. Nat))
+add Zero n  =  n
+add (Suc m) n  =  Suc (add m n)
+Tup2 : Pi Type (__95. Pi Type (__106. Type))
+T2 : Pi Type (a_123. Pi Type (b. Pi a_123 (__145. Pi b (__156. Tup2 a_123 b))))
+half :: Pi Nat (__185. Tup2 Bool Nat)
+half Zero  =  T2 Bool Nat False Zero
+half (Suc Zero)  =  T2 Bool Nat True Zero
+half (Suc (Suc n))  =  half n => T2 var_258 var_262 odd k  =  T2 Bool Nat odd (Suc k)
+Polarity : Type
+Value : Polarity
+Computation : Polarity
+Ty : Pi Polarity (__308. Type)
+Arr : Pi Polarity (p. Pi (Ty Value) (__338. Pi (Ty p) (__353. Ty Computation)))
+Code : Pi Polarity (p. Pi (Ty p) (__391. Type))
+PApp : Pi Polarity (p. Pi (Ty Value) (a_423. Pi (Ty p) (b. Pi (Code Computation (Arr p a_423 b)) (__461. Pi (Code Value a_423) (__476. Code p b)))))
+PLam : Pi Polarity (p. Pi (Ty Value) (a_534. Pi (Ty p) (b. Pi (Pi (Code Value a_534) (__567. Code p b)) (__589. Code Computation (Arr p a_534 b)))))
+Int : Ty Value
+One : Code Value Int
+Mul : Pi (Code Value Int) (__650. Pi (Code Value Int) (__665. Code Value Int))
+Sqr : Pi (Code Value Int) (__702. Code Value Int)
+pow :: Pi Nat (__729. Pi (Code Value Int) (__744. Code Value Int))
+pow Zero var_769  =  One
+pow (Suc Zero) m  =  m
+pow k m  =  half k => T2 var_797 var_801 False n  =  Sqr (pow n m)
+pow (Suc n) m  =  Mul m (pow n m)
+A : Code Value Int
+pow (Suc (Suc (Suc (Suc (Suc Zero))))) A : Code Value Int

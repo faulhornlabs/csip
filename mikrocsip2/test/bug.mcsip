@@ -1,0 +1,7 @@
+Tup2 : Type -> Type
+T2 : (u : Type) -> u -> Tup2 u
+
+swap :: {a : Type} -> Tup2 a -> Tup2 a
+x: _. swap  (T2 _ x) = T2 _ x
+
+swap  (T2 _ Type)

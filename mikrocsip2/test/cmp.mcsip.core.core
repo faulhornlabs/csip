@@ -1,0 +1,18 @@
+Nat : Type
+Zero : Nat
+Suc : Pi Nat (__14. Nat)
+add :: Pi Nat (__29. Pi Nat (__40. Nat))
+add Zero n  =  n
+add (Suc m) n  =  Suc (add m n)
+Cmp : Pi Nat (__89. Pi Nat (__100. Type))
+CmpLT : Pi Nat (x_117. Pi Nat (k. Cmp x_117 (add x_117 (Suc k))))
+CmpEQ : Pi Nat (x_165. Cmp x_165 x_165)
+CmpGT : Pi Nat (x_188. Pi Nat (k. Cmp (add x_188 (Suc k)) x_188))
+cmp :: Pi Nat (x_236. Pi Nat (y. Cmp x_236 y))
+cmp Zero (Suc k)  =  CmpLT Zero k
+cmp Zero Zero  =  CmpEQ Zero
+cmp (Suc k) Zero  =  CmpGT Zero k
+cmp (Suc x_317) (Suc y)  =  cmp x_317 y => CmpLT xx k  =  CmpLT (Suc xx) k
+cmp (Suc x_360) (Suc y)  =  cmp x_360 y => CmpEQ xx  =  CmpEQ (Suc xx)
+cmp (Suc x_395) (Suc y)  =  cmp x_395 y => CmpGT yy k  =  CmpGT (Suc yy) k
+cmp (Suc Zero) (Suc (Suc (Suc Zero))) : Cmp (Suc Zero) (Suc (Suc (Suc Zero)))
