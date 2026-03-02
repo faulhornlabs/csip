@@ -1,3 +1,11 @@
+{-
+Same as CoreA.agda but meta-level pattern matching on DC is eliminated.
+
+Other changes:
+- record types are supported
+- variables are used in the implementation
+
+-}
 
 infixl 9 _∙_
 infixr 6 _=>_
@@ -40,7 +48,7 @@ record Σ (a : Set) (b : a -> Set) : Set where
 open Σ
 
 
-data _≡_ {ℓ} {a : Set ℓ} (x : a) : a -> Set where
+data _≡_ {a : Set} (x : a) : a -> Set where
   Refl : x ≡ x
 
 
@@ -72,11 +80,12 @@ decFin FZ     FZ     = Yes Refl
 decFin FZ     (FS _) = No \()
 decFin (FS _) FZ     = No \()
 decFin (FS n) (FS m) with decFin n m
-... | Yes Refl = Yes Refl
-... | No f = No \{ Refl -> f Refl }
+decFin (FS n) (FS n) | Yes Refl = Yes Refl
+decFin (FS n) (FS m) | No  f    = No \{Refl -> f Refl}
 
-data FinVec : (n : _) -> (P : Fin n -> Set) -> Set₁ where
-  []   : ∀ {P} -> FinVec Z P
+
+data FinVec : (n : Nat) -> (P : Fin n -> Set) -> Set₁ where
+  []   : ∀ {P}   -> FinVec Z P
   _::_ : ∀ {n P} -> P FZ -> FinVec n (\f -> P (FS f)) -> FinVec (S n) P
 
 indexFinVec : ∀ {n P} -> FinVec n P -> (f : Fin n) -> P f
@@ -84,7 +93,7 @@ indexFinVec (v :: vs) FZ     = v
 indexFinVec (v :: vs) (FS s) = indexFinVec vs s
 
 coveredBy : ∀ {a n} {tag : Fin n} -> FinVec n (\f -> not (tag ≡ f)) -> a
-coveredBy vs = exfalso (indexFinVec {P = \f -> not (_ ≡ f)} vs _ Refl)
+coveredBy {a} {n} {tag} vs = exfalso ((indexFinVec {P = \f -> not (_ ≡ f)} vs tag) Refl)
 
 
 
@@ -137,24 +146,25 @@ open TCDesc
 record RCDesc : Set where
   constructor RTCD
   field
-    rtcName  : String   -- type constructor name for pretty printing
-    rdcName  : String   -- data constructor name for pretty printing
-    rIndices : Tys
-    rdcArgs  : Tms rIndices -> Tys
+    rtcName  : String              -- type constructor name for pretty printing
+    rdcName  : String              -- data constructor name for pretty printing
+    rParams  : Tys                 -- parameters of the type constructor
+    rdcArgs  : Tms rParams -> Tys  -- additional arguments of the data constructor
 
 open RCDesc
 
-variable a   : Ty
-variable as  : Tys
-variable b   : Tm a -> Ty
-variable tc  : TCDesc
-variable rc  : RCDesc
+private variable
+  a   : Ty
+  as  : Tys
+  b   : Tm a -> Ty
+  tc  : TCDesc
+  rc  : RCDesc
 
 data Ty where
   U    :                             Ty
   Pi   : (a : Ty) -> (Tm a -> Ty) -> Ty
   TC   : Tms (tcIndices tc) ->       Ty
-  RTC  : Tms (rIndices rc) ->        Ty
+  RTC  : Tms (rParams rc) ->         Ty
 
 {-# NO_POSITIVITY_CHECK #-}
 data Tm where
@@ -203,22 +213,22 @@ proj (RDC args) = args
 dcTag : ∀ {indices} -> Tm (TC {tc} indices) -> dcFin tc
 dcTag (DC c _) = c
 
-data _≡C_ {tc : _} {indices : _} : {indices' : _} ->
-  Tm (TC {tc} indices) ->
+data _≡≡_ {tc : _} {indices : _} : {indices' : _} ->
+  Tm (TC {tc} indices)  ->
   Tm (TC {tc} indices') ->
     Set
  where
-  CRefl : ∀ {z} -> z ≡C z
+  CRefl : {z : Tm (TC {tc} indices)} -> _≡≡_ {tc} {indices} {indices} z z
 
 ifTag : {a : Set} {indices : _} ->
   (tag   : dcFin tc) ->                                             -- dcTag
   (tm    : Tm (TC {tc} indices)) ->                                 -- scrutenee
-  (match : (args : Tms (dcArgs tc tag)) -> DC tag args ≡C tm -> a) ->
+  (match : (args : Tms (dcArgs tc tag)) -> DC tag args ≡≡ tm -> a) ->
   (fail  : not (dcTag tm ≡ tag) -> a) ->
     a
-ifTag tag (DC tag' l) match fail with decFin tag' tag
-... | Yes Refl = match l CRefl
-... | No  f    = fail f
+ifTag tag (DC tag' args) match fail with decFin tag' tag
+... | Yes Refl  = match args CRefl
+... | No  refut = fail refut
 
 
 -------------------------------------
@@ -236,6 +246,23 @@ module Examples where
 
 ---------------------------------
 
+  module TopAsData where
+
+    -- data Top : Type  where  tt : Top
+    Top : Ty
+    Top = TC {TCD "Top" [] 1 \{0f -> DCD "tt" [] \_ -> _}} tt
+
+    TT : Tm Top
+    TT = DC 0f tt
+
+    -- etaTop : (t : Top) -> t ≡ tt)
+    -- etaTop tt = Refl
+    etaTop : {t : Tm Top} -> t ≡ TT
+    etaTop {t} =
+      ifTag 0f t (\{_ CRefl -> Refl}) \r0 ->
+      coveredBy (r0 :: [])
+
+
   Top : Ty
   Top = RTC {RTCD "Top" "TT" [] \_ -> []} tt
 
@@ -247,6 +274,24 @@ module Examples where
 
 
 ---------------------------------
+
+  module Model where
+
+    data Bool : Set where
+      True False : Bool
+ 
+    not' : Bool -> Bool
+    not' True = False
+    not' _    = True
+
+    F : Bool -> Set
+    F True = Bool
+    F _    = Bool -> Bool
+
+    f : (b : Bool) -> F b
+    f True  = True
+    f False = not'     -- cannot write:  f _ = not'
+
 
   Bool : Ty
   Bool = TC {TCD "Bool" [] 2
@@ -278,15 +323,13 @@ module Examples where
     True
 
   F  : Tm Bool -> Ty
-  F b = El (
-    ifTag 0f b (\{ _ e -> code Bool }) \f0 ->
-    ifTag 1f b (\{ _ e -> code (Bool => Bool) }) \f1 ->
-    coveredBy (f0 :: f1 :: [])
-    )
+  F b =
+    ifTag 0f b (\{ _ e -> Bool }) \_ ->
+    Bool => Bool
 
   f : (b : Tm Bool) -> Tm (F b)
   f b =
-    ifTag 0f b (\{ _ CRefl -> True }) \f0 ->
+    ifTag 0f b (\{ _ CRefl -> True     }) \f0 ->
     ifTag 1f b (\{ _ CRefl -> Lam not' }) \f1 ->
     coveredBy (f0 :: f1 :: [])
 
