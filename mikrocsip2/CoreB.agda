@@ -205,8 +205,11 @@ etaPi {f = Lam _} = Refl
 
 --------------------
 
-proj : {indices : _} -> Tm (RTC {rc} indices) -> Tms (rdcArgs rc indices)
+proj : {params : _} -> Tm (RTC {rc} params) -> Tms (rdcArgs rc params)
 proj (RDC args) = args
+
+etaRecord : {params : _} {t : Tm (RTC {rc} params)} -> t ≡ RDC (proj t)
+etaRecord {t = RDC _} = Refl
 
 --------------------
 
@@ -270,7 +273,7 @@ module Examples where
   TT = RDC _
 
   etaTop : {t : Tm Top} -> t ≡ TT
-  etaTop {t = RDC _} = Refl
+  etaTop = etaRecord
 
 
 ---------------------------------
@@ -335,33 +338,56 @@ module Examples where
 
 ---------------------------------
 
+  module Wrong where
+
+    Sigma : (a : Ty) -> (Tm a -> Ty) -> Ty
+    Sigma a b = RTC {RTCD      -- non top-level record description!
+         "Sigma"               -- this is bad because names will not be unique
+         "_,_"
+         []
+         \_ -> a :: \z -> b z  × []}
+      tt
+
+
   Sigma : (a : Ty) -> (Tm a -> Ty) -> Ty
-  Sigma a b = RTC {RTCD "Sigma" "_,_" (U :: \a -> (El a => U) × []) \(a , b , _) -> El a :: \x -> El (b ∙ x)  × []}
+  Sigma a b = RTC {RTCD
+       "Sigma"
+       "_,_"
+       (U :: \a -> (El a => U) × [])
+       \(a , b , _) -> El a :: \x -> El (b ∙ x) × []}
     (code a , Lam (\x -> code (b x)) , tt)
+
 
   Pair : (x : Tm a) -> Tm (b x) -> Tm (Sigma a b)
   Pair x y = RDC (x , y , _)
 
   Fst : Tm (Sigma a b) -> Tm a
-  Fst (RDC (x , y , _)) = x
+  Fst p = fst (proj p)
 
   Snd : (t : Tm (Sigma a b)) -> Tm (b (Fst t))
-  Snd (RDC (x , y , _)) = y
+  Snd p = fst (snd (proj p))
 
   etaSigma : {t : Tm (Sigma a b)} -> t ≡ Pair (Fst t) (Snd t)
-  etaSigma {t = RDC _} = Refl
+  etaSigma = etaRecord
 
 
 ---------------------------------
 
+  -- record U' : Type where
+  --   constructor code'
+  --   field
+  --     El' : Type
+
+  UDesc = RTCD "U" "code" [] \_ -> U × []
+
   U' : Ty
-  U' = RTC {RTCD "U" "code" [] \_ -> U × []} _
+  U' = RTC {UDesc} _
 
   code' : Ty -> Tm U'
   code' a = RDC (code a , _)
 
   El' : Tm U' -> Ty
-  El' (RDC (code a , _)) = a
+  El' z = El (fst (proj z))
 
   betaU' : El' (code' a) ≡ a
   betaU' = Refl
@@ -372,14 +398,19 @@ module Examples where
 ---------------------------------
 
   Pi' : (a : Ty) -> (Tm a -> Ty) -> Ty
-  Pi' a b = RTC {RTCD "Pi" "Lam" (U :: \a -> (El a => U) × []) \(a , b , _) -> Pi (El a) (\x -> El (b ∙ x)) × []}
+  Pi' a b = RTC {RTCD
+           "Pi"
+           "Lam"
+           (U :: \a -> (El a => U) × [])
+           \(a , b , _) -> Pi (El a) (\x -> El (b ∙ x)) × []
+         }
     (code a , Lam (\x -> code (b x)) , tt)
 
   Lam' : ((x : Tm a) -> Tm (b x)) -> Tm (Pi' a b)
   Lam' f = RDC (Lam f , _)
 
   App' : Tm (Pi' a b) -> (x : Tm a) -> Tm (b x)
-  App' (RDC (Lam f , _)) x = f x
+  App' z x = fst (proj z) ∙ x
 
   betaPi' : {f : (x : Tm a) -> Tm (b x)} -> App' (Lam' f) ≡ f
   betaPi' = Refl
@@ -390,14 +421,39 @@ module Examples where
 
 ---------------------------------
 
+  module MetaLevel where
+
+    record W (S : Set) (P : (s : S) -> Set) : Set where
+      inductive
+      constructor sup
+      field
+        shape  : S
+        branch : P shape -> W S P
+
+    data Either (a b : Set) : Set where
+      Left  : a -> Either a b
+      Right : b -> Either a b
+
+    List : Set -> Set
+    List A = W (Either T A) \where
+      (Left tt) -> ⊥
+      (Right a) -> T
+
+    Nil : ∀ {A} -> List A
+    Nil = sup (Left tt) \()
+
+    Cons : ∀ {A} -> A -> List A -> List A
+    Cons a as = sup (Right a) \_ -> as
 
   {-# TERMINATING #-}
-  W' : (S : Tm U) -> Tm (El S => U) -> Ty
-  W' S' P = RTC {RTCD "W" "sup" (U :: \S' -> (El S' => U) × []) \(S' , P , _) -> El S' :: \s -> (El (P ∙ s) => W' S' P) × []}
-    (S' , P , tt)
-
   W : (S : Ty) -> (Tm S -> Ty) -> Ty
-  W S' P = W' (code S') (Lam \s -> code (P s))
+  W S' P = RTC {RTCD
+            "W"
+            "sup"
+            (U :: \S' -> (El S' => U) × [])
+            \(S' , P , _) -> El S' :: \s -> (El (P ∙ s) => W (El S') \s -> El (P ∙ s)) × []
+          }
+      (code S' , Lam (\s -> code (P s)) , tt)
 
   sup : {S : Ty} {P : Tm S -> Ty} (s : Tm S) -> (Tm (P s) -> Tm (W S P)) -> Tm (W S P)
   sup s f = RDC (s , Lam f , tt)
@@ -407,21 +463,22 @@ module Examples where
     (w : Tm (W S P)) -> Tm (C w)
   indW C' h (RDC (s , Lam f , _)) = h \p -> indW C' h (f p)
 
-  fNat : Tm Bool -> Ty
-  fNat b = El (
-      ifTag 0f b (\{ _ e -> code Bot }) \f0 ->
-      ifTag 1f b (\{ _ e -> code Top }) \f1 ->
+  module NatWithW where
+
+    fNat : Tm Bool -> Ty
+    fNat b =
+      ifTag 0f b (\{ _ e -> Bot }) \f0 ->
+      ifTag 1f b (\{ _ e -> Top }) \f1 ->
       coveredBy (f0 :: f1 :: [])
-    )
 
-  Nat'' : Ty
-  Nat'' = W Bool fNat
+    Nat' : Ty
+    Nat' = W Bool fNat
 
-  Zero'' : Tm Nat''
-  Zero'' = sup True exfalso'
+    Zero : Tm Nat'
+    Zero = sup True exfalso'
 
-  Suc'' : Tm Nat'' -> Tm Nat''
-  Suc'' n = sup False \_ -> n
+    Suc : Tm Nat' -> Tm Nat'
+    Suc n = sup False \_ -> n
 
 
 ---------------------------------
@@ -438,9 +495,6 @@ module Examples where
 
   Suc : Tm Nat' -> Tm Nat'
   Suc n = DC 1f (n , _)
-
-  fst' : ∀ {b} -> Tms (a :: b) -> Tm a
-  fst' (x , _) = x
 
   {-# TERMINATING #-}
   add : Tm Nat' -> Tm Nat' -> Tm Nat'
@@ -465,7 +519,7 @@ module Examples where
   the : (a : Set) -> a -> a
   the _ x = x
 
-  testAdd = the (add (Suc Zero) (Suc Zero) ≡ two) Refl
+  testAdd  = the (add  (Suc Zero) (Suc Zero) ≡ two) Refl
   testAdd' = the (add' (Suc Zero) (Suc Zero) ≡ two) Refl
 
 ---------------------------------
@@ -477,8 +531,8 @@ module Examples where
      ; 1f -> DCD "Cons" (U :: \t -> El t × List' (El t) × []) \(a , _) -> a , tt
      }} (code t , tt)
 
-  Nil' : Tm (List' a)
-  Nil' = DC 0f _
+  Nil : Tm (List' a)
+  Nil = DC 0f _
 
   Cons : Tm a -> Tm (List' a) -> Tm (List' a)
   Cons x xs = DC 1f (_ , x , xs , tt)
@@ -491,7 +545,7 @@ module Examples where
     coveredBy (f0 :: f1 :: [])
 
 
-  testAppend = the (append (Cons Zero Nil') (Cons (Suc Zero) Nil') ≡ Cons Zero (Cons (Suc Zero) Nil')) Refl
+  testAppend = the (append (Cons Zero Nil) (Cons (Suc Zero) Nil) ≡ Cons Zero (Cons (Suc Zero) Nil)) Refl
 
 
 ---------------------------------
@@ -509,20 +563,20 @@ module Examples where
   VCons : {n : Tm Nat'} -> Tm a -> Tm (Vec' a n) -> Tm (Vec' a (Suc n))
   VCons a as = DC 1f (_ , _ , a , as , tt)
 
-  zipWith : {a b c : Ty} (f : Tm a -> Tm b -> Tm c) {n : Tm Nat'} -> Tm (Vec' a n) -> Tm (Vec' b n) -> Tm (Vec' c n)
+  zipWith : {a b c : Ty} (f : Tm a -> Tm b -> Tm c) {n : Tm Nat'} ->
+    Tm (Vec' a n) -> Tm (Vec' b n) -> Tm (Vec' c n)
   zipWith f as bs =
     ifTag 0f as (\{ _ CRefl ->
       ifTag 0f bs (\{ _ CRefl -> VNil }) \f0 ->
-      ifTag 1f bs (\{ (_ , _ , b , bs , tt) () }) \f1 ->
+      ifTag 1f bs (\{ _ () }) \f1 ->
       coveredBy (f0 :: f1 :: [])
     }) \f0 ->
     ifTag 1f as (\{ (_ , _ , a , as , tt) CRefl ->
       ifTag 0f bs (\{ _ () }) \f0 ->
-      ifTag 1f bs (\{ (_ , _ , b , bs , tt) CRefl -> VCons (f a b) (zipWith f as bs) }) \f1 ->
+      ifTag 1f bs (\{ (_ , _ , b , bs , _) CRefl -> VCons (f a b) (zipWith f as bs) }) \f1 ->
       coveredBy (f0 :: f1 :: [])
     }) \f1 ->
     coveredBy (f0 :: f1 :: [])
-
 
 ---------------------------------
 
@@ -546,13 +600,45 @@ module Examples where
   Refl' : {x : Tm a} -> Tm (Id x x)
   Refl' = DC 0f _
 
-  -- valid only if K is enabled
+  J' : ∀ {a b} -> (P : (x : Tm a) -> Tm (Id b x) -> Ty) -> Tm (P b Refl') -> (x : Tm a) -> (e : Tm (Id b x)) -> Tm (P x e)
+  J' P w x e =
+    ifTag 0f e (\{ _ CRefl -> w }) \f0 ->
+    coveredBy (f0 :: [])
+
+  -- valid only if K is valid in the metatheory
   K' : ∀ {a} {x : Tm a} -> (e : Tm (Id x x)) -> Tm (Id e Refl')
   K' e =
-    ifTag 0f e (\{ (_ , _ , tt) CRefl -> Refl' }) \f0 ->
+    ifTag 0f e (\{ _ CRefl -> Refl' }) \f0 ->
     coveredBy (f0 :: [])
 
 --------------------------------------
+
+  module MetaLevel' where
+
+    data Cmp : Nat -> Nat -> Set where
+      CmpLT : {x k : Nat} -> Cmp x (x + S k)
+      CmpEQ : {x   : Nat} -> Cmp x x
+      CmpGT : {x k : Nat} -> Cmp (x + S k) x
+
+    cmp : (x y : Nat) -> Cmp x y
+    cmp Z     Z     = CmpEQ
+    cmp Z     (S y) = CmpLT
+    cmp (S x) Z     = CmpGT
+    cmp (S x) (S y) with cmp x y
+    ... | CmpLT = CmpLT
+    ... | CmpEQ = CmpEQ
+    ... | CmpGT = CmpGT
+
+    cmpHelper : (x y : Nat) -> Cmp x y -> Cmp (S x) (S y)
+    cmpHelper x y CmpLT = CmpLT
+    cmpHelper x y CmpEQ = CmpEQ
+    cmpHelper x y CmpGT = {!CmpGT!}
+
+    cmp' : (x y : Nat) -> Cmp x y
+    cmp' Z     Z     = CmpEQ
+    cmp' Z     (S y) = CmpLT
+    cmp' (S x) Z     = CmpGT
+    cmp' (S x) (S y) = cmpHelper x y (cmp x y)
 
   {-# TERMINATING #-}
   Cmp : Tm Nat' -> Tm Nat' -> Ty
