@@ -632,7 +632,7 @@ module Examples where
     cmpHelper : (x y : Nat) -> Cmp x y -> Cmp (S x) (S y)
     cmpHelper x y CmpLT = CmpLT
     cmpHelper x y CmpEQ = CmpEQ
-    cmpHelper x y CmpGT = {!CmpGT!}
+    cmpHelper x y CmpGT = CmpGT
 
     cmp' : (x y : Nat) -> Cmp x y
     cmp' Z     Z     = CmpEQ
