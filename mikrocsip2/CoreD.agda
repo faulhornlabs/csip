@@ -12,24 +12,16 @@ Work in progress.
 infixl 9 _∙_
 infixr 9 _∘_
 infixr 9 _∘≡_
-infixr 9 _[∘]_
 infixr 6 _=>_
 infixr 6 _::_
-infixr 6 _×_
-infixr 6 _:s_
+infixr 6 _:×_
 infix  3 _≡_
-infix  2 _<=>_
-infixr 1 _,_
-infixr 1 _,≡_
+infix  3 _≡≡_
+infixr 2 _×_
+infix  1 _<=>_
+infixr 0 _,_
 
 -------------------
-
-
-open import Agda.Primitive using (Level)
-
-variable ℓ ℓ' : Level
-
-----------------
 
 --open import Agda.Builtin.String  -- for pretty printing
 --open import Agda.Builtin.Nat renaming (suc to S; zero to Z)
@@ -54,41 +46,33 @@ record T : Set where
   constructor tt
 
 
-record Σ (a : Set) (b : a -> Set) : Set where
+record _×_ (a : Set) (b : a -> Set) : Set where
   constructor _,_
   field
     fst : a
     snd : b fst
 
-open Σ
+open _×_
 
 ---------------------
 
-data _≡_ {a : Set ℓ} (x : a) : a -> Set where
+data _≡_ {a : Set} (x : a) : a -> Set where
   Refl : x ≡ x
 
-sym : {a : Set ℓ} {u v : a} -> u ≡ v -> v ≡ u
+sym : {a : Set} {u v : a} -> u ≡ v -> v ≡ u
 sym Refl = Refl
 
-_∘≡_ : {a : Set ℓ} {x y z : a} -> x ≡ y -> y ≡ z -> x ≡ z
+_∘≡_ : {a : Set} {x y z : a} -> x ≡ y -> y ≡ z -> x ≡ z
 Refl ∘≡ Refl = Refl
 
--- coe
-_[_] : {a b : Set ℓ} -> a -> @0 a ≡ b -> b
-a [ Refl ] = a
-
-_[∘]_ : {x y z : Set ℓ} (e : x ≡ y) (e' : y ≡ z) {w : x} -> w [ e ] [ e' ] ≡ w [ e ∘≡ e' ]
-Refl [∘] Refl = Refl
-
--- needs K
-[Refl] : {x : Set ℓ} {c : x} {e : x ≡ x} -> c [ e ] ≡ c
-[Refl] {e = Refl} = Refl
-
-cong : {a : Set ℓ} {b : Set ℓ'} {x y : a} -> (f : a -> b) -> x ≡ y -> f x ≡ f y
+cong : {a : Set} {b : Set} {x y : a} -> (f : a -> b) -> x ≡ y -> f x ≡ f y
 cong f Refl = Refl
 
 subst : {a : Set} {u v : a} (P : a -> Set) -> @0 u ≡ v -> P u -> P v
-subst P e x = x [ cong P e ]
+subst P Refl x = x
+
+UIP : {a : Set} {t : a} {r : t ≡ t} -> r ≡ Refl
+UIP {r = Refl} = Refl
 
 _,≡_ : {A : Set} {B : A -> Set} {a a' : A} {b : B a} {b' : B a'} ->
   (e : a ≡ a') -> subst B e b ≡ b' -> (a , b) ≡ (a' , b')
@@ -168,28 +152,18 @@ id<=> : ∀ {a} -> a <=> a
 id<=> = MkEquiv
   (\a -> a)
   (\a -> a)
-  (\a -> Refl)
-  (\a -> Refl)
-
-id' : ∀ {a b} -> a ≡ b -> a <=> b
-id' Refl = id<=>
+  (\_ -> Refl)
+  (\_ -> Refl)
 
 sym<=> : ∀ {a b} -> a <=> b -> b <=> a
 sym<=> (MkEquiv f g l r) = MkEquiv g f r l
 
 _∘_ : ∀ {a b c} -> a <=> b -> b <=> c -> a <=> c
 MkEquiv f g l r ∘ MkEquiv f' g' l' r' = MkEquiv
-  (\e -> f' (f e))
-  (\e -> g (g' e))
-  (chain f f' g g' l' l)
-  (chain g' g f' f r r')
- where
-  chain : ∀ {a b c : Set}
-    (f : a -> b)(f' : b -> c)(g : b -> a)(g' : c -> b) ->
-    (∀ x -> g' (f' x) ≡ x) ->
-    (∀ x -> g  (f  x) ≡ x) ->
-     ∀ x -> g (g' (f' (f x))) ≡ x
-  chain f f' g g' e1 e2 x = cong g (e1 (f x)) ∘≡ e2 x
+  (\x -> f' (f x))
+  (\y -> g (g' y))
+  (\x -> cong g  (l' (f x)) ∘≡ l  x)
+  (\y -> cong f' (r (g' y)) ∘≡ r' y)
 
 ----------------------
 
@@ -200,14 +174,14 @@ delete = MkEquiv
   (\{Refl -> Refl})
   (\_     -> Refl)
 
-solveRight : ∀ {A : Set} {a : A} ->  Σ A (\v -> a ≡ v) <=> T
+solveRight : ∀ {A : Set} {a : A} ->  A × (\v -> a ≡ v) <=> T
 solveRight = MkEquiv
   (\{(_ , Refl) -> tt})
   (\_           -> _ , Refl)
   (\{(_ , Refl) -> Refl})
   (\_           -> Refl)
 
-solveLeft : ∀ {A : Set} {a : A} ->  Σ A (\v -> v ≡ a) <=> T
+solveLeft : ∀ {A : Set} {a : A} ->  A × (\v -> v ≡ a) <=> T
 solveLeft = MkEquiv
   (\{(_ , Refl) -> tt})
   (\_           -> _ , Refl)
@@ -216,7 +190,7 @@ solveLeft = MkEquiv
 
 
 decompEq : {A : Set} {B : A -> Set} {a a' : A} {b : B a} {b' : B a'} ->
-  (a , b) ≡ (a' , b')  <=>  Σ (a ≡ a') \e -> subst B e b ≡ b'
+  (a , b) ≡ (a' , b')  <=>  a ≡ a' × \e -> subst B e b ≡ b'
 decompEq = MkEquiv
   (\{Refl          -> Refl , Refl})
   (\{(Refl , Refl) -> Refl})
@@ -224,14 +198,14 @@ decompEq = MkEquiv
   (\{(Refl , Refl) -> Refl})
 
 
-botFst : ∀ {b} -> Σ ⊥ b <=> ⊥
+botFst : ∀ {b} -> ⊥ × b <=> ⊥
 botFst = MkEquiv
   (\{(() , _)})
   (\())
   (\{(() , _)})
   (\())
 
-botSnd : ∀ {a} -> Σ a (\_ -> ⊥) <=> ⊥
+botSnd : ∀ {a} -> a × (\_ -> ⊥) <=> ⊥
 botSnd = MkEquiv
   (\{(_ , ())})
   (\())
@@ -240,7 +214,7 @@ botSnd = MkEquiv
 
 ---------------------- structural equivalences
 
-unit : ∀ {c} -> Σ T (\_ -> c) <=> c
+unit : ∀ {c} -> T × (\_ -> c) <=> c
 unit = MkEquiv
   (\(_ , e) -> e)
   (\e       -> tt , e)
@@ -248,8 +222,8 @@ unit = MkEquiv
   (\_       -> Refl)
 
 swap : ∀ {a b : Set} {c : a -> b -> Set} ->
-      Σ a (\x -> Σ b \y -> c x y)
-  <=> Σ b (\y -> Σ a \x -> c x y)
+      a × (\x -> b × \y -> c x y)
+  <=> b × (\y -> a × \x -> c x y)
 swap = MkEquiv
   (\(a , b , c) -> b , a , c)
   (\(a , b , c) -> b , a , c)
@@ -257,16 +231,16 @@ swap = MkEquiv
   (\(a , b , c) -> Refl)
 
 assoc : {a : Set} {b : a -> Set} {c : (x : a) -> b x -> Set} ->
-      Σ a (\x -> Σ (b x) \y -> c x y)
-  <=> Σ (Σ a b) (\(x , y) -> c x y)
+      (a × b) × (\(x , y) -> c x y)
+  <=> a × (\x -> b x × \y -> c x y)
 assoc = MkEquiv
-  (\(x , (y , z)) -> (x , y) , z)
   (\((x , y) , z) -> x , (y , z))
-  (\(x , (y , z)) -> Refl)
+  (\(x , (y , z)) -> (x , y) , z)
   (\((x , y) , z) -> Refl)
+  (\(x , (y , z)) -> Refl)
 
 second : ∀ {c} {a b : c -> Set} ->
-  ((x : c) -> a x <=> b x) -> Σ c a <=> Σ c b
+  ((x : c) -> a x <=> b x) -> c × a <=> c × b
 second f = MkEquiv
   (\(x , y) -> x , forward  (f x) y)
   (\(x , y) -> x , backward (f x) y)
@@ -274,25 +248,50 @@ second f = MkEquiv
   (\(x , y) -> cong (\y -> x , y) (isRInv (f x) y))
 
 first : {a a' : Set} {b : a -> Set} ->
-  (e : a <=> a') -> Σ a b <=> Σ a' \x -> b (backward e x)
+  (e : a <=> a') -> a × b <=> a' × \x -> b (backward e x)
 first {a} {a'} {b} (MkEquiv f g l r) = MkEquiv
   (\(x , c) -> f x , subst b (sym (l x)) c)
-  (\(x , c) -> g x , c)
-  (\(x , c) -> l x ,≡ (cong b (sym (l x)) [∘] cong b (l x)) ∘≡ [Refl])
-  (\(x , c) -> r x ,≡ (cong b (sym (l (g x))) [∘] cong (\y -> b (g y)) (r x)) ∘≡ [Refl])
+  (\(y , c) -> g y , c)
+  (\(x , c) -> helper1 x (g (f x))       (l    x ) c)
+  (\(y , c) -> helper2 y (f (g y)) (r y) (l (g y)) c)
+ where
+  @0 helper1 : (x : a) (x' : a) (xe : x' ≡ x) (c : b x) -> _≡_ {a = a × b} (x' , subst b (sym xe) c) (x , c)
+  helper1 _ _ Refl _ = Refl
 
+  @0 helper2 : (y : a') (y' : a') (_ : y' ≡ y) (xe : g y' ≡ g y) (c : b (g y)) -> _≡_ {a = a' × \y -> b (g y)} (y' , subst b (sym xe) c) (y , c)
+  helper2 _ _ Refl Refl _ = Refl
+
+solveR : {A : Set} {a : A} {b : (v : A) -> a ≡ v -> Set} ->
+  A × (\v -> a ≡ v × b v)    <=>  b a Refl
+solveR = sym<=> assoc ∘ first solveRight ∘ unit
+
+solveL : {A : Set} {a : A} {b : (v : A) -> v ≡ a -> Set} ->
+  A × (\v -> v ≡ a × b v)    <=>  b a Refl
+solveL = sym<=> assoc ∘ first solveLeft ∘ unit
+
+decomp : {A : Set} {B : A -> Set} {a a' : A} {b : B a} {b' : B a'} {c : (a , b) ≡ (a' , b') -> Set} ->
+       (a , b) ≡ (a' , b')  ×  c
+  <=>  a ≡ a'  ×  \e -> subst B e b ≡ b'  ×  \e' -> c (e ,≡ e')
+---- This does not typecheck:
+-- decomp = first decompEq ∘ assoc
+decomp = MkEquiv
+  (\{(Refl , b)        -> Refl , Refl , b})
+  (\{(Refl , Refl , b) -> Refl , b})
+  (\{(Refl , _)        -> Refl})
+  (\{(Refl , Refl , _) -> Refl})
 
 sndSwap : ∀ {a b : Set} {aa : a -> Set} {c : a -> b -> Set} ->
-   ((e : a) -> aa e <=> Σ b (c e)) ->  Σ a aa <=>  Σ b \y -> Σ a \x -> c x y
+   ((e : a) -> aa e <=> b × c e) ->  a × aa <=>  b × \y -> a × \x -> c x y
 sndSwap f = second f ∘ swap
 
-sndAssoc : ∀ {a : Set} {aa b : a -> Set} {c : (x : a) -> b x -> Set} ->
-   ((x : a) -> aa x <=> Σ (b x) (c x)) -> Σ a aa <=> Σ (Σ a b) \(x , y) -> c x y
-sndAssoc f = second f ∘ assoc
-
 sndBot : ∀ {A} {a : A -> Set} ->
-  ((e : A) -> a e <=> ⊥) ->  Σ A a  <=>  ⊥
+  ((e : A) -> a e <=> ⊥) ->  A × a  <=>  ⊥
 sndBot f = second f ∘ botSnd
+
+
+delete' : ∀ {A : Set} {a : A} {b : a ≡ a -> Set} ->
+  a ≡ a × b   <=>  b Refl
+delete' = first delete ∘ unit
 
 
 --------------------------------------------
@@ -306,7 +305,7 @@ data Tys : Set where
 
 Tms : Tys -> Set
 Tms []        = T
-Tms (t :: ts) = Σ (Tm t) \x -> Tms (ts x)
+Tms (t :: ts) = Tm t × \x -> Tms (ts x)
 
 -- data constructor description
 record DCDesc (indices : Tys) : Set where
@@ -375,25 +374,11 @@ Lam f ∙ x = f x
 
 --------------------
 
-_×_ : Ty -> Tys -> Tys
-a × as = a :: \_ -> as
+_:×_ : Ty -> Tys -> Tys
+a :× as = a :: \_ -> as
 
 _=>_ : Ty -> Ty -> Ty
 a => b = Pi a \_ -> b
-
---------------------
-
-betaU : ∀ {a} -> El (code a) ≡ a
-betaU = Refl
-
-etaU : ∀ {a} -> a ≡ code (El a)
-etaU {a = code _} = Refl
-
-betaPi : {f : (x : Tm a) -> Tm (b x)} {x : _} -> Lam f ∙ x ≡ f x
-betaPi = Refl
-
-etaPi : {f : Tm (Pi a b)} {x : Tm a} -> f ≡ Lam \x -> f ∙ x
-etaPi {f = Lam _} = Refl
 
 -----------------------
 
@@ -409,12 +394,11 @@ etaRecord {t = RDC _} = Refl
 dcTag : ∀ {indices} -> Tm (TC tc indices) -> dcFin tc
 dcTag (DC c _) = c
 
-data _≡≡_ {tc : _} {indices : _} : {indices' : _} ->
-  Tm (TC tc indices) ->
-  Tm (TC tc indices') ->
-    Set
- where
-  CRefl : ∀ {z} -> z ≡≡ z
+Σtc : TCDesc -> Set
+Σtc tc = Tms (tcIndices tc) × \is -> Tm (TC tc is)
+
+_≡≡_ : {tc : _} {is : _} {is' : _} -> Tm (TC tc is) -> Tm (TC tc is') -> Set
+_≡≡_ {tc} {is} {is'} t t' = _≡_ {a = Σtc tc} (is , t) (is' , t')
 
 ifTag : {a : Set} {indices : _} ->
   (tag   : dcFin tc) ->                                           -- dcTag
@@ -423,7 +407,7 @@ ifTag : {a : Set} {indices : _} ->
   (fail  : not (dcTag tm ≡ tag) -> a) ->
     a
 ifTag tag (DC tag' l) match fail with decFin tag' tag
-... | Yes Refl = match l CRefl
+... | Yes Refl = match l Refl
 ... | No  f    = fail f
 
 
@@ -434,8 +418,8 @@ ifTag tag (DC tag' l) match fail with decFin tag' tag
 
 matchCode : Tm U <=> Ty
 matchCode = MkEquiv
-  El
-  code
+  (\{(code a) -> a})
+  (\a         -> code a)
   (\{(code _) -> Refl})
   (\_         -> Refl)
 
@@ -448,53 +432,30 @@ injCode = MkEquiv
 
 matchLam : Tm (Pi a b) <=> ((x : Tm a) -> Tm (b x))
 matchLam = MkEquiv
-  _∙_
-  Lam
+  (\{(Lam f) -> f})
+  (\f        -> Lam f)
   (\{(Lam _) -> Refl})
   (\_        -> Refl)
 
-matchCRefl : ∀ {is is'} {t : Tm (TC tc is)} {t' : Tm (TC tc is')} ->
-  t ≡≡ t'  <=>   (is , t) ≡ (is' , t')
-matchCRefl = MkEquiv
-  (\{CRefl -> Refl})
-  (\{Refl  -> CRefl})
-  (\{CRefl -> Refl})
-  (\{Refl  -> Refl})
-
 conflict :
-  {tc : _} {t t' : dcFin tc} {args : Tms (dcArgs tc t)} {args' : Tms (dcArgs tc t')} ->
-  not (t ≡ t') ->
-    DC {tc} t args ≡≡ DC {tc} t' args' <=> ⊥
+  {tc : _} {is : _} {t t' : Tm (TC tc is)} ->
+  not (dcTag t ≡ dcTag t') ->
+    t ≡ t' <=> ⊥
 conflict ne = MkEquiv
-  (\{CRefl -> ne Refl})
+  (\{Refl -> ne Refl})
   (\())
-  (\{CRefl -> CReflUniq})
+  (\{Refl -> UIP})
   (\())
- where
-  CReflUniq : ∀ {is : Tms (tcIndices tc)} {t : Tm (TC tc is)} {a : t ≡≡ t} -> a ≡ CRefl
-  CReflUniq {a = CRefl} = Refl
-
-Eq<=> : {is : Tms (tcIndices tc)} {t t' : Tm (TC tc is)} ->
-   t ≡ t'   <=>  t ≡≡ t'
-Eq<=> = MkEquiv
-  (\{Refl  -> CRefl})
-  (\{CRefl -> Refl})
-  (\{Refl  -> Refl})
-  (\{CRefl -> Refl})
 
 
 -----------------------------
-
-_:s_ : (a : Set) -> (a -> Set) -> Set
-a :s b = Σ a b
-
 
 module Examples where
 
   sec = second
 
-  IdDesc = TCD "Id" (U :: \a -> El a × El a × []) 1 \where
-     0f -> DCD "Refl" (U :: \a -> El a × []) \(a , x , tt) -> a , x , x , tt
+  IdDesc = TCD "Id" (U :: \a -> El a :× El a :× []) 1 \where
+     0f -> DCD "Refl" (U :: \a -> El a :× []) \(a , x , tt) -> a , x , x , tt
 
   Id : {a : Ty} -> Tm a -> Tm a -> Ty
   Id {a} x y = TC IdDesc (code a , x , y , tt)
@@ -504,59 +465,58 @@ module Examples where
 
 
   equivTel : (
-     Ty                  :s \a ->
-     Tm a                :s \b ->
-     ((x : Tm a) -> Tm (Id b x) -> Ty) :s \P ->
-     Tm (P b refl)       :s \w ->
-     Tm a                :s \x ->
-     Tm (Id b x)         :s \e ->
+     Ty                  × \a ->
+     Tm a                × \b ->
+     ((x : Tm a) -> Tm (Id b x) -> Ty) × \P ->
+     Tm (P b refl)       × \w ->
+     Tm a                × \x ->
+     Tm (Id b x)         × \e ->
      ------------------------------ differs from here
-     Σ (Tm U) (\a' -> Σ (Tm (El a')) \_ -> T)  :s \a'x' ->
-     DC 0f a'x' ≡≡ e     :s \ee ->
+     (Tm U × \a' -> Tm (El a') × \_ -> T)  × \a'x' ->
+     DC 0f a'x' ≡≡ e     × \ee ->
      T
     ) <=> (
-     Ty                  :s \a ->
-     Tm a                :s \b ->
-     ((x : Tm a) -> Tm (Id b x) -> Ty) :s \P ->
-     Tm (P b refl)       :s \w ->
-     Tm a                :s \x ->
-     Tm (Id b x)         :s \e ->
+     Ty                  × \a ->
+     Tm a                × \b ->
+     ((x : Tm a) -> Tm (Id b x) -> Ty) × \P ->
+     Tm (P b refl)       × \w ->
+     Tm a                × \x ->
+     Tm (Id b x)         × \e ->
      ------------------------------ differs from here
-     Tm U                :s \a' ->
-     Tm (El a')          :s \x' ->
-     DC 0f (a' , x' , tt) ≡≡ e :s \ee ->
+     Tm U                × \a' ->
+     Tm (El a')          × \x' ->
+     DC 0f (a' , x' , tt) ≡≡ e × \ee ->
      T
     )
   equivTel
     = sec \_ -> sec \_ -> sec \_ -> sec \_ -> sec \_ -> sec \_ ->
-  -- (a, (b, tt)), d  --> a, (b, tt), d -->  a, b, tt, d  --> a, b, d
-         sym<=> assoc
-       ∘ sec \_ -> sym<=> assoc
+         assoc
+       ∘ sec \_ -> assoc
                  ∘ sec \_ -> unit
 
   equivCode : (
-     Ty                  :s \a ->
-     Tm a                :s \b ->
-     ((x : Tm a) -> Tm (Id b x) -> Ty) :s \P ->
-     Tm (P b refl)       :s \w ->
-     Tm a                :s \x ->
-     Tm (Id b x)         :s \e ->
+     Ty                  × \a ->
+     Tm a                × \b ->
+     ((x : Tm a) -> Tm (Id b x) -> Ty) × \P ->
+     Tm (P b refl)       × \w ->
+     Tm a                × \x ->
+     Tm (Id b x)         × \e ->
      --------------------------------- diff from here
-     Tm U                :s \a' ->
-     Tm (El a')          :s \x' ->
-     DC 0f (a' , x' , tt) ≡≡ e :s \ee ->
+     Tm U                × \a' ->
+     Tm (El a')          × \x' ->
+     DC 0f (a' , x' , tt) ≡≡ e × \ee ->
      T
     ) <=> (
-     Ty                  :s \a ->
-     Tm a                :s \b ->
-     ((x : Tm a) -> Tm (Id b x) -> Ty) :s \P ->
-     Tm (P b refl)       :s \w ->
-     Tm a                :s \x ->
-     Tm (Id b x)         :s \e ->
+     Ty                  × \a ->
+     Tm a                × \b ->
+     ((x : Tm a) -> Tm (Id b x) -> Ty) × \P ->
+     Tm (P b refl)       × \w ->
+     Tm a                × \x ->
+     Tm (Id b x)         × \e ->
      --------------------------------- diff from here
-     Ty                  :s \a'' ->
-     Tm a''              :s \x' ->
-     DC 0f (code a'' , x' , tt) ≡≡ e :s \ee ->
+     Ty                  × \a'' ->
+     Tm a''              × \x' ->
+     DC 0f (code a'' , x' , tt) ≡≡ e × \ee ->
      T
     )
   equivCode
@@ -564,41 +524,41 @@ module Examples where
 
 
   equiv12 : (
-     Ty             :s \a ->
-     Tm a           :s \b ->
-     ((x : Tm a) -> Tm (Id b x) -> Ty) :s \P ->
-     Tm (P b refl)  :s \w ->
+     Ty             × \a ->
+     Tm a           × \b ->
+     ((x : Tm a) -> Tm (Id b x) -> Ty) × \P ->
+     Tm (P b refl)  × \w ->
      ----------------------------- diff from here
-     Tm a           :s \x -> 
-     Tm (Id b x)    :s \e ->
-     Ty             :s \a' ->
-     (Tm a')        :s \x' ->
-     refl {a'} {x'} ≡≡ e :s \_ ->
+     Tm a           × \x -> 
+     Tm (Id b x)    × \e ->
+     Ty             × \a' ->
+     (Tm a')        × \x' ->
+     refl {a'} {x'} ≡≡ e × \_ ->
      T
     ) <=> (
-     Ty             :s \a ->
-     Tm a           :s \b ->
-     ((x : Tm a) -> Tm (Id b x) -> Ty) :s \P ->
-     Tm (P b refl)  :s \w ->
+     Ty             × \a ->
+     Tm a           × \b ->
+     ((x : Tm a) -> Tm (Id b x) -> Ty) × \P ->
+     Tm (P b refl)  × \w ->
      ----------------------------- diff from here
      T
     )
   equiv12
     = sec \_ -> sec \_ -> sec \_ -> sec \_ ->
         (sec \_ -> sec \_ ->
-            (sndAssoc \_ -> sndSwap \_ ->
-                first (matchCRefl ∘ decompEq) ∘ sym<=> assoc
-              ∘ first decompEq ∘ sym<=> assoc
+            (sec \_ -> sndSwap \_ ->
+                decomp
+              ∘ decomp
               ∘ first injCode
             )
-          ∘ first solveLeft ∘ unit
-          ∘ (sndAssoc \_ -> first decompEq ∘ sym<=> assoc)
-          ∘ first solveLeft ∘ unit
+          ∘ solveL
+          ∘ (sec \_ -> decomp)
+          ∘ solveL
         )
-      ∘ (sndAssoc \_ -> sndSwap \_ -> first decompEq ∘ sym<=> assoc)
-      ∘ first solveRight ∘ unit
-      ∘ (sndAssoc \_ -> first delete ∘ unit)
-      ∘ first solveRight ∘ unit
+      ∘ (sec \_ -> sndSwap \_ -> decomp)
+      ∘ solveR
+      ∘ (sec \_ -> delete')
+      ∘ solveR
 
 
 
@@ -638,7 +598,7 @@ module Examples where
 
   NatDesc = TCD "Nat" [] 2 \where
       0f -> DCD "Zero" []          \_ -> tt
-      1f -> DCD "Suc"  (Nat' × []) \_ -> tt
+      1f -> DCD "Suc"  (Nat' :× []) \_ -> tt
 
   Nat' = TC NatDesc tt
 
@@ -651,9 +611,9 @@ module Examples where
   {-# TERMINATING #-}
   Vec' : Ty -> Tm Nat' -> Ty
 
-  VecDesc = TCD "Vec" (U × Nat' × []) 2 \where
-      0f -> DCD "VNil"  (U × []) \{(a , tt) -> a , Zero , tt}
-      1f -> DCD "VCons" (U :: \t -> Nat' :: \n -> El t × Vec' (El t) n × []) \(a , n , _) -> a , Suc n , tt
+  VecDesc = TCD "Vec" (U :× Nat' :× []) 2 \where
+      0f -> DCD "VNil"  (U :× []) \{(a , tt) -> a , Zero , tt}
+      1f -> DCD "VCons" (U :: \t -> Nat' :: \n -> El t :× Vec' (El t) n :× []) \(a , n , _) -> a , Suc n , tt
 
   Vec' t n = TC VecDesc (code t , n , tt)
 
@@ -664,28 +624,27 @@ module Examples where
   VCons a as = DC 1f (_ , _ , a , as , tt)
 
   equivBot : (
-      Ty :s  \b ->
-      Ty :s  \c ->
-      Tm (Vec' b Zero) :s \bs ->
-      (Σ (Tm U) \a' -> Σ (Tm Nat') \n' → Σ (Tm (El a')) \_ -> Σ (Tm (Vec' (El a') n')) \_ -> T) :s \args ->
-      (DC 1f args ≡≡ bs) :s \e ->
+      Ty ×  \b ->
+      Ty ×  \c ->
+      Tm (Vec' b Zero) × \bs ->
+      (Tm U × \a' -> Tm Nat' × \n' → Tm (El a') × \_ -> Tm (Vec' (El a') n') × \_ -> T) × \args ->
+      DC 1f args ≡≡ bs × \e ->
       T
     ) <=> ⊥
   equivBot
-    = (sndBot \_ -> sndBot \_ -> sndBot \_ -> sndBot \{(code a' , n' , x , xs , tt) ->
-           first (matchCRefl ∘ decompEq) ∘ sym<=> assoc
-         ∘ first decompEq ∘ sym<=> assoc
-         ∘ sndBot (\{Refl ->
-              first decompEq ∘ sym<=> assoc
-            ∘ first (Eq<=> ∘ conflict \())
-            ∘ botFst})
-         })
+    = sndBot \_ -> sndBot \_ -> sndBot \_ -> sndBot \ args@(a' , n' , _) ->
+           decomp
+         ∘ decomp
+         ∘ sndBot \{Refl -> decomp                                  -- Refl?
+                      ∘ first (conflict \())
+                      ∘ botFst
+                   }
 
   zipWith : {a b c : Ty} {n : Tm Nat'} (f : Tm a -> Tm b -> Tm c) ->
     Tm (Vec' a n) -> Tm (Vec' b n) -> Tm (Vec' c n)
   zipWith {a} {b} {c} {n} f as bs =
-    ifTag 0f as (\{ (a' , tt) CRefl ->
-      ifTag 0f bs (\{ _ CRefl -> VNil }) \f0 ->
+    ifTag 0f as (\{ (a' , tt) Refl ->
+      ifTag 0f bs (\{ _ Refl -> VNil }) \f0 ->
       ifTag 1f bs (\{ args e ->
         solveBy equivBot
           ((b , c , bs , args , e , tt))
@@ -694,9 +653,9 @@ module Examples where
                     }) \f1 ->
       coveredBy (f0 :: f1 :: [])
     }) \f0 ->
-    ifTag 1f as (\{ (_ , _ , a , as , tt) CRefl ->
+    ifTag 1f as (\{ (_ , _ , a , as , tt) Refl ->
       ifTag 0f bs (\{ _ () }) \f0 ->
-      ifTag 1f bs (\{ (_ , _ , b , bs , _) CRefl -> VCons (f a b) (zipWith f as bs) }) \f1 ->
+      ifTag 1f bs (\{ (_ , _ , b , bs , _) Refl -> VCons (f a b) (zipWith f as bs) }) \f1 ->
       coveredBy (f0 :: f1 :: [])
     }) \f1 ->
     coveredBy (f0 :: f1 :: [])
@@ -724,13 +683,13 @@ module Examples where
   add : Tm Nat' -> Tm Nat' -> Tm Nat'
   add n m =
     ifTag 0f n (\{ _ e -> m }) \f0 ->
-    ifTag 1f n (\{ (k , tt) CRefl -> Suc (add k m) }) \f1 ->
+    ifTag 1f n (\{ (k , tt) Refl -> Suc (add k m) }) \f1 ->
     coveredBy (f0 :: f1 :: [])
 
-  CmpDesc = TCD "Cmp" (Nat' × Nat' × []) 3 \where
-    0f -> DCD "CmpLT" (Nat' × Nat' × []) \(x , k , tt) -> x , add x (Suc k) , tt
-    1f -> DCD "CmpEQ" (Nat' × [])        \(x , tt)     -> x , x , tt
-    2f -> DCD "CmpGT" (Nat' × Nat' × []) \(x , k , tt) -> add x (Suc k) , x , tt
+  CmpDesc = TCD "Cmp" (Nat' :× Nat' :× []) 3 \where
+    0f -> DCD "CmpLT" (Nat' :× Nat' :× []) \(x , k , tt) -> x , add x (Suc k) , tt
+    1f -> DCD "CmpEQ" (Nat' :× [])         \(x , tt)     -> x , x , tt
+    2f -> DCD "CmpGT" (Nat' :× Nat' :× []) \(x , k , tt) -> add x (Suc k) , x , tt
 
   Cmp : Tm Nat' -> Tm Nat' -> Ty
   Cmp n m = TC CmpDesc (n , m , tt)
@@ -748,43 +707,43 @@ module Examples where
   cmp : (x : Tm Nat') (y : Tm Nat') -> Tm (Cmp x y)
 
   equiv : (
-       Tm Nat' :s \x' ->
-       Tm Nat' :s \y' ->
-       Tm Nat' :s \u ->
-       Tm Nat' :s \v ->
-       CmpLT {u} {v} ≡≡ cmp x' y' :s \e ->
+       Tm Nat' × \x' ->
+       Tm Nat' × \y' ->
+       Tm Nat' × \u ->
+       Tm Nat' × \v ->
+       CmpLT {u} {v} ≡≡ cmp x' y' × \e ->
        T
      ) <=> (
-       Tm Nat' :s \u ->
-       Tm Nat' :s \v ->
-       (CmpLT {u} {v} ≡ cmp u (add u (Suc v))) :s \_ ->    -- this equality remained but it will not be used
+       Tm Nat' × \u ->
+       Tm Nat' × \v ->
+       CmpLT {u} {v} ≡ cmp u (add u (Suc v)) × \_ ->    -- this equality remained but it will not be used
        T       
      )
   equiv =
       sec \_ ->
           (sndSwap \_ ->
-            (sndAssoc \_ -> sndSwap \_ ->
-              first (matchCRefl ∘ decompEq) ∘ sym<=> assoc
-            ∘ first decompEq ∘ sym<=> assoc
+            (sec \_ -> sndSwap \_ ->
+              decomp
+            ∘ decomp
             )
-          ∘ first solveLeft ∘ unit
-          ∘ sec (\v -> first decompEq ∘ sym<=> assoc)
+          ∘ solveL
+          ∘ sec (\v -> decomp)
           )
         ∘ sec \_ ->
-            assoc ∘ first solveRight ∘ unit
-          ∘ first delete ∘ unit
+            solveR
+          ∘ delete'
 
   cmp x y =
-    ifTag 0f x (\{ _ CRefl ->
-      ifTag 0f y (\{ _ CRefl -> CmpEQ }) \f0 ->
-      ifTag 1f y (\{ _ CRefl -> CmpLT }) \f1 ->
+    ifTag 0f x (\{ _ Refl ->
+      ifTag 0f y (\{ _ Refl -> CmpEQ }) \f0 ->
+      ifTag 1f y (\{ _ Refl -> CmpLT }) \f1 ->
       coveredBy (f0 :: f1 :: [])
     }) \f0 ->
-    ifTag 1f x (\{ (x' , tt) CRefl ->
-      ifTag 0f y (\{ _ CRefl -> CmpGT }) \f0' ->
-      ifTag 1f y (\{ (y' , tt) CRefl ->
+    ifTag 1f x (\{ (x' , tt) Refl ->
+      ifTag 0f y (\{ _ Refl -> CmpGT }) \f0' ->
+      ifTag 1f y (\{ (y' , tt) Refl ->
         let c = cmp x' y' in
---        ifTag 0f c (\{ (u , v , tt) CRefl -> {!CmpLT!} }) \f0 ->
+--        ifTag 0f c (\{ (u , v , tt) Refl -> {!CmpLT!} }) \f0 ->
         ifTag 0f c (\{ (u , v , tt) e ->
               solveBy equiv
                 (x' , y' , u , v , e , tt)
@@ -803,4 +762,5 @@ module Examples where
   the _ x = x
 
   cmpTest = the (cmp (Suc Zero) (Suc (Suc (Suc Zero))) ≡ CmpLT) Refl
+
 
