@@ -77,7 +77,7 @@ data CTy : Polarity -> Set where
   1t   : CTy V
   _*t_ : CTy V -> CTy V -> CTy V
   0t   : CTy V
-  _+t_ : CTy V -> CTy V -> CTy V
+  _+t_ : CTy V -> CTy V -> CTy V         -- Value (+) OK?
   Int  : CTy V
 
 Bool = 1t +t 1t

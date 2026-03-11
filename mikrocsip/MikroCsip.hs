@@ -8,7 +8,6 @@ import Data.Function
 import Data.Functor
 import Data.List
 import Data.Maybe
---import Data.Either
 import Data.String
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -191,7 +190,7 @@ data StaticInfo
   = KCon              -- constructor
   | KMeta BoundVars   -- meta variable
   | KCMeta            -- context meta    -- TODO: remove
-  | KFun              -- function          --   n :: ...; ...; n ... = ...; ...
+  | KFun              -- function          --   f :: ...; ...; f ... = ...; ...
   | KBVar             -- bound variable    --   n. ...
   | KDVar             -- defined variable  --   n :: ... = ...
   deriving Show
@@ -279,6 +278,7 @@ type VTy = Val
 
 pattern VType     =  VVar "Type"
 pattern VMeta v   <- VVar v@NMeta{}
+pattern VCon v    <- VVar v@NCon{}
 pattern VPi  a b  <- VVar "Pi"  `VApp` a `VApp` b
 pattern VHPi a b  <- VVar "HPi" `VApp` a `VApp` b
 pattern VRet a    <- VVar "Ret" `VApp` a
@@ -694,7 +694,7 @@ unify a b = indent "unify" do
   case (a, b) of
     (VMeta i, v) | diff -> solveMeta i v
     (v, VMeta i) | diff -> solveMeta i v
-    (VVar n, VVar n') | n == n' -> pure ()
+    (a, a') | eq a a' -> pure ()
     _ -> do
       a2 <- ff a
       b2 <- ff b
@@ -705,9 +705,16 @@ unify a b = indent "unify" do
         (_, VApp b1@(VApps VMeta{} _) _) | diff               -> mlift unify (vConst a) (pure b1)
         (VLam{}, b) -> withNewVar \vn                         -> unify (VApp a vn) (VApp b vn)
         (a, VLam{}) -> withNewVar \vn                         -> unify (VApp a vn) (VApp b vn)
-        (VApp a1 a2, VApp b1 b2) -> unify a1 b1 >> unify a2 b2
+        (VApps (VCon c) vs, VApps (VCon c') vs')
+          | c == c', length vs == length vs' -> zipWithM_ unify vs vs'
+--        (VApp a1 a2, VApp b1 b2) -> unify a1 b1 >> unify a2 b2
         _ -> throwError $ "unify: " <> show (ta, tb)
  where
+  eq (VVar n) (VVar n') = n == n'
+  eq (VApp a b) (VApp a' b') = eq a a' && eq b b'
+  -- TODO: VLam
+  eq _ _ = False
+
   ff (VApp _ x) = force x >>= \case
     VVar n@NBVar{} -> pure $ Just n
     _ -> pure Nothing
@@ -715,10 +722,9 @@ unify a b = indent "unify" do
 
   withNewVar m = newBVar "x" \c -> m $ VVar c
 
-----------
 
 -- hlam is needed for emulating hidden arguments with coercive subtyping
-coerce :: Bool -> Val -> Val -> M (Tm -> Tm)
+coerce :: Bool -> VTy -> VTy -> M (Tm -> Tm)
 coerce hlam a{-got-} b{-expected-} = indent "coerce" do
   ta <- lazyQuote a
   tb <- lazyQuote b
@@ -815,7 +821,7 @@ addVar n m = do
   mt <- mMeta
   mkName KBVar mt n \_ -> m
 
-infer :: Raw -> M (Tm, Val)
+infer :: Raw -> M (Tm, VTy)
 infer r = indent "infer" do
   tell [LInfer r]
   (t, v) <- infer_ r
@@ -823,14 +829,14 @@ infer r = indent "infer" do
   tell [LInferRes t v']
   pure (t, v)
 
-infer_ :: Raw -> M (Tm, Val)
+infer_ :: Raw -> M (Tm, VTy)
 infer_ = \case
 
   RDef s d -> do
     tell [LSource s]
     case s of
 
-      RRule (RTy (RVar n_) t) b -> do
+      RRule (RTy (RVar n_) t) b -> do        -- n : t = b  ; ...
         (t', t'') <- checkType t
         b' <- check b t''
         b'' <- eval b'
@@ -838,14 +844,14 @@ infer_ = \case
           tell [LElab $ TRule (TVar ":" `TApp` TVar n `TApp` t') b']
           infer_ d <&> first (TLet n b')
 
-      RSRule (RTy (RVar n_) t) b -> do
+      RSRule (RTy (RVar n_) t) b -> do       -- n : t := b  ; ...
         (t', t'') <- checkOType t
         b' <- check b t''
         mkName KDVar t'' n_ \n -> do              -- KDOVar
           tell [LElab $ TSRule (TVar ":" `TApp` TVar n `TApp` t') b']
           (iCheck d =<< mCode mMeta mMeta) <&> first (TOLet n b')
 
-      RTy (RVar n_) t -> do
+      RTy (RVar n_) t -> do                -- n : t ; ....
         (t', t'') <- checkType t
         (n_, cn) <- newVar' n_ KCon
         bv <- getBoundVars
@@ -856,7 +862,7 @@ infer_ = \case
             tell [LZonk $ TVar ":" `TApp` TVar n `TApp` t''']
             infer_ d <&> first (TLet n {- t' -} $ TApps (TVar cn) $ map TVar bv)
 
-      RFun (RVar n_) t -> do
+      RFun (RVar n_) t -> do              -- n :: t  ; ...
         (t', t'') <- checkType t
         i <- newCMeta
         mkName KDVar t'' n_ \n -> do
@@ -868,7 +874,7 @@ infer_ = \case
             tell [LZonk $ TVar "::" `TApp` TVar n `TApp` t''']
             infer_ d <&> first (TFun n t')
 
-      RRule a b -> do                  -- rule def
+      RRule a b -> do                  -- rule def     a = b ; ....
         ns <- rVars a
         (a', b') <- flip (foldr addVar) ns do
           (a'', t) <- infer a
@@ -910,7 +916,7 @@ infer_ = \case
   RLam (RVar n_) a -> do
     t1 <- mMeta
     t2 <- mMeta
-    t <- mPi (pure t1) (pure t2)
+    t <- mPi (pure t1) (pure t2)       -- Pi mA mB
     mkName KBVar t1 n_ \n -> do
       tm <- TLam n <$> check a (VApp t2 (VVar n))
       pure (tm, t)
@@ -1185,65 +1191,4 @@ main = do
     [fn] -> do
       s <- readFile fn
       putStr $ passes [] s
-
--------------------------------------------------
-
-{- TODOs
-
-- HPi az output tm-ben ok?
-
-- escape kezelés
-  - quote-nál Nat' helyett Nat-ot írni
-  - escape észervétel solveMeta-nál
-    - boundvars-ba betenni Nat'-t
-    - lecsekkolni, hogy a konstruktorok is látszanak-e a meta solutionben
-  - pruning support
-  - ugyanezek függvényekre is
-- ne készüljenek dinamikus id-k
-  should be true:  eval (quote v) ~~ v
-
-- staging
-  - kiegészíteni szemantikával power.mcsip-et
-  - staging transformation
-    A) írni (generálni) egy HOAS evaluátort a main kifejezéshez ami kicseréli a konstruktorokat az interpretációjukra
-    B) elab & eval & quote & transformált Tm-hez hozzáillesztés & eval
-    C) rich elab & Tm transzformáció <<<ez a pont érdekes>>> & eval
-    D) rich elab & standard környezethez illesztés & eval
-    E) rich elab & <<<ez a pont érdekes>>> stage_eval
-    - Mul leképezése
-    - interpreter
-    - rechecking
-  - pattern match compilation
-  - port arith.csip
-  - (->) instead of Arr
-
-- make Tm reparsable & retypeable
-  - better printing of UserName
-
-- type classes
-- modules as records
-- pattern synonyms
-- closure-free -> stack-free transformation
-
-- late scope checking of compiled rules (because of lhs guards)
-- occurs check
-- more/better error messages
-- literals
-- plug in syntactic frontend?
-
-- better code generation
-  - avoid explosion in pattern match compilation (with lets)
-  - rule chain optimization
-- erasure?
-- performance
-  - cache App info
-  - Map -> IORef in St
-  - meta chain opt.
-  - sharing
-    - observable sharing (add ids to App nodes)
-    - name regions -- evaquate with deepforce
-    - supercombinators instead of closures
-    - gluing?
-
--}
 

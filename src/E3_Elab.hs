@@ -6,6 +6,7 @@ module E3_Elab
   ) where
 
 import D_Calculus
+import E1_Unify
 import E2_Conv
 
 --------------------------------------------------
@@ -188,11 +189,6 @@ check_ r ty = case r of
     _ -> do
       _t' <- check t ty  -- TODO: use t'
       TDot <$> freshMeta
-  -- can this be in Conv?
-  RPi "_"B a b | ty === "Ty"B {- TODO! matchCon -} -> do
-    ta <- check a "Ty"B
-    tb <- check b "Ty"B
-    pure $ "Arr"B :@. ta :@. tb
   RHLam (RVar n) "_"B a -> do
     T4 f icit pa pb <- matchPi False Impl ty
     case icit of
@@ -226,42 +222,55 @@ check_ r ty = case r of
       check (RHLam (RVar n') "_"B r) ty
     Just (T3 ImplClass _ _) | not lhs -> do
       check (RHLam "h"B "_"B r) ty
-    _ -> case r of
-      RLet (RVar n) t a b -> do
-        MkTmTy ta vta <- case t of
-          "_"B -> infer a
-          t -> do
+  -- can this be in Conv?
+    _ -> matchCon' 0 "Ty"B ty >>= \case
+      Just{} | RPi "_"B a b <- r -> do
+        ta <- check a "Ty"B
+        tb <- check b "Ty"B
+        pure $ "Arr"B :@. ta :@. tb
+      _ -> matchCon' 1 "PTy"B ty >>= \case
+        Just (p :. INil) | RPi "_"B a b <- r -> do
+          unify p "Computation"B
+          ta <- check a =<< vApp "PTy"B "Value"B
+          MkTmVal mp mp' <- freshMeta'
+          tb <- check b =<< vApp "PTy"B mp'
+          pure $ "PArr"B :@. mp :@. ta :@. tb
+        _ -> case r of
+          RLet (RVar n) t a b -> do
+            MkTmTy ta vta <- case t of
+              "_"B -> infer a
+              t -> do
+                vta <- checkType n t
+                ta <- check a vta
+                pure (MkTmTy ta vta)
+            T2 n tb <- defineGlob' n ta vta $ T2 n <$> check b ty
+            pure $ TLet n ta tb
+          ROLet (RVar n) t a b -> isOnTop >>= \case
+           True -> do
             vta <- checkType n t
             ta <- check a vta
-            pure (MkTmTy ta vta)
-        T2 n tb <- defineGlob' n ta vta $ T2 n <$> check b ty
-        pure $ TLet n ta tb
-      ROLet (RVar n) t a b -> isOnTop >>= \case
-       True -> do
-        vta <- checkType n t
-        ta <- check a vta
-        let c = WCon n
-        defineGlob n (TVal c) vta do
-          tb <- check b ty
-          T2 fa pa <- matchCode vta
-          T2 fb pb <- matchCode ty
-          fta <- fa ta
-          ftb <- fb tb
-          pure $ "TopLet"B :@. pa :@. pb :@. TVal c :@. fta :@. ftb
-       False -> do
-        vta <- checkType n t
-        ta <- check a vta
-        T2 n tb <- defineBound n vta do
-          T2 n <$> check b ty
-        T2 fa pa <- matchCode vta
-        T2 fb pb <- matchCode ty
-        fta <- fa ta
-        l <- tLam n =<< fb tb
-        pure $ "Let"B :@. pa :@. pb :@. fta :@. l
-      r -> do
-        MkTmTy a t <- insertH $ infer r
-        f <- conv t ty
-        f a
+            let c = WCon n
+            defineGlob n (TVal c) vta do
+              tb <- check b ty
+              T2 fa pa <- matchCode vta
+              T2 fb pb <- matchCode ty
+              fta <- fa ta
+              ftb <- fb tb
+              pure $ "TopLet"B :@. pa :@. pb :@. TVal c :@. fta :@. ftb
+           False -> do
+            vta <- checkType n t
+            ta <- check a vta
+            T2 n tb <- defineBound n vta do
+              T2 n <$> check b ty
+            T2 fa pa <- matchCode vta
+            T2 fb pb <- matchCode ty
+            fta <- fa ta
+            l <- tLam n =<< fb tb
+            pure $ "Let"B :@. pa :@. pb :@. fta :@. l
+          r -> do
+            MkTmTy a t <- insertH $ infer r
+            f <- conv t ty
+            f a
 
 checkType n t = do
   tn <- typeName n

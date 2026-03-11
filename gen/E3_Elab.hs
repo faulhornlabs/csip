@@ -8,6 +8,7 @@ module E3_Elab
   ) where
 
 import D_Calculus
+import E1_Unify
 import E2_Conv
 
 --------------------------------------------------
@@ -108,17 +109,17 @@ defineGlob'        = defineGlob_ (Just True) False True  True
 defineGlob         = defineGlob_ (Just True) False False True
 
 rEmbed tt = do
-  n <- nameOf N144
+  n <- nameOf N156
   insertDef n tt $ pure $ RVar n
 
 ----------------
 
 matchCode :: Val -> Mem (Tup2 (Tm -> Mem Tm) Tm)
-matchCode v = matchCon' 1 N134 v >>= \case
+matchCode v = matchCon' 1 N133 v >>= \case
   Just (a :. Nil) -> quoteLets a <&> \a -> T2 pure a
   _ -> do
     MkTmVal tm m <- freshMeta'
-    cm <- vApp N134 m
+    cm <- vApp N133 m
     f <- conv v cm
     pure (T2 f tm)
 
@@ -138,7 +139,7 @@ matchPi cov icit v = matchCon' 2 N58 v >>= \case
     _ -> do
       MkTmVal _ m1 <- freshMeta'
       MkTmVal _ m2 <- freshMeta'
-      let pi = case icit of Impl -> N59; Expl -> N58; _ -> (impossible "src/E3_Elab.hs" 139)
+      let pi = case icit of Impl -> N59; Expl -> N58; _ -> (impossible "src/E3_Elab.hs" 140)
       v2 <- vApps pi (m1 :. m2 :. Nil)
       f <- case cov of
         True -> conv v v2
@@ -160,7 +161,7 @@ insertH et = et >>= \(MkTmTy e t) -> matchHPi t >>= \case
     MkTmVal m vm <- freshMeta'
     t' <- vApp b vm
     insertH $ pure (MkTmTy ((:@.) e m) t')
-  _ -> (undefined "src/E3_Elab.hs" 161)
+  _ -> (undefined "src/E3_Elab.hs" 162)
 
 typeName :: SName -> Mem SName
 typeName = mapName (<> "_t")
@@ -186,15 +187,10 @@ check_ :: Scoped -> Val -> Mem Tm
 check_ r ty = case r of
   N39 -> freshMeta
   RDot t -> askLHS >>= \case
-    False -> (undefined "src/E3_Elab.hs" 187)
+    False -> (undefined "src/E3_Elab.hs" 188)
     _ -> do
       _t' <- check t ty  -- TODO: use t'
       TDot <$> freshMeta
-  -- can this be in Conv?
-  RPi N39 a b | ty === N135 {- TODO! matchCon -} -> do
-    ta <- check a N135
-    tb <- check b N135
-    pure $ N133 :@. ta :@. tb
   RHLam (RVar n) N39 a -> do
     T4 f icit pa pb <- matchPi False Impl ty
     case icit of
@@ -207,7 +203,7 @@ check_ r ty = case r of
         defineBound n pa do   -- TODO: add superclasses to the env
           ta <- check a pb
           f =<< tLam n ta
-      _ ->  (undefined "src/E3_Elab.hs" 208)
+      _ ->  (undefined "src/E3_Elab.hs" 204)
   RLam (RVar n) N39 a -> do
     T4 f icit pa pb <- matchPi False Expl ty
     case icit of
@@ -217,60 +213,73 @@ check_ r ty = case r of
           ta <- check a t
           f =<< tLam n ta
       Impl -> do
-        n' <- lamName N142 pb
+        n' <- lamName N152 pb
         f =<< check (RHLam (RVar n') N39 r) ty
-      _ -> (undefined "src/E3_Elab.hs" 220)
+      _ -> (undefined "src/E3_Elab.hs" 216)
   _ -> do
    lhs <- askLHS
    matchHPi ty >>= \case
     Just (T3 Impl _ pb) | not lhs -> do
-      n' <- lamName N142 pb
+      n' <- lamName N152 pb
       check (RHLam (RVar n') N39 r) ty
     Just (T3 ImplClass _ _) | not lhs -> do
-      check (RHLam N145 N39 r) ty
-    _ -> case r of
-      RLet (RVar n) t a b -> do
-        MkTmTy ta vta <- case t of
-          N39 -> infer a
-          t -> do
+      check (RHLam N157 N39 r) ty
+  -- can this be in Conv?
+    _ -> matchCon' 0 N138 ty >>= \case
+      Just{} | RPi N39 a b <- r -> do
+        ta <- check a N138
+        tb <- check b N138
+        pure $ N134 :@. ta :@. tb
+      _ -> matchCon' 1 N141 ty >>= \case
+        Just (p :. INil) | RPi N39 a b <- r -> do
+          unify p N137
+          ta <- check a =<< vApp N141 N144
+          MkTmVal mp mp' <- freshMeta'
+          tb <- check b =<< vApp N141 mp'
+          pure $ N135 :@. mp :@. ta :@. tb
+        _ -> case r of
+          RLet (RVar n) t a b -> do
+            MkTmTy ta vta <- case t of
+              N39 -> infer a
+              t -> do
+                vta <- checkType n t
+                ta <- check a vta
+                pure (MkTmTy ta vta)
+            T2 n tb <- defineGlob' n ta vta $ T2 n <$> check b ty
+            pure $ TLet n ta tb
+          ROLet (RVar n) t a b -> isOnTop >>= \case
+           True -> do
             vta <- checkType n t
             ta <- check a vta
-            pure (MkTmTy ta vta)
-        T2 n tb <- defineGlob' n ta vta $ T2 n <$> check b ty
-        pure $ TLet n ta tb
-      ROLet (RVar n) t a b -> isOnTop >>= \case
-       True -> do
-        vta <- checkType n t
-        ta <- check a vta
-        let c = WCon n
-        defineGlob n (TVal c) vta do
-          tb <- check b ty
-          T2 fa pa <- matchCode vta
-          T2 fb pb <- matchCode ty
-          fta <- fa ta
-          ftb <- fb tb
-          pure $ N146 :@. pa :@. pb :@. TVal c :@. fta :@. ftb
-       False -> do
-        vta <- checkType n t
-        ta <- check a vta
-        T2 n tb <- defineBound n vta do
-          T2 n <$> check b ty
-        T2 fa pa <- matchCode vta
-        T2 fb pb <- matchCode ty
-        fta <- fa ta
-        l <- tLam n =<< fb tb
-        pure $ N113 :@. pa :@. pb :@. fta :@. l
-      r -> do
-        MkTmTy a t <- insertH $ infer r
-        f <- conv t ty
-        f a
+            let c = WCon n
+            defineGlob n (TVal c) vta do
+              tb <- check b ty
+              T2 fa pa <- matchCode vta
+              T2 fb pb <- matchCode ty
+              fta <- fa ta
+              ftb <- fb tb
+              pure $ N158 :@. pa :@. pb :@. TVal c :@. fta :@. ftb
+           False -> do
+            vta <- checkType n t
+            ta <- check a vta
+            T2 n tb <- defineBound n vta do
+              T2 n <$> check b ty
+            T2 fa pa <- matchCode vta
+            T2 fb pb <- matchCode ty
+            fta <- fa ta
+            l <- tLam n =<< fb tb
+            pure $ N113 :@. pa :@. pb :@. fta :@. l
+          r -> do
+            MkTmTy a t <- insertH $ infer r
+            f <- conv t ty
+            f a
 
 checkType n t = do
   tn <- typeName n
-  check t N136 >>= evalEnvGlued tn
+  check t N139 >>= evalEnvGlued tn
 
 checkType' t = do
-  check t N136 >>= evalEnv
+  check t N139 >>= evalEnv
 
 ------------------------------------------------------------------
 
@@ -300,7 +309,7 @@ infer_ r = case r of
           addClass n (MkClassData tc dv supers mts) do
             forM_ (numberWith T2 0 mts) \(T2 i (T2 mname _)) -> lookupDef mname >>= \case
               Just (MkTmTy vf _) -> addDictSelector vf dname (1 + length supers + length mts) (1 + length supers + i)
-              _ -> (impossible "src/E3_Elab.hs" 301)
+              _ -> (impossible "src/E3_Elab.hs" 310)
             defineSuperclasses n tc dname (1 + length supers + length mts) supers
             infer e
   RInstance a b c -> do
@@ -308,7 +317,7 @@ infer_ r = case r of
     ct <- checkType' a
     T4 ns is n arg <- analyzeInstanceHead ct
     lookupClass n >>= \case
-      Nothing ->  (undefined "src/E3_Elab.hs" 309)
+      Nothing ->  (undefined "src/E3_Elab.hs" 318)
       Just cd@(MkClassData _ _ _ mts) -> do
         fff (addMethodType ns is arg) mts \mns -> do
           addLookupDictRule cd ns is arg (map snd mns)
@@ -316,7 +325,7 @@ infer_ r = case r of
           let replaceName n = fromMaybe (lazy (error $ "invalid method: " <> pprint' n)) $ lookupIM n ns
           inferMethodBodies replaceName b
         infer c
-  REnd -> pure (MkTmTy N136 N136)
+  REnd -> pure (MkTmTy N139 N139)
   RLam (RVar n) t a -> do
     vt <- checkType n t
     defineBound n vt do
@@ -333,9 +342,9 @@ infer_ r = case r of
     t <- freshMeta
     MkTmVal _ m <- freshMeta'
     pure (MkTmTy t m)
-  N136   -> pure $ MkTmTy N136 N136
-  RVar (RNat n)    -> vNat    (force n) <&> \v -> MkTmTy (TVal v) N139
-  RVar (RString n) -> vString (force n) <&> \v -> MkTmTy (TVal v) N137
+  N139   -> pure $ MkTmTy N139 N139
+  RVar (RNat n)    -> vNat    (force n) <&> \v -> MkTmTy (TVal v) N147
+  RVar (RString n) -> vString (force n) <&> \v -> MkTmTy (TVal v) N142
   RVar n -> lookupDef n >>= \case
     Just res -> pure res
     _        -> fail $ "Not in scope: " <> print n
@@ -355,7 +364,7 @@ infer_ r = case r of
     defineGlob n f vta $ infer b
   ROLet{} -> do
     MkTmVal _ m <- freshMeta'
-    ty <- vApp N134 m
+    ty <- vApp N133 m
     t <- check r ty
     pure (MkTmTy t ty)
   RLet (RVar n) t a b -> do
@@ -372,32 +381,32 @@ infer_ r = case r of
     addRule' a
     infer c
   (getPi -> Just (T4 pi n@N39 a b)) -> do
-    ta <- check a N136
-    tb <- check b N136 >>= tLam n
-    pure (MkTmTy (pi :@. ta :@. tb) N136)
+    ta <- check a N139
+    tb <- check b N139 >>= tLam n
+    pure (MkTmTy (pi :@. ta :@. tb) N139)
   (getPi -> Just (T4 pi n a b)) -> do
-    ta <- check a N136
+    ta <- check a N139
     va <- typeName n >>= \tn -> evalEnvGlued tn ta
     defineBound n va do
-      tb <- check b N136
+      tb <- check b N139
       l <- tLam n tb
-      pure (MkTmTy (pi :@. ta :@. l) N136)
+      pure (MkTmTy (pi :@. ta :@. l) N139)
   RCPi a b -> do
-    ta <- check a N136
-    tb <- check b N136
-    pure (MkTmTy (N60 :@. ta :@. tb) N136)
+    ta <- check a N139
+    tb <- check b N139
+    pure (MkTmTy (N60 :@. ta :@. tb) N139)
   RIPi a b -> do
-    ta <- check a N136
-    tb <- check b N136
-    pure (MkTmTy (N61 :@. ta :@. tb) N136)
+    ta <- check a N139
+    tb <- check b N139
+    pure (MkTmTy (N61 :@. ta :@. tb) N139)
   RGuard a b -> do
-    tb <- check b N147
+    tb <- check b N159
     MkTmTy ta ty <- infer a
     pure (MkTmTy (TGuard ta tb) ty)
   RView a b -> do
     MkTmTy ta ty <- infer a
     T4 f Expl pa pb <- matchPi True Expl ty
-    n <- lamName N148 pb
+    n <- lamName N160 pb
     defineBound n pa do
       T2 _ vb <- unlam n pb
       tb <- check b vb
@@ -422,7 +431,7 @@ infer_ r = case r of
         pure (MkTmTy (fav :@. tb) pb)
        | icit == i -> do
         tb <- check b pa
-        n <- lamName N148 pb
+        n <- lamName N160 pb
         v <- evalEnvGlued n tb
         b <- vApp pb v
         pure (MkTmTy (fav :@. tb) b)
@@ -445,7 +454,7 @@ instance Parse CodeTm where parse = parse >=> runMem . checkCode
 
 checkCode r = do
   MkTmVal _ m1 <- freshMeta'
-  t <- vApp N134 m1
+  t <- vApp N133 m1
   MkCodeTm <$> check r t
 
 data PCodeTm = MkPCodeTm Tm
@@ -454,7 +463,7 @@ instance Parse PCodeTm where parse = parse >=> runMem . checkPCode
 
 checkPCode r = do
   MkTmVal _ m1 <- freshMeta'
-  t1 <- vApp N149 N150
+  t1 <- vApp N136 N137
   t <- vApp t1 m1
   MkPCodeTm <$> check r t
 
@@ -491,14 +500,14 @@ appHead = \case
 
 getVarName = \case
   RVar n -> n
-  _t -> (undefined "src/E3_Elab.hs" 492)
+  _t -> (undefined "src/E3_Elab.hs" 501)
 
 getHPi__ v = matchCon' 2 N59 v <&> \case
     Just (a :. b :. Nil) -> Just (T2 a b)
     _ -> Nothing
 
 getHPi_ :: SName -> Val -> Mem (Tup2 Val Val)
-getHPi_ n v = getHPi__ v <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 499)) >>= \(T2 a b) -> vApp b (WVar n) <&> \b -> T2 a b
+getHPi_ n v = getHPi__ v <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 508)) >>= \(T2 a b) -> vApp b (WVar n) <&> \b -> T2 a b
 
 getHPi :: Val -> Mem (Maybe (Tup2 (Tup2 SName Val) Val))
 getHPi v = getHPi__ v >>= \case
@@ -542,11 +551,11 @@ dictName = mapName (<> "Dict")
 
 dictType :: Val -> List Val -> Mem (Tup2 (List Val) Val)
 dictType classTy methodTys = do
-  T2 (T2 n parTy) classTy2 <- getHPi classTy <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 543))
+  T2 (T2 n parTy) classTy2 <- getHPi classTy <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 552))
   T2 supers classTy'' <- getMult getSuper classTy2
   methodTys' <- forM methodTys \methodTy -> do
     T2 _ methodTy2 <- getHPi_ n methodTy
-    T2 _ methodTy3 <- getSuper methodTy2 <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 547))
+    T2 _ methodTy3 <- getSuper methodTy2 <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 556))
     pure methodTy3
   t <- mkHPi (T2 n parTy) $ mkMult mkPi supers $ mkMult mkPi methodTys' $ pure classTy''
   supers' <- forM supers \s -> vLam n s
@@ -559,8 +568,8 @@ fff f (a:. as) cont = f a \b -> fff f as \bs -> cont (b:. bs)
 addMethodType :: List (Tup2 SName Val) -> List Val -> Val -> Tup2 SName Val -> (Tup2 (Tup2 SName SName) Val -> Mem a) -> Mem a
 addMethodType ns is arg (T2 n_ t) cont = do
   n <- mapName id n_
-  T2 (T2 vn _) t <- getHPi t <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 560))
-  T2 _ t <- getSuper t <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 561))
+  T2 (T2 vn _) t <- getHPi t <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 569))
+  T2 _ t <- getSuper t <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 570))
   f <- vLam vn t
   t <- mkMult mkHPi ns $ mkMult mkCPi is $ vApp f arg
   traceShow "methodbody" $ "addMethodType " <> pprint' n <> " : " <> print t
@@ -579,8 +588,8 @@ analyzeInstanceHead :: Val -> Mem (Tup4 (List (Tup2 SName Val)) (List Val) SName
 analyzeInstanceHead t = do
   T2 ns t <- getMult getHPi t
   T2 is t <- getMult getSuper t
-  T2 cn t <- getApp t <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 580))
-  cn <- getConName cn <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 581))
+  T2 cn t <- getApp t <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 589))
+  cn <- getConName cn <&> fromMaybe (lazy (impossible "src/E3_Elab.hs" 590))
   pure (T4 ns is cn t)
 
 defineSuperclasses :: SName -> Val -> SName -> Word -> List Val -> Mem Tup0
@@ -617,7 +626,7 @@ mapHead g ee = ff ee where
   ff = \case
     RHPi a b x -> RHPi a b (ff x)
     RRule a x -> RRule (f a) x
-    _ -> (undefined "src/E3_Elab.hs" 618)
+    _ -> (undefined "src/E3_Elab.hs" 627)
   f = \case
     RGuard a b -> RGuard (f a) b
     RApp a b -> RApp (f a) b

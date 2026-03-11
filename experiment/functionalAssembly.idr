@@ -212,10 +212,10 @@ data Args : (0 _ : Vs) -> Type where
   ArgCons  : Code a ==> Args as ==> Args (a :: as)
 
 data Code where
-  Lam      : (Code a ==> CodeFun n) ==> CodeFun (a :: n)
-  Let      : CodeFun k -> (CodeFun k -> CodeFun n) ==> CodeFun n
+  Lam      : (Code a ==> CodeFun as) ==> CodeFun (a :: as)
+  Let      : CodeFun k =-> (CodeFun k =-> CodeFun n) ==> CodeFun n
   LetRec   : (CodeFun k -> CodeFun k) -> (CodeFun k -> CodeFun n) ==> CodeFun n
-  CondC    : Cond -> Code I ==> Int =-> (Bool ==> Code I ==> Code (Fun n)) ==> Code (Fun n)
+  CondC    : Cond =-> Code I ==> Int =-> (Bool ==> Code I ==> Code (Fun n)) ==> Code (Fun n)
   BinOpC   : BinOp -> Code I ==> Int =-> (Code I ==> CodeFun n) ==> CodeFun n
   BinOpR   : BinOp -> Code I ==> Code I ==> (Code I ==> Code I ==> CodeFun n) ==> CodeFun n
   Write8CC : Int -> Int -> Code Buffer ==> (Code Buffer ==> CodeFun n) ==> CodeFun n
@@ -224,15 +224,12 @@ data Code where
   Alloc    : Int -> Code I ==> (Code Buffer ==> CodeFun n) ==> CodeFun n
   MovA     : (Code (FunPtr (Fun ts)) ==> CodeFun ts) -> Code I ==> (CodeFun ts ==> CodeFun n) ==> CodeFun n
 
-  Idx'     : Reg -> Args m ==> CodeFun n
   Idx      : Reg -> Code {p = Value} t
+  Idx'     : Reg -> Args m ==> CodeFun n
   AppsEmb  : DBCode ==> Args m ==> CodeFun k
 
-
-(*.) : CodeFun (a :: n) ==> Code a ==> CodeFun n
-Lam f              *. b = f b
-AppsEmb p as       *. b = AppsEmb p (ArgCons b as)
-Idx' p bs          *. b = Idx' p (ArgCons b bs)
+-- saturation?
+(*.) : CodeFun (a :: as) ==> Code a ==> CodeFun as
 LetRec f g         *. b = LetRec f $ \p => g p *. b
 Let p g            *. b = Let p $ \p => g p *. b
 CondC co i r f     *. b = CondC co i r $ \c, p => f c p *. b
@@ -243,6 +240,10 @@ Write8RR i j m c   *. b = Write8RR i j m $ \i, j, m => c i j m *. b
 PutStr j m c       *. b = PutStr j m $ \j, m => c j m *. b
 Alloc i m c        *. b = Alloc i m $ \m => c m *. b
 MovA p r c         *. b = MovA p r $ \r => c r *. b
+
+Lam f              *. b = f b
+AppsEmb p as       *. b = AppsEmb p (ArgCons b as)
+Idx' p bs          *. b = Idx' p (ArgCons b bs)
 
 getRegs : Args n ==> (List Reg -> DBCode) ==> DBCode
 getRegs ArgNil cont = cont Nil

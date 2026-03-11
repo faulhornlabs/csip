@@ -671,134 +671,174 @@ pattern N132 <- (eqName litN132 -> True)
   where N132 = fromName litN132
 
 {-# noinline litN133 #-}
-litN133 = fromStr "Arr"#
+litN133 = fromStr "Code"#
 pattern N133 <- (eqName litN133 -> True)
   where N133 = fromName litN133
 
 {-# noinline litN134 #-}
-litN134 = fromStr "Code"#
+litN134 = fromStr "Arr"#
 pattern N134 <- (eqName litN134 -> True)
   where N134 = fromName litN134
 
 {-# noinline litN135 #-}
-litN135 = fromStr "Ty"#
+litN135 = fromStr "PArr"#
 pattern N135 <- (eqName litN135 -> True)
   where N135 = fromName litN135
 
 {-# noinline litN136 #-}
-litN136 = fromStr "Type"#
+litN136 = fromStr "PCode"#
 pattern N136 <- (eqName litN136 -> True)
   where N136 = fromName litN136
 
 {-# noinline litN137 #-}
-litN137 = fromStr "String"#
+litN137 = fromStr "Computation"#
 pattern N137 <- (eqName litN137 -> True)
   where N137 = fromName litN137
 
 {-# noinline litN138 #-}
-litN138 = fromStr "OString"#
+litN138 = fromStr "Ty"#
 pattern N138 <- (eqName litN138 -> True)
   where N138 = fromName litN138
 
 {-# noinline litN139 #-}
-litN139 = fromStr "Word"#
+litN139 = fromStr "Type"#
 pattern N139 <- (eqName litN139 -> True)
   where N139 = fromName litN139
 
 {-# noinline litN140 #-}
-litN140 = fromStr "Nat"#
+litN140 = fromStr "Polarity"#
 pattern N140 <- (eqName litN140 -> True)
   where N140 = fromName litN140
 
 {-# noinline litN141 #-}
-litN141 = fromStr "OWord"#
+litN141 = fromStr "PTy"#
 pattern N141 <- (eqName litN141 -> True)
   where N141 = fromName litN141
 
 {-# noinline litN142 #-}
-litN142 = fromStr "z"#
+litN142 = fromStr "String"#
 pattern N142 <- (eqName litN142 -> True)
   where N142 = fromName litN142
 
 {-# noinline litN143 #-}
-litN143 = fromStr "Ap"#
+litN143 = fromStr "OString"#
 pattern N143 <- (eqName litN143 -> True)
   where N143 = fromName litN143
 
 {-# noinline litN144 #-}
-litN144 = fromStr "e"#
+litN144 = fromStr "Value"#
 pattern N144 <- (eqName litN144 -> True)
   where N144 = fromName litN144
 
 {-# noinline litN145 #-}
-litN145 = fromStr "h"#
+litN145 = fromStr "PString"#
 pattern N145 <- (eqName litN145 -> True)
   where N145 = fromName litN145
 
 {-# noinline litN146 #-}
-litN146 = fromStr "TopLet"#
+litN146 = fromStr "MkPString"#
 pattern N146 <- (eqName litN146 -> True)
   where N146 = fromName litN146
 
 {-# noinline litN147 #-}
-litN147 = fromStr "Bool"#
+litN147 = fromStr "Word"#
 pattern N147 <- (eqName litN147 -> True)
   where N147 = fromName litN147
 
 {-# noinline litN148 #-}
-litN148 = fromStr "t"#
+litN148 = fromStr "Nat"#
 pattern N148 <- (eqName litN148 -> True)
   where N148 = fromName litN148
 
 {-# noinline litN149 #-}
-litN149 = fromStr "PCode"#
+litN149 = fromStr "OWord"#
 pattern N149 <- (eqName litN149 -> True)
   where N149 = fromName litN149
 
 {-# noinline litN150 #-}
-litN150 = fromStr "Computation"#
+litN150 = fromStr "PWord"#
 pattern N150 <- (eqName litN150 -> True)
   where N150 = fromName litN150
 
 {-# noinline litN151 #-}
-litN151 = fromStr "PLet"#
+litN151 = fromStr "MkPWord"#
 pattern N151 <- (eqName litN151 -> True)
   where N151 = fromName litN151
 
 {-# noinline litN152 #-}
-litN152 = fromStr "PLam"#
+litN152 = fromStr "z"#
 pattern N152 <- (eqName litN152 -> True)
   where N152 = fromName litN152
 
 {-# noinline litN153 #-}
-litN153 = fromStr "PApp"#
+litN153 = fromStr "Ap"#
 pattern N153 <- (eqName litN153 -> True)
   where N153 = fromName litN153
 
 {-# noinline litN154 #-}
-litN154 = fromStr "Prod"#
+litN154 = fromStr "PApp"#
 pattern N154 <- (eqName litN154 -> True)
   where N154 = fromName litN154
 
 {-# noinline litN155 #-}
-litN155 = fromStr "Pair"#
+litN155 = fromStr "PLam"#
 pattern N155 <- (eqName litN155 -> True)
   where N155 = fromName litN155
 
 {-# noinline litN156 #-}
-litN156 = fromStr "Fst"#
+litN156 = fromStr "e"#
 pattern N156 <- (eqName litN156 -> True)
   where N156 = fromName litN156
 
 {-# noinline litN157 #-}
-litN157 = fromStr "Snd"#
+litN157 = fromStr "h"#
 pattern N157 <- (eqName litN157 -> True)
   where N157 = fromName litN157
 
 {-# noinline litN158 #-}
-litN158 = fromStr "noreturn"#
+litN158 = fromStr "TopLet"#
 pattern N158 <- (eqName litN158 -> True)
   where N158 = fromName litN158
+
+{-# noinline litN159 #-}
+litN159 = fromStr "Bool"#
+pattern N159 <- (eqName litN159 -> True)
+  where N159 = fromName litN159
+
+{-# noinline litN160 #-}
+litN160 = fromStr "t"#
+pattern N160 <- (eqName litN160 -> True)
+  where N160 = fromName litN160
+
+{-# noinline litN161 #-}
+litN161 = fromStr "PLet"#
+pattern N161 <- (eqName litN161 -> True)
+  where N161 = fromName litN161
+
+{-# noinline litN162 #-}
+litN162 = fromStr "Prod"#
+pattern N162 <- (eqName litN162 -> True)
+  where N162 = fromName litN162
+
+{-# noinline litN163 #-}
+litN163 = fromStr "Pair"#
+pattern N163 <- (eqName litN163 -> True)
+  where N163 = fromName litN163
+
+{-# noinline litN164 #-}
+litN164 = fromStr "Fst"#
+pattern N164 <- (eqName litN164 -> True)
+  where N164 = fromName litN164
+
+{-# noinline litN165 #-}
+litN165 = fromStr "Snd"#
+pattern N165 <- (eqName litN165 -> True)
+  where N165 = fromName litN165
+
+{-# noinline litN166 #-}
+litN166 = fromStr "noreturn"#
+pattern N166 <- (eqName litN166 -> True)
+  where N166 = fromName litN166
 
 {-# LINE 6 "src/C2_NameLiterals.hs" #-}
 

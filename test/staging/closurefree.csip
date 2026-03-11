@@ -7,56 +7,58 @@ data builtin Polarity : Type where
   builtin Value       : Polarity
   builtin Computation : Polarity
 
-constructor builtin PTy : Polarity -> Type
+constructor builtin PTy : Polarity -> Type    -- implicit
 
-constructor builtin IO      : PTy Computation
-constructor builtin PBool   : PTy Value
-constructor builtin PWord   : PTy Value
-constructor builtin PString : PTy Value
-constructor builtin PArr : {p} -> PTy Value -> PTy p -> PTy Computation
+constructor builtin IO      : Computation
+constructor builtin PBool   : Value
+constructor builtin PWord   : Value
+constructor builtin PString : Value
+constructor builtin PArr    : Value -> PTy p -> Computation       -- implicit
 
-constructor builtin PCode : {p} -> PTy p -> Type
+constructor builtin PCode : PTy p -> Type    -- implicit
 
-constructor builtin PLam : {p} {v : PTy Value} {c : PTy p} -> (PCode v -> PCode c) -> PCode (PArr v c)
-constructor builtin PApp : {p} {v : PTy Value} {c : PTy p} -> PCode (PArr v c) -> (PCode v -> PCode c)
+constructor builtin PLam : {v : Value} {c : PTy p} -> (v -> c) -> PArr v c
+constructor builtin PApp : {v : Value} {c : PTy p} -> PArr v c -> (v -> c)
 
-constructor builtin PLet   : {p q} {a : PTy p} {b : PTy q} -> PCode a -> (PCode a -> PCode b) -> PCode b
-constructor builtin TopLet : {p q} {a : PTy p} {b : PTy q} -> PCode a ->  PCode a -> PCode b  -> PCode b
+constructor builtin PLet   : {a : PTy p} {b : PTy q} -> a -> (a -> b) -> b
+constructor builtin TopLet : {a : PTy p} {b : PTy q} -> a ->  a -> b  -> b
 
-constructor builtin MkPWord   : Word   -> PCode PWord
-constructor builtin MkPString : String -> PCode PString
+constructor builtin MkPWord   : Word   -> PWord
+constructor builtin MkPString : String -> PString
 
-constructor builtin PEqWord   : PCode PWord   -> PCode PWord   -> PCode PBool
-constructor builtin PEqString : PCode PString -> PCode PString -> PCode PBool
+constructor builtin PEqWord   : PWord   -> PWord   -> PBool
+constructor builtin PEqString : PString -> PString -> PBool
 
 -- User code
 
-constructor Halt : PCode IO
-constructor Put :  PCode PWord -> PCode IO  -> PCode IO
-constructor Get : (PCode PWord -> PCode IO) -> PCode IO
+constructor Halt : IO
+constructor Put :  PWord -> IO  -> IO
+constructor Get : (PWord -> IO) -> IO
 
-constructor Mul : PCode PWord -> PCode PWord -> PCode PWord
+constructor Mul : PWord -> PWord -> PWord
 
-sqr : PCode PWord -> PCode PWord
+sqr : PWord -> PWord
 sqr a = PLet a \a -> Mul a a
 
-power : Word -> PCode PWord -> PCode PWord
-power 0 _ = MkPWord 1
+power : Word -> PWord -> PWord
+power 0 _ = 1
 power 1 a = a
 power n        a | even n = sqr (power (div n 2) a)
 power (WSuc n) a          = PLet a \a -> Mul a (power n a)
 
-test1 = PLam \a -> power 10 a
+test1 : PCode (PWord -> PWord)
+test1 = \a -> power 10 a
 
-sqr2 : PCode (PArr PWord PWord)
-sqr2 = PLam \a -> Mul a a
+sqr2 : PCode (PWord -> PWord)
+sqr2 = \a -> Mul a a
 
-power2 : PCode (PArr PWord PWord) -> Word -> PCode PWord -> PCode PWord
-power2 _ 0 _ = MkPWord 1
+power2 : PCode (PWord -> PWord) -> Word -> PWord -> PWord
+power2 _ 0 _ = 1
 power2 _ 1 a = a
-power2 s n        a | even n = PApp s (power2 s (div n 2) a)
+power2 s n        a | even n = s (power2 s (div n 2) a)
 power2 s (WSuc n) a          = PLet a \a -> Mul a (power2 s n a)
 
-test2 = PLet sqr2 \s -> PLam \a -> power2 s 10 a
+test2 = PLet sqr2 \s -> \a -> power2 s 10 a
 
 test2
+

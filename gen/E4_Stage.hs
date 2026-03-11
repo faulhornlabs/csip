@@ -48,7 +48,7 @@ stageHaskell v = do
 groupData :: List (Tup2 SName Ty) -> List Data
 groupData ts = do
   T2 n t <- ts
-  guard (con N135 t)
+  guard (con N138 t)
   pure (Data n t (filter (con n . snd) ts))
  where
   con :: SName -> Ty -> Bool
@@ -60,7 +60,7 @@ groupData ts = do
       a -> g a
 
     g = \case
-      N134 :@ a -> g a
+      N133 :@ a -> g a
       a       :@ _ -> g a
       RVar n' -> n' == n
 
@@ -74,14 +74,14 @@ unquoteTm :: Tm -> Mem Tm
 unquoteTm t = runReader emptyIS (g t) where
  g t st = f t  where
   f = \case
-    N146 :@. _ :@. _ :@. TVal (name -> n) :@. d :@. e -> tLet n <$> f d <*> local st (insertIS n) (f e)
-    N146 -> (impossible "src/E4_Stage.hs" 76)
+    N158 :@. _ :@. _ :@. TVal (name -> n) :@. d :@. e -> tLet n <$> f d <*> local st (insertIS n) (f e)
+    N158 -> (impossible "src/E4_Stage.hs" 76)
     N113 :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
---    N151 :@. _ :@. _ :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
+    N161 :@. _ :@. _ :@. _ :@. _ :@. a :@. b -> getLam b >>= \(T2 n b) -> tLet n <$> f a <*> f b
     N112 :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
-    N152 :@. _ :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
+    N155 :@. _ :@. _ :@. _ :@. a -> getLam a >>= \(T2 n a) -> tLam n =<< f a
     N57 :@. _ :@. _ :@. a -> f a
-    N153 :@. _ :@. _ :@. _ :@. a -> f a
+    N154 :@. _ :@. _ :@. _ :@. a -> f a
     TVal v -> asks st (memberIS $ name v) <&> \case
       True  -> TVar $ name v
       False -> TVal v
@@ -102,13 +102,13 @@ unquoteTm t = runReader emptyIS (g t) where
   tLet n a b = TLet n a b
 
 {-
-    N154 :@ _ :@ _ :@ a :@ b -> N154 .@ f e a .@ f e b
-    N155 :@ _ :@ _ :@ a :@ b -> N155 .@ f e a .@ f e b
-    N156  :@ _ :@ _ :@ a -> N156 .@ f e a
-    N157  :@ _ :@ _ :@ a -> N157 .@ f e a
+    N162 :@ _ :@ _ :@ a :@ b -> N162 .@ f e a .@ f e b
+    N163 :@ _ :@ _ :@ a :@ b -> N163 .@ f e a .@ f e b
+    N164  :@ _ :@ _ :@ a -> N164 .@ f e a
+    N165  :@ _ :@ _ :@ a -> N165 .@ f e a
     N57 :@ _ :@ _ :@ (N112 :@ _ :@ _ :@ b) :@ a -> getLam b >>= \(T2 n b) -> rLet' n a b
     N57 :@ _ :@ _ :@ a :@ b -> f e a .@ f e b
-    N158 :@ _ -> pure $ N91
+    N166 :@ _ -> pure $ N91
     Lam n a -> Lam n <$> f e a
 -}
 
@@ -167,7 +167,7 @@ instance Show Exp where
   show_ p = parens p . \case
     Lam a b           -> "Lam" <+> show a <+> show b
     Let a b c         -> "Let" <+> show a <+> show b <+> show c
-    N134 :@ a      -> show_ False a
+    N133 :@ a      -> show_ False a
     a :@ b            -> "App" <+> show a <+> show b
     RVar (RString a)  -> "String" <+> show (force a)
     RVar (RNat a)     -> "Word" <+> show (force a)
