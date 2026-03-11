@@ -158,10 +158,6 @@ data Ty where
   RTC  : (rc : _) -> Tms (rParams rc) ->   Ty
   TVar : Spine U ->                        Ty
 
-data Spine where
-  SNil : Name ->                         Spine a
-  SApp : Spine (Pi a b) -> (x : Tm a) -> Spine (b x)
-
 data TmL : Ty -> Set     -- LHS term
 
 data Tm where
@@ -175,6 +171,10 @@ data TmL where
   Lam   : ((x : Tm a) -> TmL (b x)) -> TmL (Pi a b)
   Ret   : Tm a ->                      TmL a
   Stuck :                              TmL a
+
+data Spine where
+  SNil : Name ->                         Spine a
+  SApp : Spine (Pi a b) -> (x : Tm a) -> Spine (b x)
 
 def : Name -> TmL a -> Tm a
 def n f = Def (SNil n) f
@@ -192,9 +192,9 @@ El (code t)        = t
 El (Def _ (Ret t)) = El t
 El (Def s Stuck)   = TVar s
 
+_∙_   : Tm  (Pi a b) -> Π (Tm a) \x -> Tm  (b x)
 _∙L_  : TmL (Pi a b) -> Π (Tm a) \x -> TmL (b x)
 
-_∙_  : Tm (Pi a b) -> Π (Tm a) \x -> Tm (b x)
 Def s f ∙ x = Def (SApp s x) (f ∙L x)
 
 Lam f ∙L x = f x
@@ -215,9 +215,9 @@ proj : ∀ {a} {params : _} ->
   (tm    : Tm (RTC rc params)) ->
   (match : (args : Tms (rdcArgs rc params)) -> RDC args ≡ tm -> TmL a)
   -> TmL a
-proj (RDC args) match = match args Refl
+proj (RDC args)      match = match args Refl
 proj (Def _ (Ret t)) match = proj t match
-proj (Def x Stuck) match = Stuck
+proj (Def x Stuck)   match = Stuck
 
 
 --------------------
@@ -240,8 +240,8 @@ ifTag : {a : Ty} {indices : _} ->
   (fail  : not (TagIs tm tag) -> TmL a) ->
     TmL a
 ifTag {tc = tc} tag (DC tag' l) match fail with decFin tag' tag
-... | Yes Refl    = match l Refl
-... | No  f       = fail \{DCTag -> f Refl}
+... | Yes Refl = match l Refl
+... | No  f    = fail \{DCTag -> f Refl}
 ifTag t (Def _ (Ret a)) m f = ifTag t a m f
 ifTag _ (Def _ Stuck)   _ _ = Stuck
 
@@ -255,9 +255,9 @@ parens : String -> String
 parens a = "(" +++ a +++ ")"
 
 data Doc : Set where
-  DVar : String -> Doc
+  DVar : String ->        Doc
   DLam : String -> Doc -> Doc
-  _$_  : Doc -> Doc -> Doc
+  _$_  : Doc -> Doc ->    Doc
 
 showDoc' : Nat -> Nat -> Doc -> String
 showDoc' _ _ (DVar n)   = n
@@ -277,21 +277,21 @@ printTm    : Tm a -> Doc
 printTms   : Tms as -> Doc -> Doc
 printSpine : Spine a -> Doc
 
-printSpine (SNil x) = DVar x
+printSpine (SNil x)   = DVar x
 printSpine (SApp s x) = printSpine s $ printTm x
 
 printTy U = DVar "U"
-printTy (Pi t x)   = DVar "Pi" $ printTy t $ DLam "v" (printTy (x (var "v")))
+printTy (Pi t x)   = DVar "Pi" $ printTy t $ DLam "v" (printTy (x (var "v")))  -- TODO
 printTy (TC tc x)  = printTms x (DVar (tcName tc))
 printTy (RTC rc x) = printTms x (DVar (rtcName rc))
 printTy (TVar x)   = printSpine x
 
-printTm (code x) = printTy x
+printTm (code x)                = printTy x
 printTm (DC {tc = tc} tag args) = printTms args (DVar (DCDesc.dcName (dcDescs tc tag)))
-printTm (RDC {rc = rc} args) = printTms args (DVar (rdcName rc))
-printTm (Def x _) = printSpine x
+printTm (RDC {rc = rc} args)    = printTms args (DVar (rdcName rc))
+printTm (Def x _)               = printSpine x
 
-printTms {as = []} tt acc = acc
+printTms {as = []}      tt       acc = acc
 printTms {as = a :: as} (t , ts) acc = printTms ts (acc $ printTm t)
 
 showTm : Tm a -> String
@@ -324,15 +324,16 @@ module _ where
   {-# TERMINATING #-}
   add : Tm (Nat' => Nat' => Nat')
   add = def "add" (Lam \n -> Lam \m ->
-    ifTag 0f n (\{ _ e -> Ret m }) \f0 ->
+    ifTag 0f n (\{ _        e -> Ret m                     }) \f0 ->
     ifTag 1f n (\{ (k , tt) e -> Ret (Suc ∙ (add ∙ k ∙ m)) }) \f1 ->
     coveredBy (f0 :: f1 :: [])
     )
 
-  addTest = the (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero) ≡ Suc ∙ (Suc ∙ Zero)) Refl
-  addTest' = the ((\n -> add ∙ (Suc ∙ Zero) ∙ n) ≡ \n -> Suc ∙ n) Refl
+  addTest  = the (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero) ≡ Suc ∙ (Suc ∙ Zero)) Refl
+  addTest' = the ((\n -> add ∙ (Suc ∙ Zero) ∙ n)    ≡ \n -> Suc ∙ n)      Refl
 
-  testPrint = showTm (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero))
+  testPrint  = the (showTm (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero)) ≡ "Suc (Suc Zero)") Refl
+  testPrint2 = the (showTm (add ∙ (Suc ∙ var "n") ∙ var "m")   ≡ "Suc (add n m)")  Refl
 
   {-# TERMINATING #-}
   Fin' : Tm (Nat' => U)
@@ -343,7 +344,9 @@ module _ where
 
   Fin' = def "Fin" (Lam \n -> Ret (code (TC FinDesc (n , tt))))
 
-  testPrint' = showTm (code (Pi Nat' \n -> El (Fin' ∙ (add ∙ (Suc ∙ n) ∙ n))))
+  testPrint' = the (showTm (code (Pi Nat' \n -> El (Fin' ∙ (add ∙ (Suc ∙ n) ∙ n))))
+                 ≡ "Pi Nat \\v -> Fin (Suc (add v v))"
+                   ) Refl
 
   --------------------------------------
 
@@ -361,6 +364,12 @@ module _ where
   Pair : {b : Tm (a => U)} -> (x : Tm a) -> Tm (El (b ∙ x)) -> Tm (Sigma a b)
   Pair x y = RDC (x , y , _)
 
+  module Wrong where
+    Fst : {b : Tm (a => U)} -> Tm (Sigma a b) -> Tm a
+    Fst p = def "fst" (proj p \{(a , _ , _) Refl -> Ret a})
+    -- def is allowed only at the top level
+    -- but this cannot be expressed in Agda
+
   Fst : {b : Tm (a => U)} -> Tm (Sigma a b => a)
   Fst = def "fst" (Lam \p -> proj p \{(a , _ , _) Refl -> Ret a})
 
@@ -377,4 +386,13 @@ module _ where
   etaSigma {t = RDC args}      = Refl
   etaSigma {t = Def _ (Ret t)} = etaSigma {t = t}
   etaSigma {t = Def x Stuck}   = {!!}
+
+  curry : {b : Tm (a => U)} {c : Ty} -> Tm ((Sigma a b => c) => Pi a \x -> El (b ∙ x) => c)
+  curry = def "curry" (Lam \f -> Lam \x -> Lam \y -> Ret (f ∙ Pair x y))
+
+  uncurry : {b : Tm (a => U)} {c : Ty} -> Tm (Pi a (\x -> El (b ∙ x) => c) => Sigma a b => c)
+  uncurry = def "uncurry" (Lam \f -> Lam \p -> proj p \{(x , y , tt) Refl -> Ret (f ∙ x ∙ y)})
+
+  uncurry' : {b : Tm (a => U)} {c : Ty} -> Tm (Pi a (\x -> El (b ∙ x) => c) => Sigma a b => c)
+  uncurry' = def "uncurry" (Lam \f -> Lam \p -> Ret (f ∙ (Fst ∙ p) ∙ (Snd ∙ p)))
 

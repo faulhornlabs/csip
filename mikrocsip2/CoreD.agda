@@ -573,16 +573,16 @@ module Examples where
       solveBy equivTel
            (a , b , P , w , x , e , a'x' , ee , tt)
         (\{(a , b , P , w , x , e , a'x' , ee , tt) -> Tm (P x e)})
-        (\{(a , b , P , w , x , e , a'' , x' , ee , tt) ->
+        (\k ->
           solveBy equivCode
-               (a , b , P , w , x , e , a'' , x' , ee , tt)
+               k
             (\{(a , b , P , w , x , e , a'' , x' , ee , tt) -> Tm (P x e)})
-            (\{(a , b , P , w , x , e , a' , x' , ee , tt) ->
-              solveBy equiv12 (a , b , P , w , x , e , a' , x' , ee , tt)
+            (\k ->
+              solveBy equiv12 k
                 (\{(a , b , P , w , x , e , a' , x' , ee , tt) -> Tm (P x e)})
                 (\{(a , b , P , w , tt) -> w })
-              })
-          })
+              )
+          )
         }) \f0 ->
 
     coveredBy (f0 :: [])
