@@ -309,6 +309,7 @@ Tms (t :: ts) = Tm t × \x -> Tms (ts x)
 
 -- data constructor description
 record DCDesc (indices : Tys) : Set where
+  inductive
   constructor DCD
   field
     dcName  : String   -- for pretty printing
@@ -317,6 +318,7 @@ record DCDesc (indices : Tys) : Set where
 
 -- type constructor description
 record TCDesc : Set where
+  inductive
   constructor TCD
   field
     tcName     : String  -- for pretty printing
@@ -338,6 +340,7 @@ open TCDesc
 -- record type and data constructor description
 record RCDesc : Set where
   constructor RTCD
+  inductive
   field
     rtcName  : String   -- type constructor name for pretty printing
     rdcName  : String   -- data constructor name for pretty printing
@@ -544,9 +547,17 @@ module Examples where
      T
     )
   equiv12
-    = sec \_ -> sec \_ -> sec \_ -> sec \_ ->
-        (sec \_ -> sec \_ ->
-            (sec \_ -> sndSwap \_ ->
+    = sec \a -> sec \b -> sec \P -> sec \w ->
+        (sec \x -> sec \e ->
+            (sec \a' -> sndSwap {Tm a'} {a' ≡ a} {λ x' → refl ≡≡ e × (λ _ → T)} {λ z x₁ →
+                subst (λ x₂ → Tms (El x₂ :× El x₂ :× [])) (backward injCode x₁)
+                  (z , z , tt)
+                  ≡ (b , x , tt)
+                  ×
+                  (λ e' →
+                     subst (λ is → Tm (TC IdDesc is)) (backward injCode x₁ ,≡ e') refl ≡
+                     e
+                     × (λ e'' → T))} \_ ->
                 decomp
               ∘ decomp
               ∘ first injCode
