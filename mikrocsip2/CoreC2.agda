@@ -34,6 +34,7 @@ infixr 2 _+++_
 -------------------
 
 record _**_ (A : Set) (B : A -> Set) : Set where
+  pattern
   constructor _,,_
   field
     fst : A
@@ -107,17 +108,17 @@ postulate
   coe~refl : {a : A} → coe~ refl a ≈ a
 
 {-# REWRITE coe~refl #-}
-
-coh : {a : A} {e : A ~ B} -> coe~ e a ~ a
-coh {e = refl} = refl
+opaque
+  coh : {a : A} {e : A ~ B} -> coe~ e a ~ a
+  coh {e = refl} = refl
 
 -----------------------
 
-homog : {a a' : A} -> a ~ a' -> a ≈ a'
-homog refl = Refl
+  homog : {a a' : A} -> a ~ a' -> a ≈ a'
+  homog refl = Refl
 
-inhomog : {a a' : A} -> a ≈ a' -> a ~ a'
-inhomog Refl = refl
+  inhomog : {a a' : A} -> a ≈ a' -> a ~ a'
+  inhomog Refl = refl
 
 coe≈ : A ≈ B → A → B
 coe≈ e = coe~ (inhomog e)
@@ -125,7 +126,11 @@ coe≈ e = coe~ (inhomog e)
 cong≈ : {B : A -> Set} {a a' : A} -> (f : (a : A) -> B a) -> a ≈ a' -> f a ~ f a'
 cong≈ _ Refl = refl
 
+subst≈ : (P : A -> Set) -> {a a' : A} -> a ≈ a' -> P a -> P a'
+subst≈ P x x₁ = coe≈ (homog (cong≈ P x)) x₁
 
+subst≈' : (P : A -> Prop) -> {a a' : A} -> a ≈ a' -> P a -> P a'
+subst≈' _ Refl x₁ = x₁
 ---------------------
 
 data Fin : Nat -> Set where
@@ -161,6 +166,7 @@ indexFinVec (v :: vs) (FS s) = indexFinVec vs s
 --------------------------------------------
 
 record Named (A : Set) : Set where
+  pattern
   constructor named
   field
     name    : String
@@ -184,6 +190,8 @@ arr : Ty -> Ty -> Ty    -- _=>_
 
 -- record description
 record UnnamedRDesc : Set where
+  inductive
+  pattern
   constructor RD
   field
     rParams : Ty
@@ -199,6 +207,8 @@ rFields r = UnnamedRDesc.rFields (unnamed r)
 
 -- data constructor description
 record DCDesc (indices : Ty) : Set where
+  inductive
+  pattern
   constructor DCD
   field
     dcName     : String   -- used only for pretty printing
@@ -207,6 +217,8 @@ record DCDesc (indices : Ty) : Set where
 
 -- type constructor description
 record UnnamedTCDesc : Set where
+  inductive
+  pattern
   constructor TCD
   field
     tcIndices  : Ty
@@ -278,8 +290,39 @@ data Tm' where
 
   TLHS : {s : Spine a} (l : Lambda a) -> Glued≈ s l -> NotU a -> Tm' a
 
+destr : {a : Ty} -> {A : Tm a -> Set} -> (f : (c : Ty -> Tm a) -> (a' : Ty) -> A (c a')) -> (g : (c : Tm' a -> Tm a) -> (a' : Tm' a) -> A (c a')) -> (a' : Tm a) -> A a'
+destr {U} {A} f g x = f (λ z → z) x
+destr {Top} {A} f g x = g (λ z → z) x
+destr {a => a₁} {A} f g x = g (λ z → z) x
+destr {a × a₁} {A} f g x = g (λ z → z) x
+destr {Pi a x₁} {A} f g x = g (λ z → z) x
+destr {Sigma a x₁} {A} f g x = g (λ z → z) x
+destr {RTC rc x₁} {A} f g x = g (λ z → z) x
+destr {TC tc x₁} {A} f g x = g (λ z → z) x
+destr {TLHS l x₁} {A} f g x = g (λ z → z) x
+
+destr' : {a : Ty} -> {A : Ty -> Set} -> (f : {equ : a ≈ U}(c : Ty -> Tm a) -> A a) -> (g : {equ : not (a ≈ U)}(c : Tm' a -> Tm a) -> A a) -> A a
+destr' {U} {A} f g = f {Refl} λ z → z
+destr' {Top} {A} f g = g {λ ()} λ z → z
+destr' {a => a₁} {A} f g = g {λ ()} λ z → z
+destr' {a × a₁} {A} f g = g {λ ()} λ z → z
+destr' {Pi a x} {A} f g = g {λ ()} λ z → z
+destr' {Sigma a x} {A} f g = g {λ ()} λ z → z
+destr' {RTC rc x} {A} f g = g {λ ()} λ z → z
+destr' {TC tc x} {A} f g = g {λ ()} λ z → z
+destr' {TLHS l x} {A} f g = g {λ ()} λ z → z
+
+data Embe (A : Set) : Prop where
+  Emb : A -> Embe A
+
+data Ebme (A : Prop) : Set where
+  Ebm : A -> Ebme A
+
 
 LHS : {s : Spine a} (l : Lambda a) -> Glued≈ s l -> Tm a
+--LHS {a} {s} l g = destr' {a} {Tm} (λ {eq} c → c (TLHS (subst≈  (λ x → Lambda x) eq l) (subst≈' (λ x →  Glued≈ {x} _ _) eq g))) λ {eq} c → c (TLHS l g eq)
+--LHS {a} l g = destr' {a} (\{ {e} x -> coe≈ (sym≈ x) (TLHS (subst≈ Lambda e l) (subst≈' (\ u -> Glued≈ {u} _ _) e g))}) λ {equ} eq → coe≈ (sym≈ eq) (TLHS l g equ)
+
 LHS {a = U}         l g = TLHS l g
 LHS {a = Top}       l g = TLHS l g \()
 LHS {a = _ => _}    l g = TLHS l g \()
@@ -301,12 +344,18 @@ data Lambda where
   DLam  : ((x : Tm a) -> TmL (b ∙ x)) -> Lambda (Pi a b)
   Stuck :                                Lambda a
 
+fstSigma : Tm (Sigma a b) -> Tm a
+
 data Spine where
   Head : Named (Lambda a) ->             Spine a
   _$_  : Spine (a => a') -> Tm a ->      Spine a'
   _$$_ : Spine (Pi a b) -> (x : Tm a) -> Spine (b ∙ x)
   Fst× : Spine (a × a') ->               Spine a
-  -- TODO: Snd×, FstSigma, SndSigma, Proj (for records)
+  Snd× : Spine (a × a') ->               Spine a'
+  FstSigma : Spine (Sigma a b) ->        Spine a
+  SndSigma : Spine (Sigma a b) ->  (s : Tm (Sigma a b)) -> Spine (b ∙ fstSigma s) --TODO: ???
+  Proj : {rc : _}{t : Tm (rParams rc)}  -> Spine (RTC rc t) -> Spine (rFields rc ∙ t)
+  --TODO: ?
 
 data Glued where
   CHead    : (t : Named (Lambda a)) ->                                                  Glued≈ (Head t) (unnamed t)
@@ -315,6 +364,10 @@ data Glued where
   CLam     : ∀ {s : Spine (a => a')} {f x fx} -> Glued≈ s (Lam  f) -> f x ≈ NoRHS fx -> Glued≈ (s $  x) fx
   CDLam    : ∀ {s : Spine (Pi a b)}  {f x fx} -> Glued≈ s (DLam f) -> f x ≈ NoRHS fx -> Glued≈ (s $$ x) fx
   CFst×    : ∀ {s : Spine (a × a')}   -> Glued≈ s Stuck -> Glued≈ (Fst× s) Stuck
+  CSnd×    : ∀ {s : Spine (a × a')}   -> Glued≈ s Stuck -> Glued≈ (Snd× s) Stuck
+  CFstSigma : ∀ {s : Spine (Sigma a b)} -> Glued≈ s Stuck -> Glued≈ (FstSigma s) Stuck
+  CSndSigma : ∀ {s : Spine (Sigma a b)} {ba} -> Glued≈ s Stuck -> Glued≈ (SndSigma s ba ) Stuck
+  CProj : ∀ {rc} {t : Tm (rParams rc)} {s : Spine (RTC rc t)} -> Glued≈ s Stuck -> Glued≈ (Proj s) Stuck
   -- TODO: ...
 
 
@@ -339,7 +392,22 @@ fst× : Tm (a × a') -> Tm a
 fst× (x , y) = x
 fst× (TLHS Stuck g nu) = LHS Stuck (CFst× g)
 
--- TODO: snd× , fstSigma, sndSigma, proj (for records)
+snd× : Tm (a × a') -> Tm a'
+snd× (x , x₁) = x₁
+snd× (TLHS Stuck g nu) = LHS Stuck (CSnd× g)
+
+fstSigma (x ,, x₁) = x
+fstSigma (TLHS Stuck x x₁) = LHS Stuck (CFstSigma x)
+
+sndSigma : (t : Tm (Sigma a b)) -> Tm (b ∙ fstSigma t )
+sndSigma (x ,, x₁) = x₁
+sndSigma s@(TLHS Stuck x x₁) = LHS Stuck (CSndSigma {ba = s} x)
+
+proj : ∀ {rc} {t : Tm (rParams rc)} -> Tm (RTC rc t) -> Tm (rFields rc ∙ t)
+proj (RDC args) = args
+proj {rc} {t} (TLHS {s = s} Stuck x x₁) = LHS {rFields rc ∙ t} Stuck (CProj x)
+
+-- TODO: ?
 
 ---------------------
 
@@ -348,6 +416,10 @@ neutToTm (Head f) = LHS (unnamed f) (CHead f)
 neutToTm (f $  x) = neutToTm f ∙  x
 neutToTm (f $$ x) = neutToTm f ∙∙ x
 neutToTm (Fst× t) = fst× (neutToTm t)
+neutToTm (Snd× t) = snd× (neutToTm t)
+neutToTm (FstSigma t) = fstSigma (neutToTm t)
+neutToTm (SndSigma _ s) = sndSigma s
+neutToTm (Proj t) = proj (neutToTm t)
 -- ...
 
 nn : (s : Spine a) (t : Lambda a) (g : Glued≈ s t) -> neutToTm s ≈ LHS t g
@@ -370,6 +442,12 @@ nn s t g = homog (nn' s t g Refl)
     helper : {fx : _} (ee : f x ≈ fx) -> fx ≈ NoRHS t -> neutToTm n ∙∙ x ~ lhs∙∙ c fx ee -> neutToTm n ∙∙ x ~ LHS t (CDLam c e)
     helper _ Refl cc = cc
   nn' (s $$ x) Stuck (CStuck$$ c) Refl = cong~ (\f -> f ∙∙ x) (nn' s Stuck c Refl)
+  nn' (Fst× s) Stuck (CFst× x) Refl = cong~ (λ a₂ → fst× a₂) (nn' s Stuck x Refl)
+  nn' (Snd× t) Stuck (CSnd× x) Refl = cong~ (λ f → snd× f) (nn' t Stuck x Refl)
+  nn' (FstSigma t) Stuck (CFstSigma x) Refl = cong~ (λ f → fstSigma f) (nn' t Stuck x Refl)
+  nn' (SndSigma {a} {b} t t'@(_ ,, k)) .Stuck (CSndSigma {i} {j} {é} {ba} x) Refl = {!  !}
+  nn' (SndSigma t (TLHS {a''} {s} Stuck x₁ x₂)) .Stuck (CSndSigma {a'} x) Refl = {!  !}
+  nn' (Proj t) .Stuck (CProj x) Refl = cong~ (λ f → proj f) (nn' t Stuck x Refl)
   -- ...
 
 
@@ -425,16 +503,29 @@ data Dec' (A : Set) : Set where
 
 -- convertible types
 data Ty~ : Ty -> Ty -> Set where
-  -- TODO
+  refl : {a : Ty} -> Ty~ a a
+
+symTy~ : {a b : Ty} -> Ty~ a b -> Ty~ b a
+symTy~ refl = refl
+--symTy~ (arrRefl x x₁) = arrRefl (symTy~ x) (symTy~ x₁)
 
 coeTm : Ty~ a a' -> Tm a -> Tm a'
-coeTm = {!!} -- TODO
+coeTm refl x₁ = x₁
+--coeTm (arrRefl {a} {a'} {b} {b'} y z) (TLHS {s = s} (Lam x₂) x x₁) = {!  !}
+--coeTm (arrRefl {a} {a'} {b} {b'} y z) (TLHS {s = s} Stuck x x₁) = TLHS {a' => b'} {{!  !}} Stuck {!  !} \()
+-- TLHS {a' => b'} {{!  !}} (Lam (λ x₁ → RHS (coeTm z (_∙_ x (coeTm (symTy~ y) x₁))))) {!  !} λ ()
+
+
+Tm~  : {a : Ty} -> Tm a -> Tm a -> Set
 
 data Tm~' : {a : Ty} -> Tm' a -> Tm' a -> Set where
   EtaTT : ∀ {t t'} -> Tm~' {a = Top} t t'
+  Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× t) (fst× t') -> Tm~ (snd× t) (snd× t') -> Tm~' t t'
+  EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {t t' : Tm (rFields h ∙ g )} -> Tm~ t t' -> Tm~' {RTC h g} (RDC t) (RDC t')
+  EtaArr : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> {arr  arr' : Tm' (a => b)} -> ((x : Tm a) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> Tm~' arr arr'
+--  EtaSigma : {a a' : _}{b : _}{b' : _} -> Tm~ a a' -> {va : Tm a}{va' : Tm a'} -> Tm~ (b ∙ va) (b' ∙ va') -> {sig : Tm' (Sigma a b)} -> Tm~' sig sig
   -- ...
 
-Tm~  : {a : Ty} -> Tm a -> Tm a -> Set
 Tm~ {a = U} t t' = Ty~ t t'
 Tm~ {a = Top} t t' = Tm~' t t'
 Tm~ {a = a => a₁} t t' = Tm~' t t'
@@ -449,30 +540,55 @@ convTy  : Nat -> (a a' : Ty) -> Dec' (Ty~ a a')
 convTm' : Nat -> (t t' : Tm' a) -> Dec' (Tm~' t t')
 convTm  : Nat -> (t t' : Tm  a) -> Dec' (Tm~ t t')
 
-convTy i U U = Yes {!!}
-convTy i Top Top = Yes {!!}
+convTy i U U = Yes refl
+convTy i Top Top = Yes refl
 convTy i (a => b) (a' => b') with convTy i a a' | convTy i b b'
-... | Yes e | Yes e' = Yes {!!}
-... | e | e' = {!!}
-convTy i (a × b) (a' × b') = {!!}
+... | Yes refl | Yes refl = Yes refl
+... | e | e' = No
+convTy i (a × b) (a' × b') with convTy i a a' | convTy i b b'
+... | Yes refl | Yes refl = Yes refl
+... | Yes x | No = No
+... | No | bq = No
 convTy i (Pi a b) (Pi a' b') with convTy i a a'
-... | Yes e = {!!}
-... | No = {!!}
-convTy i (Sigma a b) (Sigma a' b') = {!!}
-convTy i (RTC rc x) (RTC rc' x') = {!!}
-convTy i (TC tc x) (TC tx' x') = {!!}
-convTy i (TLHS l g) (TLHS l' g') = {!!}
-convTy i _ _ = {!!}
+... | No = No
+... | Yes refl with convTm' i b b'
+... | No = No
+... | Yes (EtaArr refl refl x₂) = Yes {! refl !}
+convTy i (Sigma a b) (Sigma a' b') with convTy i a a'
+... | No = No
+... | Yes refl with convTm' i b b'
+... | Yes (EtaArr refl refl g) = Yes {!  !}
+... | No = No
+convTy i (RTC rc x) (RTC rc' x') = {!  !}
+convTy i (TC tc x) (TC tx' x') = {!  !}
+convTy i (TLHS Stuck g) (TLHS Stuck g') = Yes {! refl !}
+convTy i _ _ = No
 
 convTm' {a = Top} i _ _ = Yes EtaTT
-convTm' {a = a => a'} i t t' = {!!}
-convTm' {a = a × a'} i t t' = {!!} -- with convTm i (fst× t) (fst× t') | convTm i (snd× t) (snd× t')
--- ... | Yes e | Yes e' = {!!}
-convTm' {a = Pi a b} i t t' = {!!}
-convTm' {a = Sigma a b} i t t' = {!!}
-convTm' {a = RTC rc x} i t t' = {!!}
-convTm' {a = TC tc x} i t t' = {!!}
-convTm' {a = TLHS l g} i t t' = {!!}
+convTm' {a = a => a'} i (TLHS (Lam x₄) x x₁) (TLHS (Lam x₅) x₂ x₃) = {!  !}
+convTm' {a = a => a'} i (TLHS (Lam x₄) x x₁) (TLHS Stuck x₂ x₃) = No
+convTm' {a = a => a'} i (TLHS Stuck x x₁) (TLHS l₁ x₂ x₃) = No
+convTm' {a = a × a'} i t t' with convTm i (fst× t) (fst× t') | convTm i (snd× t) (snd× t')
+... | Yes x | Yes x₁ = Yes (Eta× x x₁)
+... | Yes x | No = No
+... | No | e' = No
+convTm' {a = Pi a b} i (TLHS l x x₁) (TLHS l₁ x₂ x₃) = {!  !}
+convTm' {a = Sigma a b} i (x ,, x₁) (x₂ ,, x₃) with convTm i x x₂
+... | Yes x₄ = {!  !}
+... | No = No
+convTm' {a = Sigma a b} i (_ ,, _) (TLHS _ _ _) = {!  !} --No
+convTm' {a = Sigma a b} i (TLHS _ _ _) (_ ,, _) = {!  !} --No
+convTm' {a = Sigma a b} i (TLHS l x x₁) (TLHS l₁ x₂ x₃) = {!  !}
+convTm' {a = RTC rc x} i (RDC args) (RDC args₁) with convTm i args args₁
+... | Yes x₁ = Yes (EtaRDC x₁)
+... | No = No
+convTm' {a = RTC rc x} i (RDC args) (TLHS l x₁ x₂) = {!  !}
+convTm' {a = RTC rc x} i (TLHS l x₁ x₂) (RDC args) = {!  !}
+convTm' {a = RTC rc x} i (TLHS l x₁ x₂) (TLHS l₁ x₃ x₄) = {!  !}
+convTm' {a = TC tc x} i (DC tag args) t' = {! t' !}
+convTm' {a = TC tc x} i (TLHS l x₁ x₂) (DC tag args) = {!  !}
+convTm' {a = TC tc x} i (TLHS l x₁ x₂) (TLHS l₁ x₃ x₄) = {!  !}
+convTm' {a = TLHS l g} i (TLHS Stuck x x₁) (TLHS Stuck x₂ x₃) = {!  !}
 convTm' {a = U} i (TLHS _ _ e) _ = exfalso (e Refl)
 
 convTm {a = U} i t t' = convTy i t t'
@@ -521,6 +637,11 @@ printSpine : Spine a -> Doc
 printSpine (Head x)   = DVar (name x)
 printSpine (s $ x) = printSpine s $ printTm x
 printSpine (s $$ x) = printSpine s $ printTm x
+printSpine (Fst× x) = printSpine x
+printSpine (Snd× s) = printSpine s
+printSpine (FstSigma s) = printSpine s
+printSpine (SndSigma s s₁) = printSpine s
+printSpine (Proj s) = printSpine s
 -- ...
 
 printTy U = DVar "U"
