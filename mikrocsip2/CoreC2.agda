@@ -10,6 +10,7 @@ Lam and ifTag is not a netural term; to achieve this LHS terms are separated fro
 open import Agda.Builtin.String using (String; primStringAppend)
 open import Agda.Builtin.Nat using (Nat) renaming (suc to S; zero to Z)
 
+
 -------------------
 
 infixl 9 _∙_     -- non-dependent application
@@ -24,11 +25,10 @@ infixr 6 _::_    -- list/vector constructor
 infix  3 _~_     -- inhomogenous Prop equality
 infix  3 _≈_     -- homogenous Prop equality
 infixr 3 _&_     -- flipped application for Prop
+infixr 2 _+++_   -- string concatenation
 infixr 2 _**_    -- dependent pair type (infix Σ)
 infixr 0 _,_     -- non-dependent pair constructor
 infixr 0 _,,_    -- dependent pair constructor
-
-infixr 2 _+++_
 
 
 -------------------
@@ -125,6 +125,9 @@ coe≈ e = coe~ (inhomog e)
 cong≈ : {B : A -> Set} {a a' : A} -> (f : (a : A) -> B a) -> a ≈ a' -> f a ~ f a'
 cong≈ _ Refl = refl
 
+cong≈' : {a a' : A} -> (f : A -> B) -> a ≈ a' -> f a ≈ f a'
+cong≈' f e = homog (cong≈ f e)
+
 
 ---------------------
 
@@ -174,7 +177,7 @@ postulate
 
 ----------------------
 
-data Ty :       Set
+data Ty : Set
 
 Tm : Ty -> Set
 
@@ -192,107 +195,71 @@ record UnnamedRDesc : Set where
 RDesc = Named UnnamedRDesc
 
 rParams : RDesc -> Ty
-rParams r = UnnamedRDesc.rParams (unnamed r)
+rParams (named _ r) = UnnamedRDesc.rParams r
 
 rFields : (r : RDesc) -> Tm (arr (rParams r) u)
-rFields r = UnnamedRDesc.rFields (unnamed r)
-
--- data constructor description
-record DCDesc (indices : Ty) : Set where
-  constructor DCD
-  field
-    dcName     : String   -- used only for pretty printing
-    dcArgs     : Ty
-    dcCodomain : Tm (arr dcArgs indices)
-
--- type constructor description
-record UnnamedTCDesc : Set where
-  constructor TCD
-  field
-    tcIndices  : Ty
-    numOfCstrs : Nat
-    dcDescs    : Fin numOfCstrs -> DCDesc tcIndices
-
-TCDesc = Named UnnamedTCDesc
-
-tcIndices : TCDesc -> Ty
-tcIndices tc = UnnamedTCDesc.tcIndices (unnamed tc)
-
-numOfCstrs : TCDesc -> Nat
-numOfCstrs tc = UnnamedTCDesc.numOfCstrs (unnamed tc)
-
-dcDescs : (tc : TCDesc) -> Fin (numOfCstrs tc) -> DCDesc (tcIndices tc)
-dcDescs tc f = UnnamedTCDesc.dcDescs (unnamed tc) f
-
-dcFin : TCDesc -> Set
-dcFin tc = Fin (numOfCstrs tc)
-
-dcArgs : (tc : TCDesc) -> dcFin tc -> Ty
-dcArgs tc n = DCDesc.dcArgs (dcDescs tc n)
-
-dcCodomain : (tc : TCDesc) -> (c : dcFin tc) -> Tm (arr (dcArgs tc c) (tcIndices tc))
-dcCodomain tc n = DCDesc.dcCodomain (dcDescs tc n)
+rFields (named _ r) = UnnamedRDesc.rFields r
 
 private variable
   a a' a'' : Ty
   t t'     : Tm a
   b        : Tm (arr a u)
-  tc       : TCDesc
   rc       : RDesc
+  ps       : Tm (rParams rc)
 
 data Spine  : Ty -> Set
 data Lambda : Ty -> Set
-data Glued  : {a a' : Ty} -> Spine a -> Lambda a' -> Prop
+data Glued  : Spine a -> Lambda a -> Prop
 
-Glued≈ : Spine a -> Lambda a -> Prop
-Glued≈ = Glued
+data TyNU : Set where
+  Top'       :                              TyNU
+  _=>'_ _×'_ _⊎'_ : Ty -> Ty ->             TyNU
+  Pi' Sigma' : (a : Ty) -> Tm (arr a u) ->  TyNU
+  Id'        : Tm a -> Tm a ->              TyNU
+  RTC'       : ∀ rc -> Tm (rParams   rc) -> TyNU
+  TLHS       : {s : Spine u} (l : Lambda u) -> Glued s l -> TyNU
 
 data Ty where
-  U Top     :                              Ty
-  _=>_ _×_  : Ty -> Ty ->                  Ty
-  Pi Sigma  : (a : Ty) -> Tm (a => U) ->   Ty
-  RTC       : ∀ rc -> Tm (rParams   rc) -> Ty
-  TC        : ∀ tc -> Tm (tcIndices tc) -> Ty
+  U   :         Ty
+  NU  : TyNU -> Ty
 
-  TLHS : {s : Spine U} (l : Lambda U) -> Glued≈ s l -> Ty
-
-NotU : Ty -> Prop
-NotU a = a ≈ U -> ⊥
+pattern Top       = NU Top'
+pattern _=>_ a a' = NU (a =>' a')
+pattern _×_  a a' = NU (a ×'  a')
+pattern _⊎_  a a' = NU (a ⊎'  a')
+pattern Pi    a b = NU (Pi'    a b)
+pattern Sigma a b = NU (Sigma' a b)
+pattern Id   b c  = NU (Id' b c)
+pattern RTC rc p  = NU (RTC' rc p)
 
 u   = U
 arr = _=>_
 
+data TmNU : TyNU -> Set
+
+Tm U      = Ty
+Tm (NU a) = TmNU a
+
 _∙_ : Tm (a => a') -> Tm a -> Tm  a'
 
-data Tm' : Ty -> Set
-
-Tm U = Ty
-Tm a = Tm' a
-
-data Tm' where
-  TT   :                                                 Tm Top
-  _,_  : Tm a -> Tm a' ->                                Tm (a × a')
-  _,,_ : (x : Tm a) -> Tm (b ∙ x) ->                     Tm (Sigma a b)
-  RDC  : {is : _} (args : Tm (rFields rc ∙ is)) ->       Tm (RTC rc is)
-  DC   : (tag : dcFin tc) (args : Tm (dcArgs tc tag)) -> Tm (TC tc (dcCodomain tc tag ∙ args))
-
-  TLHS : {s : Spine a} (l : Lambda a) -> Glued≈ s l -> NotU a -> Tm' a
+data TmNU where
+  TT    :                                                 Tm Top
+  _,_   : Tm a -> Tm a' ->                                Tm (a × a')
+  _,,_  : (x : Tm a) -> Tm (b ∙ x) ->                     Tm (Sigma a b)
+  Left  : Tm a ->                                         Tm (a ⊎ a')
+  Right : Tm a' ->                                        Tm (a ⊎ a')
+  Refl  : (x : Tm a) ->                                   Tm (Id x x)
+  RDC   : {ps : _} (args : Tm (rFields rc ∙ ps)) ->       Tm (RTC rc ps)
+  LHS   : ∀ {a} {s : Spine (NU a)} (l : Lambda (NU a)) -> Glued s l -> Tm (NU a)
 
 
-LHS : {s : Spine a} (l : Lambda a) -> Glued≈ s l -> Tm a
-LHS {a = U}         l g = TLHS l g
-LHS {a = Top}       l g = TLHS l g \()
-LHS {a = _ => _}    l g = TLHS l g \()
-LHS {a = _ × _}     l g = TLHS l g \()
-LHS {a = Pi _ _}    l g = TLHS l g \()
-LHS {a = Sigma _ _} l g = TLHS l g \()
-LHS {a = RTC _ _}   l g = TLHS l g \()
-LHS {a = TC _ _}    l g = TLHS l g \()
-LHS {a = TLHS _ _}  l g = TLHS l g \()
+gLHS : {s : Spine a} (l : Lambda a) -> Glued s l -> Tm a
+gLHS {a = U}    l g = NU (TLHS l g)
+gLHS {a = NU _} l g =      LHS l g
 
 -- LHS Terms
 data TmL : Ty -> Set  where
-  RHS   : Tm a ->     TmL a
+  RHS   : Tm     a -> TmL a
   NoRHS : Lambda a -> TmL a
 
 {-# NO_POSITIVITY_CHECK #-}
@@ -301,77 +268,105 @@ data Lambda where
   DLam  : ((x : Tm a) -> TmL (b ∙ x)) -> Lambda (Pi a b)
   Stuck :                                Lambda a
 
+neutToTm : Spine a -> Tm a
+
+fstΣ : Tm (Sigma a b) -> Tm a
+
 data Spine where
   Head : Named (Lambda a) ->             Spine a
   _$_  : Spine (a => a') -> Tm a ->      Spine a'
   _$$_ : Spine (Pi a b) -> (x : Tm a) -> Spine (b ∙ x)
   Fst× : Spine (a × a') ->               Spine a
-  -- TODO: Snd×, FstSigma, SndSigma, Proj (for records)
+  Snd× : Spine (a × a') ->               Spine a'
+  FstΣ : Spine (Sigma a b) ->            Spine a
+  SndΣ : (s : Spine (Sigma a b)) ->      Spine (b ∙ fstΣ (neutToTm s))
+  Proj : ∀ {ps} -> Spine (RTC rc ps) ->  Spine (rFields rc ∙ ps)
 
 data Glued where
-  CHead    : (t : Named (Lambda a)) ->                                                  Glued≈ (Head t) (unnamed t)
-  CStuck$  : ∀ {s : Spine (a => a')} {x} ->      Glued≈ s Stuck ->                      Glued≈ (s $  x) Stuck
-  CStuck$$ : ∀ {s : Spine (Pi a b)}  {x} ->      Glued≈ s Stuck ->                      Glued≈ (s $$ x) Stuck
-  CLam     : ∀ {s : Spine (a => a')} {f x fx} -> Glued≈ s (Lam  f) -> f x ≈ NoRHS fx -> Glued≈ (s $  x) fx
-  CDLam    : ∀ {s : Spine (Pi a b)}  {f x fx} -> Glued≈ s (DLam f) -> f x ≈ NoRHS fx -> Glued≈ (s $$ x) fx
-  CFst×    : ∀ {s : Spine (a × a')}   -> Glued≈ s Stuck -> Glued≈ (Fst× s) Stuck
-  -- TODO: ...
+  CHead : (t : Named (Lambda a)) ->                                                 Glued (Head t) (unnamed t)
+  CLam  : ∀ {s : Spine (a => a')} {f x fx} -> Glued s (Lam  f) -> f x ≈ NoRHS fx -> Glued (s $  x) fx
+  CDLam : ∀ {s : Spine (Pi a b)}  {f x fx} -> Glued s (DLam f) -> f x ≈ NoRHS fx -> Glued (s $$ x) fx
+  C$    : ∀ {s : Spine (a => a')} {x} ->      Glued s Stuck ->                      Glued (s $  x) Stuck
+  C$$   : ∀ {s : Spine (Pi a b)}  {x} ->      Glued s Stuck ->                      Glued (s $$ x) Stuck
+  CFst× : ∀ {s : Spine (a × a')} ->           Glued s Stuck ->                      Glued (Fst× s) Stuck
+  CSnd× : ∀ {s : Spine (a × a')} ->           Glued s Stuck ->                      Glued (Snd× s) Stuck
+  CFstΣ : ∀ {s : Spine (Sigma a b)} ->        Glued s Stuck ->                      Glued (FstΣ s) Stuck
+  CSndΣ : ∀ {s : Spine (Sigma a b)} ->        Glued s Stuck ->                      Glued (SndΣ s) Stuck
+  CProj : ∀ {ps} {s : Spine (RTC rc ps)} ->   Glued s Stuck ->                      Glued (Proj s) Stuck
 
-
-lhs∙ : ∀ {s : Spine (a => a')} {f x} -> Glued≈ s (Lam f) -> (r : _) -> f x ≈ r -> Tm a'
+lhs∙ : ∀ {s : Spine (a => a')} {f x} -> Glued s (Lam f) -> (r : _) -> f x ≈ r -> Tm a'
 lhs∙ c (RHS t)   e = t
-lhs∙ c (NoRHS t) e = LHS t (CLam c e)
+lhs∙ c (NoRHS t) e = gLHS t (CLam c e)
 
-TLHS         (Lam f) c _ ∙ x = lhs∙ c (f x) Refl
-TLHS {s = s} Stuck   c _ ∙ x = LHS {s = s $ x} Stuck (CStuck$ c)
+LHS (Lam f) c ∙ x = lhs∙ c (f x) Refl
+LHS Stuck   c ∙ x = gLHS {s = _ $ x} Stuck (C$ c)
 
 ----------------
 
-lhs∙∙ : ∀ {s : Spine (Pi a b)} {f x} -> Glued≈ s (DLam f) -> (r : _) -> f x ≈ r -> Tm (b ∙ x)
+lhs∙∙ : ∀ {s : Spine (Pi a b)} {f x} -> Glued s (DLam f) -> (r : _) -> f x ≈ r -> Tm (b ∙ x)
 lhs∙∙ c (RHS t)   e = t
-lhs∙∙ c (NoRHS t) e = LHS t (CDLam c e)
+lhs∙∙ c (NoRHS t) e = gLHS t (CDLam c e)
 
 _∙∙_ : Tm  (Pi a b) -> (x : Tm a) -> Tm (b ∙ x)
-TLHS (DLam {b = b} f) c _ ∙∙ x = lhs∙∙ c (f x) Refl
-TLHS Stuck            c _ ∙∙ x = LHS Stuck (CStuck$$ c)
+LHS (DLam {b = b} f) c ∙∙ x = lhs∙∙ c (f x) Refl
+LHS Stuck            c ∙∙ x = gLHS Stuck (C$$ c)
 
 fst× : Tm (a × a') -> Tm a
 fst× (x , y) = x
-fst× (TLHS Stuck g nu) = LHS Stuck (CFst× g)
+fst× (LHS Stuck g) = gLHS Stuck (CFst× g)
 
--- TODO: snd× , fstSigma, sndSigma, proj (for records)
+snd× : Tm (a × a') -> Tm a'
+snd× (x , y) = y
+snd× (LHS Stuck g) = gLHS Stuck (CSnd× g)
+
+fstΣ (x ,, y) = x
+fstΣ (LHS Stuck g) = gLHS Stuck (CFstΣ g)
+
+{-# TERMINATING #-}
+glued : {s : Spine a} (t : Lambda a) (g : Glued s t) -> neutToTm s ≈ gLHS t g
+
+sndΣ : (t : Tm (Sigma a b)) -> Tm (b ∙ fstΣ t)
+sndΣ (x ,, y) = y
+sndΣ {b = b} (LHS Stuck g) = coe≈ (cong≈' (\k -> Tm (b ∙ fstΣ k)) (glued Stuck g)) (gLHS Stuck (CSndΣ g))
+
+proj : ∀ {ps} -> Tm (RTC rc ps) -> Tm (rFields rc ∙ ps)
+proj (RDC args) = args
+proj (LHS Stuck g) = gLHS Stuck (CProj g)
+
 
 ---------------------
 
-neutToTm : Spine a -> Tm a
-neutToTm (Head f) = LHS (unnamed f) (CHead f)
+neutToTm (Head f) = gLHS (unnamed f) (CHead f)
 neutToTm (f $  x) = neutToTm f ∙  x
 neutToTm (f $$ x) = neutToTm f ∙∙ x
 neutToTm (Fst× t) = fst× (neutToTm t)
--- ...
+neutToTm (Snd× t) = snd× (neutToTm t)
+neutToTm (FstΣ t) = fstΣ (neutToTm t)
+neutToTm (SndΣ t) = sndΣ (neutToTm t)
+neutToTm (Proj t) = proj (neutToTm t)
 
-nn : (s : Spine a) (t : Lambda a) (g : Glued≈ s t) -> neutToTm s ≈ LHS t g
-nn s t g = homog (nn' s t g Refl)
- where
-  nn' : ∀ {a a' : Ty} (n : Spine a) (t : Lambda a') (c : Glued n t) (e : a' ≈ a) ->
-    let t' = coe~ (cong≈ Lambda e) t in
-    let c' = coeP {Q = Glued n t'} (e & \{Refl -> refl}) c in
-    neutToTm n ~ LHS t' c'
-  nn' (Head _) _ (CHead _) Refl = refl
-  nn' (s $ x) t (CLam {f = f} c e) Refl
-    = helper Refl e (cong~ (\f -> f ∙ x) (nn' s (Lam _) c Refl))
+glued {s = Head _} _ (CHead _) = Refl
+glued {s = s $  x} _ (C$ c) = cong≈' (\f -> f ∙ x) (glued Stuck c)
+glued {s = s $  x} t (CLam {f = f} c e) = helper Refl e (cong≈' (\f -> f ∙ x) (glued (Lam _) c))
    where
-    helper : {fx : _} (ee : f x ≈ fx) -> fx ≈ NoRHS t -> neutToTm s ∙ x ~ lhs∙ c fx ee -> neutToTm s ∙ x ~ LHS t (CLam c e)
+    helper : {fx : _} (ee : f x ≈ fx) -> fx ≈ NoRHS t -> neutToTm s ∙ x ≈ lhs∙ c fx ee -> neutToTm s ∙ x ≈ gLHS t (CLam c e)
     helper _ Refl cc = cc
-  nn' (s $ x) Stuck (CStuck$ c) Refl = cong~ (\f -> f ∙ x) (nn' s Stuck c Refl)
-  nn' (n $$ x) t (CDLam {a = a} {b = b} {f = f} c e) Refl
-    = helper Refl e (cong~ (\f -> f ∙∙ x) (nn' n (DLam _) c Refl))
+glued {s = s $$ x} _ (C$$ c) = cong≈' (\f -> f ∙∙ x) (glued Stuck c)
+glued {s = s $$ x} t (CDLam {a = a} {b = b} {f = f} c e) = helper Refl e (cong≈' (\f -> f ∙∙ x) (glued (DLam _) c))
    where
-    helper : {fx : _} (ee : f x ≈ fx) -> fx ≈ NoRHS t -> neutToTm n ∙∙ x ~ lhs∙∙ c fx ee -> neutToTm n ∙∙ x ~ LHS t (CDLam c e)
+    helper : {fx : _} (ee : f x ≈ fx) -> fx ≈ NoRHS t -> neutToTm s ∙∙ x ≈ lhs∙∙ c fx ee -> neutToTm s ∙∙ x ≈ gLHS t (CDLam c e)
     helper _ Refl cc = cc
-  nn' (s $$ x) Stuck (CStuck$$ c) Refl = cong~ (\f -> f ∙∙ x) (nn' s Stuck c Refl)
-  -- ...
+glued {s = Fst× s} _ (CFst× c) = cong≈' fst× (glued Stuck c)
+glued {s = Snd× s} _ (CSnd× c) = cong≈' snd× (glued Stuck c)
+glued {s = FstΣ s} _ (CFstΣ c) = cong≈' fstΣ (glued Stuck c)
+glued {s = SndΣ s} _ (CSndΣ c) = homog (cong≈ sndΣ (glued Stuck c) ∘~ coh)
+glued {s = Proj s} _ (CProj c) = cong≈' proj (glued Stuck c)
 
+-----------------------
+
+onLHS : Tm a -> (Tm a -> TmL a) -> TmL a
+onLHS {a = NU _} (LHS _ _) match = NoRHS Stuck
+onLHS t match = match t
 
 -----------------------
 
@@ -379,8 +374,8 @@ elimSigma : ∀ {r} ->
   (tm : Tm (Sigma a b)) -> 
   (match : (x : Tm a) (y : Tm (b ∙ x)) -> (x ,, y) ≈ tm -> TmL r) ->
     TmL r
-elimSigma (x ,, y)     match = match x y Refl
-elimSigma (TLHS _ _ _) match = NoRHS Stuck
+elimSigma (x ,, y)  match = match x y Refl
+elimSigma (LHS _ _) match = NoRHS Stuck
 
 -----------------------
 
@@ -388,31 +383,93 @@ elimRDC : ∀ {a} {params : _} ->
   (tm    : Tm (RTC rc params)) ->
   (match : (args : Tm (rFields rc ∙ params)) -> RDC args ≈ tm -> TmL a) ->
     TmL a
-elimRDC (RDC args)   match = match args Refl
-elimRDC (TLHS _ _ _) match = NoRHS Stuck
+elimRDC (RDC args) match = match args Refl
+elimRDC (LHS _ _)  match = NoRHS Stuck
 
 -----------------------
 
-data TagIs {tc : TCDesc} : {indices : Tm (tcIndices tc)} -> Tm (TC tc indices) -> dcFin tc -> Prop where
-  DCTag : ∀ {t args} -> TagIs (DC t args) t
+elim⊎ :
+  (tm : Tm (a ⊎ a')) ->
+  ((t : Tm a)  -> Left  t ≈ tm -> TmL a'') ->
+  ((t : Tm a') -> Right t ≈ tm -> TmL a'') ->
+    TmL a''
+elim⊎ (Left  t) l r = l t Refl
+elim⊎ (Right t) l r = r t Refl
+elim⊎ (LHS _ _) _ _ = NoRHS Stuck
 
-elimDC : ∀ {indices} ->
-  (tag   : dcFin tc) ->
-  (tm    : Tm (TC tc indices)) ->
-  (match : (args : Tm (dcArgs tc tag)) -> DC {tc} tag args ~ tm -> TmL a) ->
-  (fail  : not (TagIs tm tag) -> TmL a) ->
-    TmL a
-elimDC {tc = tc} tag (DC tag' l) match fail with decFin tag' tag
-... | Yes e = match (coe~ (e & \{Refl -> refl}) l) (e & \{Refl -> refl})
-... | No  f = fail \{DCTag -> f Refl}
-elimDC _ (TLHS _ _ _) _ _ = NoRHS Stuck
+-----------------------
 
-coveredBy : ∀ {a} {indices : _} {t : Tm (TC tc indices)} -> FinVec (numOfCstrs tc) (\f -> not (TagIs t f)) -> TmL a
-coveredBy {t = DC tag args} vs = exfalso (indexFinVec {P = λ f → not (TagIs _ f)} vs tag DCTag)
-coveredBy {t = TLHS _ _ _} vs = NoRHS Stuck
+elimId :
+  {x y : Tm a} ->
+  (tm : Tm (Id x y)) ->
+  ((t : Tm a) -> Refl t ~ tm -> TmL a') ->
+    TmL a'
+elimId (Refl x)  match = match x refl
+elimId (LHS _ _) match = NoRHS Stuck
+
 
 --------------------
 
+record T : Set where
+  constructor tt
+
+record Emb (P : Prop) : Set where
+  constructor emb
+  field
+    getProp : P
+
+data Either (A B : Set) : Set where
+  Left  : A -> Either A B
+  Right : B -> Either A B
+
+⟦_⟧ : Ty -> Set
+⟦_⟧ₜ : Tm a -> ⟦ a ⟧
+⟦_⟧ₛ : Spine a -> ⟦ a ⟧
+⟦_⟧ₐ : Lambda a -> ⟦ a ⟧
+
+⟦ U   ⟧ = Set
+⟦ Top ⟧ = T
+⟦ a => a' ⟧ = ⟦ a ⟧ -> ⟦ a' ⟧
+⟦ a ×  a' ⟧ = ⟦ a ⟧ ** \_ -> ⟦ a' ⟧
+⟦ a ⊎  a' ⟧ = Either ⟦ a ⟧ ⟦ a' ⟧
+⟦ Pi    a b ⟧ = (x : ⟦ a ⟧) -> ⟦ b ⟧ₜ x
+⟦ Sigma a b ⟧ = ⟦ a ⟧ ** \x -> ⟦ b ⟧ₜ x
+⟦ Id x y ⟧   = Emb (⟦ x ⟧ₜ ≈ ⟦ y ⟧ₜ)
+⟦ RTC rc x ⟧ = ⟦ rFields rc ⟧ₜ ⟦ x ⟧ₜ 
+⟦ NU (TLHS {s = s} _ _) ⟧ = ⟦ s ⟧ₛ
+
+he : (f : Tm (a => U)) (x : Tm a) -> ⟦ f ∙ x ⟧ ≈ ⟦ f ⟧ₜ ⟦ x ⟧ₜ
+he (LHS (Lam f) g) x = {!!}
+he (LHS Stuck g) x = {!!}
+
+{-# TERMINATING #-}
+⟦_⟧ₜ {a = U}    t = ⟦ t ⟧
+⟦_⟧ₜ {a = NU _} TT = tt
+⟦_⟧ₜ {a = NU _} (x ,  y) = ⟦ x ⟧ₜ ,, ⟦ y ⟧ₜ
+⟦_⟧ₜ {a = NU _} (_,,_ {b = b} x y) = ⟦ x ⟧ₜ ,, coe≈ (he b x) ⟦ y ⟧ₜ
+⟦_⟧ₜ {a = NU _} (Left  x) = Left  ⟦ x ⟧ₜ
+⟦_⟧ₜ {a = NU _} (Right x) = Right ⟦ x ⟧ₜ
+⟦_⟧ₜ {a = NU _} (Refl _) = emb Refl
+⟦_⟧ₜ {a = NU _} (RDC {rc = rc} args) = coe≈ (he (rFields rc) _) ⟦ args ⟧ₜ
+⟦_⟧ₜ {a = NU _} (LHS {s = s} _ _) = ⟦ s ⟧ₛ
+
+⟦ Head (named _ f) ⟧ₛ = ⟦ f ⟧ₐ
+⟦ s $  x ⟧ₛ = ⟦ s ⟧ₛ ⟦ x ⟧ₜ
+⟦ _$$_ {b = b} s x ⟧ₛ = coe≈ (sym≈ (he b x)) (⟦ s ⟧ₛ ⟦ x ⟧ₜ)
+⟦ Fst× s ⟧ₛ = fst ⟦ s ⟧ₛ
+⟦ Snd× s ⟧ₛ = snd ⟦ s ⟧ₛ
+⟦ FstΣ s ⟧ₛ = fst ⟦ s ⟧ₛ
+⟦ SndΣ {b = b}   s ⟧ₛ = coe≈ (sym≈ {!!}) (snd ⟦ s ⟧ₛ)
+⟦ Proj {rc = rc} s ⟧ₛ = coe≈ (sym≈ (he (rFields rc) _)) ⟦ s ⟧ₛ
+
+-- TODO: add Env
+⟦ Lam  f ⟧ₐ = \x -> {!!}
+⟦ DLam f ⟧ₐ = \x -> {!!}
+⟦ Stuck  ⟧ₐ = {!!}   -- postulated -- should be impossible?
+
+
+--------------------
+{-
 data Bool : Set where True False : Bool
 
 _&&_ : Bool -> Bool -> Bool
@@ -430,8 +487,8 @@ data Ty~ : Ty -> Ty -> Set where
 coeTm : Ty~ a a' -> Tm a -> Tm a'
 coeTm = {!!} -- TODO
 
-data Tm~' : {a : Ty} -> Tm' a -> Tm' a -> Set where
-  EtaTT : ∀ {t t'} -> Tm~' {a = Top} t t'
+data Tm~' : {a : TyNU} -> TmNU a -> TmNU a -> Set where
+  EtaTT : ∀ {t t'} -> Tm~' {a = Top'} t t'
   -- ...
 
 Tm~  : {a : Ty} -> Tm a -> Tm a -> Set
@@ -446,7 +503,7 @@ Tm~ {a = TC tc x} t t' = Tm~' t t'
 Tm~ {a = TLHS l x} t t' = Tm~' t t'
 
 convTy  : Nat -> (a a' : Ty) -> Dec' (Ty~ a a')
-convTm' : Nat -> (t t' : Tm' a) -> Dec' (Tm~' t t')
+convTmNU : ∀ {a} -> Nat -> (t t' : TmNU a) -> Dec' (Tm~' t t')
 convTm  : Nat -> (t t' : Tm  a) -> Dec' (Tm~ t t')
 
 convTy i U U = Yes {!!}
@@ -464,27 +521,26 @@ convTy i (TC tc x) (TC tx' x') = {!!}
 convTy i (TLHS l g) (TLHS l' g') = {!!}
 convTy i _ _ = {!!}
 
-convTm' {a = Top} i _ _ = Yes EtaTT
-convTm' {a = a => a'} i t t' = {!!}
-convTm' {a = a × a'} i t t' = {!!} -- with convTm i (fst× t) (fst× t') | convTm i (snd× t) (snd× t')
+convTmNU {a = Top'} i _ _ = Yes EtaTT
+convTmNU {a = a =>' a'} i t t' = {!!}
+convTmNU {a = a ×' a'} i t t' = {!!} -- with convTm i (fst× t) (fst× t') | convTm i (snd× t) (snd× t')
 -- ... | Yes e | Yes e' = {!!}
-convTm' {a = Pi a b} i t t' = {!!}
-convTm' {a = Sigma a b} i t t' = {!!}
-convTm' {a = RTC rc x} i t t' = {!!}
-convTm' {a = TC tc x} i t t' = {!!}
-convTm' {a = TLHS l g} i t t' = {!!}
-convTm' {a = U} i (TLHS _ _ e) _ = exfalso (e Refl)
+convTmNU {a = Pi' a b} i t t' = {!!}
+convTmNU {a = Sigma' a b} i t t' = {!!}
+convTmNU {a = RTC' rc x} i t t' = {!!}
+convTmNU {a = TC' tc x} i t t' = {!!}
+convTmNU {a = TLHS l g} i t t' = {!!}
 
 convTm {a = U} i t t' = convTy i t t'
-convTm {a = Top} i t t' = convTm' i t t'
-convTm {a = a => a'} i t t' = convTm' i t t'
-convTm {a = a × a'} i t t' = convTm' i t t'
-convTm {a = Pi a b} i t t' = convTm' i t t'
-convTm {a = Sigma a b} i t t' = convTm' i t t'
-convTm {a = RTC rc x} i t t' = convTm' i t t'
-convTm {a = TC tc x} i t t' = convTm' i t t'
-convTm {a = TLHS l g} i t t' = convTm' i t t'
-
+convTm {a = Top} i t t' = convTmNU i t t'
+convTm {a = a => a'} i t t' = convTmNU i t t'
+convTm {a = a × a'} i t t' = convTmNU i t t'
+convTm {a = Pi a b} i t t' = convTmNU i t t'
+convTm {a = Sigma a b} i t t' = convTmNU i t t'
+convTm {a = RTC rc x} i t t' = convTmNU i t t'
+convTm {a = TC tc x} i t t' = convTmNU i t t'
+convTm {a = TLHS l g} i t t' = convTmNU i t t'
+-}
 
 -------------------------------------
 
@@ -515,41 +571,38 @@ testDoc = Refl
 
 printTy    : Ty -> Doc
 printTm    : Tm a -> Doc
-printTm'   : Tm' a -> Doc
 printSpine : Spine a -> Doc
 
-printSpine (Head x)   = DVar (name x)
-printSpine (s $ x) = printSpine s $ printTm x
+printSpine (Head x) = DVar (name x)
+printSpine (s $  x) = printSpine s $ printTm x
 printSpine (s $$ x) = printSpine s $ printTm x
--- ...
+printSpine (Fst× s) = DVar "fst"   $ printSpine s
+printSpine (Snd× s) = DVar "snd"   $ printSpine s
+printSpine (FstΣ s) = DVar "fstΣ"  $ printSpine s
+printSpine (SndΣ s) = DVar "sndΣ"  $ printSpine s
+printSpine (Proj s) = DVar "proj"  $ printSpine s
 
-printTy U = DVar "U"
-printTy Top = DVar "Top"
-printTy (t => x)   = DVar "Arr" $ printTy t $ printTy x
-printTy (Pi t x)   = DVar "Pi" $ printTy t $ printTm' x
-printTy (TC tc x)  = DVar (name tc) $ printTm x
-printTy (RTC rc x) = DVar (name rc) $ printTm x
-printTy (a × a') = DVar "_×_" $ printTy a $ printTy a'
-printTy (Sigma a b) = DVar "_,_" $ printTy a $ printTm' b
-printTy (TLHS {s = s} l x) = printSpine s
+printTy U           = DVar "U"
+printTy Top         = DVar "Top"
+printTy (t => x)    = DVar "_=>_"    $ printTy t $ printTy x
+printTy (a × a')    = DVar "_×_"     $ printTy a $ printTy a'
+printTy (a ⊎ a')    = DVar "_⊎_"     $ printTy a $ printTy a'
+printTy (Pi t x)    = DVar "Pi"      $ printTy t $ printTm x
+printTy (Sigma a b) = DVar "_,_"     $ printTy a $ printTm b
+printTy (Id x y)    = DVar "Id"      $ printTm x $ printTm y
+printTy (RTC rc x)  = DVar (name rc) $ printTm x
+printTy (NU (TLHS {s = s} _ _)) = printSpine s
 
-printTm' {a = U} (TLHS _ _ e) = exfalso (e Refl)
-printTm' {a = a} (TLHS {s = s} _ _ _) = printSpine s
-printTm' (DC {tc = tc} tag args) = DVar (DCDesc.dcName (dcDescs tc tag)) $ printTm args
-printTm' (RDC {rc = rc} args)    = DVar (name rc) $ printTm args
-printTm' TT = DVar "tt"
-printTm' (x , y) = DVar "_,_" $ printTm x $ printTm y
-printTm' (x ,, y) = DVar "_,,_" $ printTm x $ printTm y
+printTm {a = U}    t  = printTy   t
+printTm {a = NU _} TT = DVar "tt"
+printTm {a = NU _} (x ,  y)  = DVar "_,_"   $ printTm x $ printTm y
+printTm {a = NU _} (x ,, y)  = DVar "_,,_"  $ printTm x $ printTm y
+printTm {a = NU _} (Left  x) = DVar "Left"  $ printTm x
+printTm {a = NU _} (Right x) = DVar "Right" $ printTm x
+printTm {a = NU _} (Refl x)  = DVar "Refl"  $ printTm x
+printTm {a = NU _} (RDC {rc = rc} args) = DVar ("Mk" +++ name rc) $ printTm args
+printTm {a = NU _} (LHS {s = s} _ _)    = printSpine s
 
-printTm {a = U} t = printTy t
-printTm {a = Top} t = printTm' t
-printTm {a = a => a₁} t = printTm' t
-printTm {a = a × a₁} t = printTm' t
-printTm {a = Pi a x} t = printTm' t
-printTm {a = Sigma a x} t = printTm' t
-printTm {a = RTC rc x} t = printTm' t
-printTm {a = TC tc x} t = printTm' t
-printTm {a = TLHS l x} t = printTm' t
 
 showTm : Tm a -> String
 showTm t = showDoc (printTm t)
@@ -561,10 +614,15 @@ pattern Lam'  f = NoRHS (Lam  f)
 pattern DLam' f = NoRHS (DLam f)
 
 def : String -> Lambda a -> Tm a
-def n t = LHS t (CHead (named n t))
+def n t = gLHS t (CHead (named n t))
 
 var : String -> Tm a
-var n = LHS Stuck (CHead (named n Stuck))
+var n = gLHS Stuck (CHead (named n Stuck))
+
+{-
+
+
+-}
 
 lam' : String -> (Tm a -> TmL a') -> Tm (a => a')
 lam' n f = def n (Lam f)
@@ -590,25 +648,21 @@ module _ where
   {-# TERMINATING #-}
   Nat' : Ty
 
-  NatDesc = named "Nat" (TCD Top 2 \where
-      0f -> DCD "Zero" Top   (const ∙ TT)
-      1f -> DCD "Suc"  Nat'  (const ∙ TT)
-    )
-    
-  Nat' = TC NatDesc TT
+  NatDesc = named "Nat" (RD Top (const ∙ (Top ⊎ Nat')))
+
+  Nat' = RTC NatDesc TT
 
   Zero : Tm Nat'
-  Zero = DC {NatDesc} 0f TT
+  Zero = RDC (Left TT)
 
   Suc : Tm (Nat' => Nat')
-  Suc = def "Suc" (Lam \n -> RHS (DC {NatDesc} 1f n))
+  Suc = def "Suc" (Lam \n -> RHS (RDC (Right n)))
 
   {-# TERMINATING #-}
   add : Tm (Nat' => Nat' => Nat')
-  add = def "add" (Lam \n -> Lam' \m ->
-    elimDC 0f n (\{ _ e -> RHS m                     }) \f0 ->
-    elimDC 1f n (\{ k e -> RHS (Suc ∙ (add ∙ k ∙ m)) }) \f1 ->
-    coveredBy (f0 :: f1 :: [])
+  add = def "add" (Lam \n -> Lam' \m -> elim⊎ (proj n)
+      (\_ _ -> RHS m                     )
+      (\k _ -> RHS (Suc ∙ (add ∙ k ∙ m)) )
     )
 
   addTest : add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero) ≈ Suc ∙ (Suc ∙ Zero)
@@ -617,22 +671,22 @@ module _ where
   addTest' : (\n -> add ∙ (Suc ∙ Zero) ∙ n)    ≈ \n -> Suc ∙ n
   addTest' = Refl
 
-  testQuote  : showTm {a = Nat'} (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero)) ≈ "Suc (Suc (Zero tt))"
+  testQuote  : showTm {a = Nat'} (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero)) ≈ "MkNat (Right (MkNat (Right (MkNat (Left tt)))))"
   testQuote = Refl
 
-  testQuote2 : showTm {a = Nat'} (add ∙ (Suc ∙ var {a = Nat'} "n") ∙ var {a = Nat'} "m")   ≈ "Suc (add n m)"
+  testQuote2 : showTm {a = Nat'} (add ∙ (Suc ∙ var {a = Nat'} "n") ∙ var {a = Nat'} "m")   ≈ "MkNat (Right (add n m))"
   testQuote2 = Refl
 
 
   {-# TERMINATING #-}
   Fin' : Tm (Nat' => U)
 
-  FinDesc = named "Fin" (TCD Nat' 2 \where
-      0f -> DCD "FZ" Nat' Suc
-      1f -> DCD "FS" (Sigma Nat' (lam "FSFun" \n -> Fin' ∙ n × Fin' ∙ (Suc ∙ n))) (lam' "FSsub" \p -> elimSigma p \a _ _ -> RHS a)
-    )
+  FinDesc = named "Fin" (RD Nat' (lam "FinLam" \p ->
+       Sigma Nat' (lam "Fin2" \n -> Id p (Suc ∙ n))
+     ⊎ Sigma Nat' (lam "Fin3" \n -> Id p (Suc ∙ n) × Fin' ∙ n)
+    ))
 
-  Fin' = def "Fin" (Lam \n -> RHS (TC FinDesc n))
+  Fin' = def "Fin" (Lam \n -> RHS (RTC FinDesc n))
 
   testQuote' : showTm (Pi Nat' (lam "f" \n -> Fin' ∙ (add ∙ (Suc ∙ n) ∙ n)))
                  ≈ "Pi (Nat tt) f"   -- could be:  "Pi (Nat tt) \\v0 -> Fin (add (Suc v0) v0)"
@@ -645,16 +699,16 @@ module _ where
        (lam' "SigL2" \t -> elimSigma t \a b _ -> RHS (Sigma a (lam "SigL3" \x -> b ∙ x)))
     )
 
-  Sigma' : Tm (Pi U (lam "SL" \a -> (a => U) => U))
-  Sigma' = def "Sigma" (DLam \a -> Lam' \b -> RHS (RTC SigmaDesc (a ,, b)))
+  Sigma'' : Tm (Pi U (lam "SL" \a -> (a => U) => U))
+  Sigma'' = def "Sigma" (DLam \a -> Lam' \b -> RHS (RTC SigmaDesc (a ,, b)))
 
-  Pair : Tm (pi U \a -> pi (a => U) \b -> pi (a) \x -> b ∙ x => (Sigma' ∙∙ a ∙ b))
+  Pair : Tm (pi U \a -> pi (a => U) \b -> pi (a) \x -> b ∙ x => (Sigma'' ∙∙ a ∙ b))
   Pair = def "Pair" (DLam \a -> DLam' \b -> DLam' \x -> Lam' \y -> RHS (RDC (x ,, y)))
 
-  Fst' : Tm (pi U \a -> pi (a => U) \b -> (Sigma' ∙∙ a ∙ b) => a)
-  Fst' = def "fst" (DLam \a -> DLam' \b -> Lam' \p -> elimRDC p \p e -> elimSigma p \a _ _ -> RHS a)
+  Fst' : Tm (pi U \a -> pi (a => U) \b -> (Sigma'' ∙∙ a ∙ b) => a)
+  Fst' = def "fst" (DLam \a -> DLam' \b -> Lam' \p -> elimSigma (proj p) \a _ _ -> RHS a)
 
-  Snd' : Tm (pi U \a -> pi (a => U) \b -> pi ((Sigma' ∙∙ a ∙ b)) \t -> (b ∙ (Fst' ∙∙ a ∙∙ b ∙ t)))
+  Snd' : Tm (pi U \a -> pi (a => U) \b -> pi ((Sigma'' ∙∙ a ∙ b)) \t -> (b ∙ (Fst' ∙∙ a ∙∙ b ∙ t)))
   Snd' = def "snd" (DLam \A -> DLam' \B -> DLam' \p -> elimRDC p \p e -> elimSigma p \_ b e' -> RHS (coe~ (e & e' & \{Refl Refl -> refl}) b))
 
   betaFst : ∀ {a b} {x : Tm (a)} {y : Tm (b ∙ x)} -> Fst' ∙∙ a ∙∙ b ∙ (Pair ∙∙ a ∙∙ b ∙∙ x ∙ y) ≈ x
@@ -674,18 +728,11 @@ module _ where
 -}
   -------------------------
 
-  IdDesc = named "Id" (TCD (Sigma U (lam "IdLam" \a -> a × a)) 1 \where
-      0f -> DCD "Refl" (Sigma U (lam "IdLam2" \a -> a)) (lam' "IdLam3" \p -> elimSigma p \a x _ -> RHS (a ,, x , x))
-    )
-
-  Id : {a : Ty} -> Tm a -> Tm a -> Ty
-  Id {a} x y = TC IdDesc (a ,, x , y)
-
-  Refl'' : {x : Tm a} -> Tm (Id x x)
-  Refl'' = DC {IdDesc} 0f (_ ,, _)
-
-  etaSigma : Tm (pi U \a -> pi (a => U) \b -> pi ((Sigma' ∙∙ a ∙ b)) \t -> Id {Sigma' ∙∙ _ ∙ _} t (Pair ∙∙ a ∙∙ b ∙∙ (Fst' ∙∙ a ∙∙ b ∙ t) ∙ (Snd' ∙∙ a ∙∙ b ∙∙ t)))
+  etaSigma : Tm (pi U \a -> pi (a => U) \b -> pi ((Sigma'' ∙∙ a ∙ b)) \t ->
+     Id t (Pair ∙∙ a ∙∙ b ∙∙ (Fst' ∙∙ a ∙∙ b ∙ t) ∙ (Snd' ∙∙ a ∙∙ b ∙∙ t)))
   etaSigma = def "etaSigma" (DLam \a -> DLam' \b -> DLam' \t ->
-    elimRDC t \t' e -> elimSigma t' \x y e' -> RHS (coe~ (e & e' & \{Refl Refl -> refl}) (Refl'' {Sigma' ∙∙ _ ∙ _} {x = Pair ∙∙ a ∙∙ b ∙∙ x ∙ y}))
+    elimRDC t \t' e -> elimSigma t' \x y e' -> RHS (coe~ (e & e' & \{Refl Refl -> refl}) (Refl (Pair ∙∙ a ∙∙ b ∙∙ x ∙ y)))
     )
+
+
 
