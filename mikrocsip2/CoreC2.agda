@@ -274,12 +274,13 @@ NotU a = a ≈ U -> ⊥
 u   = U
 arr = _=>_
 
-_∙_ : Tm (a => a') -> Tm a -> Tm  a'
 
 data Tm' : Ty -> Set
 
 Tm U = Ty
 Tm a = Tm' a
+
+_∙_ : Tm (a => a') -> Tm a -> Tm  a'
 
 data Tm' where
   TT   :                                                 Tm Top
@@ -289,6 +290,7 @@ data Tm' where
   DC   : (tag : dcFin tc) (args : Tm (dcArgs tc tag)) -> Tm (TC tc (dcCodomain tc tag ∙ args))
 
   TLHS : {s : Spine a} (l : Lambda a) -> Glued≈ s l -> NotU a -> Tm' a
+
 
 destr : {a : Ty} -> {A : Tm a -> Set} -> (f : (c : Ty -> Tm a) -> (a' : Ty) -> A (c a')) -> (g : (c : Tm' a -> Tm a) -> (a' : Tm' a) -> A (c a')) -> (a' : Tm a) -> A a'
 destr {U} {A} f g x = f (λ z → z) x
@@ -344,18 +346,20 @@ data Lambda where
   DLam  : ((x : Tm a) -> TmL (b ∙ x)) -> Lambda (Pi a b)
   Stuck :                                Lambda a
 
-fstSigma : Tm (Sigma a b) -> Tm a
-
 data Spine where
   Head : Named (Lambda a) ->             Spine a
   _$_  : Spine (a => a') -> Tm a ->      Spine a'
-  _$$_ : Spine (Pi a b) -> (x : Tm a) -> Spine (b ∙ x)
   Fst× : Spine (a × a') ->               Spine a
   Snd× : Spine (a × a') ->               Spine a'
   FstSigma : Spine (Sigma a b) ->        Spine a
-  SndSigma : Spine (Sigma a b) ->  (s : Tm (Sigma a b)) -> Spine (b ∙ fstSigma s) --TODO: ???
+  _$$_ : Spine (Pi a b) -> (x : Tm a) -> Spine (b ∙ x)
   Proj : {rc : _}{t : Tm (rParams rc)}  -> Spine (RTC rc t) -> Spine (rFields rc ∙ t)
+  SndSigma : {b : _}  -> Spine (Sigma a b) ->  (k : Ty) -> ((s : Tm a ) -> Spine (b ∙ s) -> Spine k) -> Spine k --TODO: ???
+  TlhsStuck : (su : _){g : _} -> Spine (TLHS {su} Stuck g)
   --TODO: ?
+
+neutToTm : Spine a -> Tm a
+fstSigma : Tm (Sigma a b) -> Tm a
 
 data Glued where
   CHead    : (t : Named (Lambda a)) ->                                                  Glued≈ (Head t) (unnamed t)
@@ -366,7 +370,8 @@ data Glued where
   CFst×    : ∀ {s : Spine (a × a')}   -> Glued≈ s Stuck -> Glued≈ (Fst× s) Stuck
   CSnd×    : ∀ {s : Spine (a × a')}   -> Glued≈ s Stuck -> Glued≈ (Snd× s) Stuck
   CFstSigma : ∀ {s : Spine (Sigma a b)} -> Glued≈ s Stuck -> Glued≈ (FstSigma s) Stuck
-  CSndSigma : ∀ {s : Spine (Sigma a b)} {ba} -> Glued≈ s Stuck -> Glued≈ (SndSigma s ba ) Stuck
+  CSndSigma : ∀ {b : _} {s : Spine (Sigma a b)} -> Glued≈ s Stuck ->  (k : Ty) -> (eq : k ≈ ( b ∙ fstSigma (neutToTm s))) {ss : Spine k}
+                  -> ({s' : Spine ( b ∙ fstSigma (neutToTm s))} -> Glued≈ s' Stuck -> Glued≈ ss Stuck) ->  Glued≈ (SndSigma s k λ s₁ x → ss) Stuck
   CProj : ∀ {rc} {t : Tm (rParams rc)} {s : Spine (RTC rc t)} -> Glued≈ s Stuck -> Glued≈ (Proj s) Stuck
   -- TODO: ...
 
@@ -375,8 +380,8 @@ lhs∙ : ∀ {s : Spine (a => a')} {f x} -> Glued≈ s (Lam f) -> (r : _) -> f x
 lhs∙ c (RHS t)   e = t
 lhs∙ c (NoRHS t) e = LHS t (CLam c e)
 
-TLHS         (Lam f) c _ ∙ x = lhs∙ c (f x) Refl
-TLHS {s = s} Stuck   c _ ∙ x = LHS {s = s $ x} Stuck (CStuck$ c)
+_∙_ (TLHS         (Lam f) c _) x = lhs∙ c (f x) Refl
+_∙_ (TLHS {s = s} Stuck   c _) x = LHS {s = s $ x} Stuck (CStuck$ c)
 
 ----------------
 
@@ -399,9 +404,28 @@ snd× (TLHS Stuck g nu) = LHS Stuck (CSnd× g)
 fstSigma (x ,, x₁) = x
 fstSigma (TLHS Stuck x x₁) = LHS Stuck (CFstSigma x)
 
+lhs** : {t : Spine (Sigma a b)} -> (g : Glued≈ (FstSigma t) Stuck) -> LHS {a} {FstSigma t} Stuck g ≈ fstSigma (neutToTm t) -> (s' : Spine (b ∙ fstSigma (neutToTm t))) -> Glued≈ s' Stuck
+lhs** {b = b} {t = t} (CFstSigma x) x₁ s' with neutToTm t
+lhs** {b = TLHS (Lam x₅) x₁ x₄} {t = t} (CFstSigma x) Refl s' | x₂ ,, x₃ = {!  !}
+lhs** {b = TLHS Stuck x₁ x₄} {t = t} (CFstSigma {s = s2} x) Refl s' | x₂ ,, TLHS {s = s1} Stuck x₃ x₅ = {!  !}
+lhs** {b = TLHS (Lam x₆) x₄ x₅} {t = t} (CFstSigma x) x₁ s' | TLHS Stuck x₂ x₃ = {! !}
+lhs** {b = TLHS {s = s} Stuck x₄ x₅} {t = t} (CFstSigma x) x₁ s' | TLHS Stuck x₂ x₃ = {! s' !}
+
 sndSigma : (t : Tm (Sigma a b)) -> Tm (b ∙ fstSigma t )
 sndSigma (x ,, x₁) = x₁
-sndSigma s@(TLHS Stuck x x₁) = LHS Stuck (CSndSigma {ba = s} x)
+sndSigma {a} {b} (TLHS {s = s} Stuck x x₁) with b ∙ fstSigma (neutToTm s)
+... | U = {! LHS !}
+... | Top = {!  !}
+... | k => k₁ = {!  !}
+... | k × k₁ = {!  !}
+... | Pi k x₂ = {!  !}
+... | Sigma k x₂ = {!  !}
+... | RTC rc x₂ = {!  !}
+... | TC tc x₂ = {!  !}
+... | TLHS Stuck x₂ = {!  !}
+
+--LHS Stuck (CSndSigma {a}{b}{s} x (b ∙ fstSigma (TLHS Stuck x x₁)) {! Refl !} {{!  !}} {!  !})
+
 
 proj : ∀ {rc} {t : Tm (rParams rc)} -> Tm (RTC rc t) -> Tm (rFields rc ∙ t)
 proj (RDC args) = args
@@ -411,14 +435,14 @@ proj {rc} {t} (TLHS {s = s} Stuck x x₁) = LHS {rFields rc ∙ t} Stuck (CProj 
 
 ---------------------
 
-neutToTm : Spine a -> Tm a
 neutToTm (Head f) = LHS (unnamed f) (CHead f)
 neutToTm (f $  x) = neutToTm f ∙  x
 neutToTm (f $$ x) = neutToTm f ∙∙ x
 neutToTm (Fst× t) = fst× (neutToTm t)
 neutToTm (Snd× t) = snd× (neutToTm t)
 neutToTm (FstSigma t) = fstSigma (neutToTm t)
-neutToTm (SndSigma _ s) = sndSigma s
+neutToTm {a} (SndSigma x s xs ) = {!  !} --sndSigma s --subst≈ (λ x₁ → Tm (b ∙  x₁)) eq (sndSigma (neutToTm x))
+ --sndSigma {a'} {TLHS {s = {!  !}} (Lam λ x₁ → RHS (coe≈ (sym≈ g) (snd s))) {!  !} λ ()} {! neutToTm x !}
 neutToTm (Proj t) = proj (neutToTm t)
 -- ...
 
@@ -445,16 +469,19 @@ nn s t g = homog (nn' s t g Refl)
   nn' (Fst× s) Stuck (CFst× x) Refl = cong~ (λ a₂ → fst× a₂) (nn' s Stuck x Refl)
   nn' (Snd× t) Stuck (CSnd× x) Refl = cong~ (λ f → snd× f) (nn' t Stuck x Refl)
   nn' (FstSigma t) Stuck (CFstSigma x) Refl = cong~ (λ f → fstSigma f) (nn' t Stuck x Refl)
-  nn' (SndSigma {a} {b} t t'@(_ ,, k)) .Stuck (CSndSigma {i} {j} {é} {ba} x) Refl = {!  !}
-  nn' (SndSigma t (TLHS {a''} {s} Stuck x₁ x₂)) .Stuck (CSndSigma {a'} x) Refl = {!  !}
   nn' (Proj t) .Stuck (CProj x) Refl = cong~ (λ f → proj f) (nn' t Stuck x Refl)
+--  nn' (SndSigma {a} {b} m s ) Stuck (CSndSigma x xx) Refl = {!  !} --helper xx {!  !} {!  !} (cong~ (\f -> sndSigma f) (nn' m Stuck {! x  !} {! Refl !}))
+    --cong~ (\f -> sndSigma f) (nn' m Stuck {! x !} {! Refl !})
+    where
+  --    helper : {fsnm : _} (g : _)(p : _) -> fstSigma (neutToTm m) ≈ LHS Stuck p -> _~_ (neutToTm (SndSigma {a} {b} m (fstSigma (neutToTm m)) {Refl})) {Tm (b ∙ fstSigma (neutToTm m))} (LHS Stuck g) -> _~_ (sndSigma (neutToTm m)) {Tm (b ∙ fstSigma (neutToTm m))} (LHS Stuck g)
+  --    helper _ _ _ k = k
   -- ...
 
 
 -----------------------
 
 elimSigma : ∀ {r} ->
-  (tm : Tm (Sigma a b)) -> 
+  (tm : Tm (Sigma a b)) ->
   (match : (x : Tm a) (y : Tm (b ∙ x)) -> (x ,, y) ≈ tm -> TmL r) ->
     TmL r
 elimSigma (x ,, y)     match = match x y Refl
@@ -507,14 +534,9 @@ data Ty~ : Ty -> Ty -> Set where
 
 symTy~ : {a b : Ty} -> Ty~ a b -> Ty~ b a
 symTy~ refl = refl
---symTy~ (arrRefl x x₁) = arrRefl (symTy~ x) (symTy~ x₁)
 
 coeTm : Ty~ a a' -> Tm a -> Tm a'
 coeTm refl x₁ = x₁
---coeTm (arrRefl {a} {a'} {b} {b'} y z) (TLHS {s = s} (Lam x₂) x x₁) = {!  !}
---coeTm (arrRefl {a} {a'} {b} {b'} y z) (TLHS {s = s} Stuck x x₁) = TLHS {a' => b'} {{!  !}} Stuck {!  !} \()
--- TLHS {a' => b'} {{!  !}} (Lam (λ x₁ → RHS (coeTm z (_∙_ x (coeTm (symTy~ y) x₁))))) {!  !} λ ()
-
 
 Tm~  : {a : Ty} -> Tm a -> Tm a -> Set
 
@@ -522,7 +544,7 @@ data Tm~' : {a : Ty} -> Tm' a -> Tm' a -> Set where
   EtaTT : ∀ {t t'} -> Tm~' {a = Top} t t'
   Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× t) (fst× t') -> Tm~ (snd× t) (snd× t') -> Tm~' t t'
   EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {t t' : Tm (rFields h ∙ g )} -> Tm~ t t' -> Tm~' {RTC h g} (RDC t) (RDC t')
-  EtaArr : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> {arr  arr' : Tm' (a => b)} -> ((x : Tm a) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> Tm~' arr arr'
+  EtaArr : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> {arr arr' : Tm' (a => b)} -> ((x : _) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> Tm~' arr arr
 --  EtaSigma : {a a' : _}{b : _}{b' : _} -> Tm~ a a' -> {va : Tm a}{va' : Tm a'} -> Tm~ (b ∙ va) (b' ∙ va') -> {sig : Tm' (Sigma a b)} -> Tm~' sig sig
   -- ...
 
@@ -553,42 +575,45 @@ convTy i (Pi a b) (Pi a' b') with convTy i a a'
 ... | No = No
 ... | Yes refl with convTm' i b b'
 ... | No = No
-... | Yes (EtaArr refl refl x₂) = Yes {! refl !}
+... | Yes (EtaArr _ _ _ ) = Yes refl
 convTy i (Sigma a b) (Sigma a' b') with convTy i a a'
 ... | No = No
 ... | Yes refl with convTm' i b b'
-... | Yes (EtaArr refl refl g) = Yes {!  !}
+... | Yes (EtaArr _ _ _ ) = Yes refl
 ... | No = No
-convTy i (RTC rc x) (RTC rc' x') = {!  !}
-convTy i (TC tc x) (TC tx' x') = {!  !}
-convTy i (TLHS Stuck g) (TLHS Stuck g') = Yes {! refl !}
+convTy i (RTC rc x) (RTC rc' x') = No
+convTy i (TC tc x) (TC tx' x') = No
+convTy i (TLHS Stuck g) (TLHS Stuck g') = Yes {! g !} -- How
 convTy i _ _ = No
 
 convTm' {a = Top} i _ _ = Yes EtaTT
-convTm' {a = a => a'} i (TLHS (Lam x₄) x x₁) (TLHS (Lam x₅) x₂ x₃) = {!  !}
+convTm' {a = a => a'} i (TLHS (Lam x₄) x x₁) (TLHS (Lam x₅) x₂ x₃) = No
 convTm' {a = a => a'} i (TLHS (Lam x₄) x x₁) (TLHS Stuck x₂ x₃) = No
 convTm' {a = a => a'} i (TLHS Stuck x x₁) (TLHS l₁ x₂ x₃) = No
 convTm' {a = a × a'} i t t' with convTm i (fst× t) (fst× t') | convTm i (snd× t) (snd× t')
 ... | Yes x | Yes x₁ = Yes (Eta× x x₁)
 ... | Yes x | No = No
 ... | No | e' = No
-convTm' {a = Pi a b} i (TLHS l x x₁) (TLHS l₁ x₂ x₃) = {!  !}
+convTm' {a = Pi a b} i (TLHS (DLam x₄) x x₁) (TLHS (DLam x₅) x₂ x₃) = No
+convTm' {a = Pi a b} i (TLHS (DLam x₄) x x₁) (TLHS Stuck x₂ x₃) = No
+convTm' {a = Pi a b} i (TLHS Stuck x x₁) (TLHS (DLam x₄) x₂ x₃) = No
+convTm' {a = Pi a b} i (TLHS Stuck x x₁) (TLHS Stuck x₂ x₃) = No
 convTm' {a = Sigma a b} i (x ,, x₁) (x₂ ,, x₃) with convTm i x x₂
-... | Yes x₄ = {!  !}
+... | Yes x₄ = No
 ... | No = No
-convTm' {a = Sigma a b} i (_ ,, _) (TLHS _ _ _) = {!  !} --No
-convTm' {a = Sigma a b} i (TLHS _ _ _) (_ ,, _) = {!  !} --No
-convTm' {a = Sigma a b} i (TLHS l x x₁) (TLHS l₁ x₂ x₃) = {!  !}
+convTm' {a = Sigma a b} i (_ ,, _) (TLHS _ _ _) = No --No
+convTm' {a = Sigma a b} i (TLHS _ _ _) (_ ,, _) = No --No
+convTm' {a = Sigma a b} i (TLHS l x x₁) (TLHS l₁ x₂ x₃) = No
 convTm' {a = RTC rc x} i (RDC args) (RDC args₁) with convTm i args args₁
 ... | Yes x₁ = Yes (EtaRDC x₁)
 ... | No = No
-convTm' {a = RTC rc x} i (RDC args) (TLHS l x₁ x₂) = {!  !}
-convTm' {a = RTC rc x} i (TLHS l x₁ x₂) (RDC args) = {!  !}
-convTm' {a = RTC rc x} i (TLHS l x₁ x₂) (TLHS l₁ x₃ x₄) = {!  !}
-convTm' {a = TC tc x} i (DC tag args) t' = {! t' !}
-convTm' {a = TC tc x} i (TLHS l x₁ x₂) (DC tag args) = {!  !}
-convTm' {a = TC tc x} i (TLHS l x₁ x₂) (TLHS l₁ x₃ x₄) = {!  !}
-convTm' {a = TLHS l g} i (TLHS Stuck x x₁) (TLHS Stuck x₂ x₃) = {!  !}
+convTm' {a = RTC rc x} i (RDC args) (TLHS l x₁ x₂) = No
+convTm' {a = RTC rc x} i (TLHS l x₁ x₂) (RDC args) = No
+convTm' {a = RTC rc x} i (TLHS l x₁ x₂) (TLHS l₁ x₃ x₄) = No
+convTm' {a = TC tc x} i (DC tag args) t' = No
+convTm' {a = TC tc x} i (TLHS l x₁ x₂) (DC tag args) = No
+convTm' {a = TC tc x} i (TLHS l x₁ x₂) (TLHS l₁ x₃ x₄) = No
+convTm' {a = TLHS l g} i (TLHS Stuck x x₁) (TLHS Stuck x₂ x₃) = No
 convTm' {a = U} i (TLHS _ _ e) _ = exfalso (e Refl)
 
 convTm {a = U} i t t' = convTy i t t'
@@ -640,7 +665,7 @@ printSpine (s $$ x) = printSpine s $ printTm x
 printSpine (Fst× x) = printSpine x
 printSpine (Snd× s) = printSpine s
 printSpine (FstSigma s) = printSpine s
-printSpine (SndSigma s s₁) = printSpine s
+--printSpine (SndSigma s s₁) = printSpine s
 printSpine (Proj s) = printSpine s
 -- ...
 
