@@ -24,27 +24,6 @@ public export infixr 9 <.>
 public export infixr 6 :*:
 public export infixr 6 =>>
 
-{-
-record Eq {a : Type} (T : a -> a -> Type) where
-    constructor MkEq
-    ParamTy : Type
-    transf : {0 va, vb : a} -> {eq : va `T` vb} -> (1 vc : a) -> (1 p : (1 _ : ParamTy) -> Type) -> Type
-    substs : {0 va, vb : a} -> (0 p : (1 _ : ParamTy) -> Type) -> (eq : va `T` vb) -> (1 px : transf {eq = eq} va p) -> transf {eq = eq} vb p
-
-
-%hint
-eqq : {a : Type} -> Eq {a} (Equal)
-eqq = MkEq a (\vc, p => p vc) (\p, Refl, px => px)
-
-replace : (eq : Eq t) => {0 va, vb : a} -> {0 p : (1 _ : ParamTy eq) -> Type} -> (val : va `t` vb) -> (1 px : transf eq {eq = val} va p) -> transf eq {eq = val} vb p
-replace {eq = eq} {p = p} val px = (substs eq p val px)
-
-EQ' : {a : Type} -> {t : a -> a -> Type} -> (eq : Eq {a = a} t) => Type
-EQ' = (x : a) -> (y : a) -> t x y
-
---%rewrite (===) replace
- -}
-
 public export
 (=.=) : 
     (1 _ : x === y)

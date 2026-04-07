@@ -7,7 +7,7 @@ Lam and ifTag is not a netural term; to achieve this LHS terms are separated fro
 
 {-# OPTIONS --type-in-type --rewriting --prop #-}
 
-open import Agda.Builtin.String using (String; primStringAppend)
+open import Agda.Builtin.String using (String; primStringAppend; primShowNat)
 open import Agda.Builtin.Nat using (Nat) renaming (suc to S; zero to Z)
 
 -------------------
@@ -96,24 +96,24 @@ postulate
   coe~     : A ~ B → A → B
   coe~Refl : {a : A} → coe~ Refl a ≈ a
 
-{-# REWRITE coe~refl #-}
+{-# REWRITE coe~Refl #-}
 opaque
   coh : {a : A} {e : A ~ B} -> coe~ e a ~ a
-  coh {e = refl} = refl
+  coh {e = Refl} = Refl
 
 -----------------------
 
-homog : {a a' : A} -> a ~ a' -> a ≈ a'
-homog Refl = Refl
+  homog : {a a' : A} -> a ~ a' -> a ≈ a'
+  homog Refl = Refl
 
   inhomog : {a a' : A} -> a ≈ a' -> a ~ a'
-  inhomog Refl = refl
+  inhomog Refl = Refl
 
 coe≈ : A ≈ B → A → B
 coe≈ e = coe~ (inhomog e)
 
 cong≈ : {B : A -> Set} {a a' : A} -> (f : (a : A) -> B a) -> a ≈ a' -> f a ~ f a'
-cong≈ _ Refl = refl
+cong≈ _ Refl = Refl
 
 subst≈ : (P : A -> Set) -> {a a' : A} -> a ≈ a' -> P a -> P a'
 subst≈ P x x₁ = coe≈ (homog (cong≈ P x)) x₁
@@ -368,6 +368,12 @@ fstΣ = def "fstΣ" (Lam \p -> elimSigma p \x _ _ -> RHS x)
 sndΣ : Tm (Pi (Sigma a b) (lam "sndΣLam" \t -> b ∙ (fstΣ ∙ t)))
 sndΣ = def "sndΣ" (DLam \p -> elimSigma p \{x y Refl -> RHS y})
 
+either' : {c : Ty} -> Tm ((a => c) => (a' => c) => a ⊎ a' => c)
+either' = def "either" (Lam (λ f → NoRHS (Lam (λ g → NoRHS (Lam (λ x → elim⊎ x (λ t x₁ → RHS (f ∙ t)) λ t x₁ → RHS (g ∙ t)))))))
+
+_+++_ : String -> String -> String
+a +++ b = primStringAppend a b
+
 proj : ∀ {ps} -> Tm (RTC rc ps => rFields rc ∙ ps)
 proj {rc = rc} = def ("proj" +++ name rc) (Lam \t -> elimRDC t \t _ -> RHS t)
 {-
@@ -505,7 +511,7 @@ he (LHS {s = DApp s y e} {l = Lam f} g) x = TODOP
 
 
 --------------------
-{-
+
 data Bool : Set where True False : Bool
 
 _&&_ : Bool -> Bool -> Bool
@@ -516,89 +522,174 @@ data Dec' (A : Set) : Set where
   Yes : A -> Dec' A
   No  :      Dec' A
 
+Tm~  : {a : Ty} -> Tm a -> {b : Ty} -> Tm b -> Set
+data TmNU~ : {a : TyNU} -> TmNU a -> {b : TyNU} -> TmNU b -> Set
 -- convertible types
 data Ty~ : Ty -> Ty -> Set where
-  refl : {a : Ty} -> Ty~ a a
+  U : Ty~ U U
+  Top' : Ty~ Top Top
+  Arr : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a => b) (a' => b')
+  Tuple : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a × b) (a' × b')
+  Either' : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a ⊎ b) (a' ⊎ b')
+  Pi' : {a a' : _}{b : _}{b' : _} -> Ty~ a a' -> TmNU~ b b' -> Ty~ (Pi a b) (Pi a' b')
+  Sigma' : {a a' : _}{b : _}{b' : _} -> Ty~ a a' -> TmNU~ b b' -> Ty~ (Sigma a b) (Sigma a' b')
+  Id' : {t : Ty}{a b a' b' : Tm t} -> Tm~ a a' -> Tm~ b b' -> Ty~ (Id a b) (Id a' b')
+  RTC' : {desc desc' : _} -> (eq : desc' ≈ desc) -> {p : Tm (rParams desc)}{p' : Tm (rParams desc')} -> Tm~ p p' -> Ty~ (RTC desc p) (RTC desc' p')
 
-symTy~ : {a b : Ty} -> Ty~ a b -> Ty~ b a
-symTy~ refl = refl
+Tm~ {a = U} t {b = U} t' = Ty~ t t'
+Tm~ {a = NU _} t {b = NU _} t' = TmNU~ t t'
+Tm~ {a = U} _ {b = NU _} _ = Emb ⊥
+Tm~ {a = NU _} _ {b = U} _ = Emb ⊥
+symTm~ : {a' b' : Ty} {a : Tm a'}{b : Tm b'} -> Tm~ a b -> Tm~ b a
+coeTm : Tm~ a a' -> Tm a -> Tm a'
 
-coeTm : Ty~ a a' -> Tm a -> Tm a'
-coeTm refl x₁ = x₁
-
-Tm~  : {a : Ty} -> Tm a -> Tm a -> Set
-
-data Tm~' : {a : Ty} -> Tm' a -> Tm' a -> Set where
-  EtaTT : ∀ {t t'} -> Tm~' {a = Top} t t'
-  Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× t) (fst× t') -> Tm~ (snd× t) (snd× t') -> Tm~' t t'
-  EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {t t' : Tm (rFields h ∙ g )} -> Tm~ t t' -> Tm~' {RTC h g} (RDC t) (RDC t')
-  EtaArr : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> {arr arr' : Tm' (a => b)} -> ((x : _) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> Tm~' arr arr
---  EtaSigma : {a a' : _}{b : _}{b' : _} -> Tm~ a a' -> {va : Tm a}{va' : Tm a'} -> Tm~ (b ∙ va) (b' ∙ va') -> {sig : Tm' (Sigma a b)} -> Tm~' sig sig
+data TmNU~ where
+  EtaTT : ∀ {t t'} -> TmNU~ {a = Top'} t {b = Top'} t'
+  Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× ∙ t) (fst× ∙ t') -> Tm~ (snd× ∙ t) (snd× ∙ t') -> TmNU~ t t'
+  EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {t t' : Tm (rFields h ∙ g )} -> Tm~ t t' -> TmNU~ (RDC {rc = h} t) (RDC {rc = h} t')
+  EtaArr : {a : _}{b : _} -> {arr arr' : TmNU (a =>' b)} -> ((x : _) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> TmNU~ arr arr'
+  EtaSigma : {a : _}{b : _}{b' : _}{sig : Tm (Sigma a b)}{sig' : Tm (Sigma a b')} -> (e : Tm~ (fstΣ ∙ sig) (fstΣ ∙ sig')) -> (eq : Ty~ (b ∙ (fstΣ ∙ sig)) (b' ∙ (fstΣ ∙ sig'))) -> Tm~ (sndΣ ∙∙ sig) (sndΣ ∙∙ sig') -> TmNU~ sig sig'
+  EtaPi : {a : _}{b : _}{b' : _}{pi : Tm (Pi a b)}{pi' : Tm (Pi a b')} -> (f : (x : Tm a) -> Tm~ (b ∙ x) (b' ∙ x)) -> ((x : Tm a) -> Tm~ (pi ∙∙ x) (pi' ∙∙ x)) -> TmNU~ pi pi'
+  EtaId : {t : _}{a b : Tm t}{id id' : Tm (Id a b)} -> TmNU~ id id' -- Use J instead?
   -- ...
 
-Tm~ {a = U} t t' = Ty~ t t'
-Tm~ {a = Top} t t' = Tm~' t t'
-Tm~ {a = a => a₁} t t' = Tm~' t t'
-Tm~ {a = a × a₁} t t' = Tm~' t t'
-Tm~ {a = Pi a x} t t' = Tm~' t t'
-Tm~ {a = Sigma a x} t t' = Tm~' t t'
-Tm~ {a = RTC rc x} t t' = Tm~' t t'
-Tm~ {a = TC tc x} t t' = Tm~' t t'
-Tm~ {a = TLHS l x} t t' = Tm~' t t'
 
+inhomtoTy~ : {t t' : Ty}{a : Tm t}{b : Tm t'} -> a ~ b -> Ty~ t t'
+Ty~Toeq : Ty~ t t' -> t ≡ t'
+inhomtoTy~ x = {!  !}
+Ty~Toeq U = Refl
+Ty~Toeq Top' = Refl
+Ty~Toeq (Arr x x₁) with (Ty~Toeq x) | (Ty~Toeq x₁)
+... | Refl | Refl = Refl
+Ty~Toeq (Tuple x x₁) with (Ty~Toeq x) | (Ty~Toeq x₁)
+... | Refl | Refl = Refl
+Ty~Toeq (Pi' x x₁) with (Ty~Toeq x)
+Ty~Toeq (Pi' x (EtaArr x₁)) | Refl = {!  !}
+Ty~Toeq (Sigma' x x₁) = {!  !}
+Ty~Toeq (Id' x x₁) = {!  !}
+Ty~Toeq (RTC' eq x) = {!  !}
+Ty~Toeq (Either' x x₁) = {!  !}
+
+
+symTm~ {U} {U} {U} {U} x = x
+symTm~ {U} {U} {Top} {Top} x = x
+symTm~ {U} {U} {x₁ => x₃} {x₂ => x₄} (Arr x x₅) = Arr (symTm~ x) (symTm~ x₅)
+symTm~ {U} {U} {x₁ × x₃} {x₂ × x₄} (Tuple x x₅) = Tuple (symTm~ x) (symTm~ x₅)
+symTm~ {U} {U} {Pi a x₁} {Pi a₁ x₂} (Pi' x x₃) = Pi' (symTm~ x) (symTm~ x₃)
+symTm~ {U} {U} {Sigma a x₁} {Sigma a₁ x₂} (Sigma' x x₃) = Sigma' (symTm~ x) (symTm~ x₃)
+symTm~ {U} {U} {Id x₁ x₃} {Id x₂ x₄} (Id' x x₅) = Id' (symTm~ x) (symTm~ x₅)
+symTm~ {U} {U} {_ ⊎ _} {_ ⊎ _} (Either' y y₁) = Either' (symTm~ y) (symTm~ y₁)
+symTm~ {U} {U} {RTC rc x₁} {RTC rc₁ x₂} (RTC' eq x) with setEq eq
+... | Refl = RTC' eq (symTm~ x)
+symTm~ {Top} {Top} {a} {b} EtaTT = EtaTT
+symTm~ {_ => _} {_ => _} {a} {b} (EtaArr x) = EtaArr (λ x₃ → symTm~ (x x₃))
+symTm~ {_ × _} {_ × _} {a} {b} (Eta× x x₁) = Eta× (symTm~ x) (symTm~ x₁)
+symTm~ {Pi _ _} {Pi _ _} {a} {b} (EtaPi f x) = EtaPi (λ x₁ → symTm~ (f x₁)) λ x₃ → symTm~ (x x₃)
+symTm~ {Sigma _ _} {Sigma _ _} {a} {b} (EtaSigma e eq x) = EtaSigma (symTm~ e) (symTm~ eq) (symTm~ x)
+symTm~ {Id _ _} {Id _ _} {a} {b} EtaId = EtaId
+symTm~ {RTC _ _} {RTC _ _} {a} {b} (EtaRDC x) = EtaRDC (symTm~ x)
+
+
+{-# TERMINATING #-}
+coeM : {t : Ty}{b b' : Tm (t => U)}{a : Tm t} -> Tm~ b b' -> Tm (b ∙ a) -> Tm (b' ∙ a)
+coeM {a = a} (EtaArr x) x₁ with x a
+... | g = coeTm g x₁
+
+
+coeApp : {t : Ty}{b : Tm (t => U)}(a a' : Tm t) -> Tm~ a a' -> Tm (b ∙ a) -> Tm (b ∙ a')
+coeApp {U} a a' U x₁ = x₁
+coeApp {U} a a' Top' x₁ = x₁
+coeApp {U} a a' (Arr x x₂) x₁ = {!  !}
+coeApp {U} a a' (Tuple x x₂) x₁ = {!  !}
+coeApp {U} a a' (Pi' x x₂) x₁ = {!  !}
+coeApp {U} a a' (Sigma' x x₂) x₁ = {!  !}
+coeApp {U} a a' (Id' x x₂) x₁ = {!  !}
+coeApp {U} a a' (RTC' eq x) x₁ = {!  !}
+coeApp {U} a a' (Either' y y₁) k = {!  !}
+coeApp {NU x₂} a a' x x₁ = {!  !}
+
+coeTm {U} U x₁ = x₁
+coeTm {Top} Top' x₁ = x₁
+coeTm {x₂ => x₃} (Arr x x₄) l = lam "" λ x₁ → coeTm x₄ (l ∙ (coeTm (symTm~ x) x₁))
+coeTm {x₂ × x₃} (Tuple x x₄) y = coeTm x (fst× ∙ y ) , coeTm x₄ (snd× ∙ y)
+coeTm {Pi a x₂} (Pi' {b' = b'} x (EtaArr f)) x₁ = LHS (CHead (named "" (DLam (λ i → RHS (coeM {b = x₂} {b' = b'} {a = i} (EtaArr f) (x₁ ∙∙ i))))))
+coeTm {Sigma a x₂} (Sigma' {b' = b'} x (EtaArr f)) x₁ = fstΣ ∙ x₁ ,, coeM {_} {x₂} {b'} {fstΣ ∙ x₁} (EtaArr f) (sndΣ ∙∙ x₁)
+coeTm {Id x₂ x₃} (Id' x x₄) r = TODO
+coeTm {a ⊎ b} (Either' y y₁) z = either' ∙ lam "f" (λ x → Left (coeTm y x)) ∙ lam "g" (λ x → Right (coeTm y₁ x)) ∙ z
+coeTm {RTC rc x₂} (RTC' eq x) y with setEq eq
+... | Refl = RDC (coeApp {b = rc .unnamed .UnnamedRDesc.rFields} _ _ x (proj ∙ y))
+
+
+postulate decString : (str str' : String) -> Dec' (str ≡ str')
+{-# TERMINATING #-}
 convTy  : Nat -> (a a' : Ty) -> Dec' (Ty~ a a')
-convTmNU : ∀ {a} -> Nat -> (t t' : TmNU a) -> Dec' (Tm~' t t')
-convTm  : Nat -> (t t' : Tm  a) -> Dec' (Tm~ t t')
+convTmNU : ∀ {a a'} -> Nat -> (t : TmNU a)(t' : TmNU a') -> Dec' (TmNU~ t t')
+convTm  : Nat -> (t : Tm  a)(t' : Tm a') -> Dec' (Tm~ t t')
 
-convTy i U U = Yes refl
-convTy i Top Top = Yes refl
+decUnnamedRDesc : (rc rc' : UnnamedRDesc) -> Dec' (rc ≡ rc')
+decUnnamedRDesc (RD rParams₁ rFields₁) (RD rParams₂ rFields₂) with convTy 0 rParams₁ rParams₂
+... | prms = {!  !}
+
+decDesc : (rc rc' : RDesc) -> Dec' (rc ≡ rc')
+decDesc (named name₁ unnamed₁) (named name₂ unnamed₂) with decString name₁ name₂ | decUnnamedRDesc unnamed₁ unnamed₂
+... | No | _ = No
+... | Yes _ | No = No
+... | Yes Refl | Yes Refl = Yes Refl
+
+convTy x U U = Yes U
+convTy i Top Top = Yes Top'
 convTy i (a => b) (a' => b') with convTy i a a' | convTy i b b'
-... | Yes refl | Yes refl = Yes refl
-... | e | e' = No
+... | Yes x | Yes x₁ = Yes (Arr x x₁)
+... | Yes x | No = No
+... | No | _ = No
 convTy i (a × b) (a' × b') with convTy i a a' | convTy i b b'
-... | Yes refl | Yes refl = Yes refl
+... | Yes x | Yes x₁ = Yes (Tuple x x₁)
 ... | Yes x | No = No
 ... | No | bq = No
-convTy i (Pi a b) (Pi a' b') with convTy i a a'
+convTy i (a ⊎ b) (a' ⊎ b') with convTy i a a' | convTy i b b'
+... | Yes x | Yes x₁ = Yes (Either' x x₁)
+... | Yes x | No = No
+... | No | bq = No
+convTy i (Pi a x) (Pi a' x') with convTy i a a'
 ... | No = No
-... | Yes refl with convTm' i b b'
+... | Yes x₁ with convTm i x x'
 ... | No = No
-... | Yes (EtaArr _ _ _ ) = Yes refl
-convTy i (Sigma a b) (Sigma a' b') with convTy i a a'
+... | Yes x₂ = Yes (Pi' x₁ x₂)
+convTy i (Sigma a x) (Sigma a' x') with convTy i a a'
 ... | No = No
-... | Yes refl with convTm' i b b'
-... | Yes (EtaArr _ _ _ ) = Yes refl
+... | Yes x₁ with convTm i x x'
+... | Yes x₂ = Yes (Sigma' x₁ x₂)
 ... | No = No
-convTy i (RTC rc x) (RTC rc' x') = No
-convTy i (TC tc x) (TC tx' x') = No
-convTy i (TLHS Stuck g) (TLHS Stuck g') = Yes {! g !} -- How
-convTy i _ _ = No
+convTy i (Id x x₁) (Id x₂ x₃) with convTm i x x₂ | convTm i x₁ x₃
+... | Yes x₄ | Yes x₅ = Yes TODO
+... | Yes x₄ | No = No
+... | No | bq = No
+convTy i (RTC rc x) (RTC rc₁ x₁) = {!  !}
+convTy i (NU (TLHS {l = Stuck} x)) (NU (TLHS {l = Stuck} x₁)) = TODO --Spline conversion
+convTy _ _ _ = No
 
-convTmNU {a = Top'} i _ _ = Yes EtaTT
-convTmNU {a = a =>' a'} i t t' = {!!}
-convTmNU {a = a ×' a'} i t t' = {!!} -- with convTm i (fst× t) (fst× t') | convTm i (snd× t) (snd× t')
--- ... | Yes e | Yes e' = {!!}
-convTmNU {a = Pi' a b} i t t' = {!!}
-convTmNU {a = Sigma' a b} i t t' = {!!}
-convTmNU {a = RTC' rc x} i t t' = {!!}
-convTmNU {a = TC' tc x} i t t' = {!!}
-convTmNU {a = TLHS l g} i t t' = {!!}
+convTmNU {a = Top'} {a' = Top'} i t t' = Yes EtaTT
+convTmNU {a = x =>' x₁} {a' = x' =>' x₁'} i t t' = {!  !}
+convTmNU {a = x ×' x₁} {a' = x' ×' x₁'} i t t'
+    with convTy i x x' | convTy i x₁ x₁' | convTm i (fst× ∙ t) (fst× ∙ t') | convTm i (snd× ∙ t) (snd× ∙ t')
+... | Yes x₂ | Yes x₃ | Yes x₄ | Yes x₅ = Yes {!  !}
+... | Yes x₂ | Yes x₃ | Yes x₄ | No = No
+... | Yes x₂ | Yes x₃ | No | bq = No
+... | Yes x₂ | No | aq | bq = No
+... | No | bq' | aq | bq = No
+convTmNU {a = x ⊎' x₁} {a' = x' ⊎' x₁'} i t t' = {!  !}
+convTmNU {a = Pi' a x} {a' = Pi' a' x'} i t t' = {!  !}
+convTmNU {a = Sigma' a x} {a' = Sigma' a' x'} i t t' = {!  !}
+convTmNU {a = Id' x x₁} {a' = Id' x' x₁'} i t t' = {!  !}
+convTmNU {a = RTC' rc x} {a' = RTC' rc' x'} i t t' = {!  !}
+convTmNU {a = TLHS x} {a' = TLHS x'} i t t' = {!  !}
+convTmNU {a = _} {a' = _} _ _ _ = No
 
-convTm {a = U} i t t' = convTy i t t'
-convTm {a = Top} i t t' = convTmNU i t t'
-convTm {a = a => a'} i t t' = convTmNU i t t'
-convTm {a = a × a'} i t t' = convTmNU i t t'
-convTm {a = Pi a b} i t t' = convTmNU i t t'
-convTm {a = Sigma a b} i t t' = convTmNU i t t'
-convTm {a = RTC rc x} i t t' = convTmNU i t t'
-convTm {a = TC tc x} i t t' = convTmNU i t t'
-convTm {a = TLHS l g} i t t' = convTmNU i t t'
--}
+convTm {a = U} {a' = U} i t t' = convTy i t t'
+convTm {a = NU _} {a' = NU _} i t t' = convTmNU i t t'
+convTm {a = _} {a' = _} _ _ _ = No
 
 -------------------------------------
-
-_+++_ : String -> String -> String
-a +++ b = primStringAppend a b
 
 parens : String -> String
 parens a = "(" +++ a +++ ")"
@@ -621,34 +712,47 @@ testDoc : showDoc (DLam "a" (DVar "a" $ DVar "b") $ (DVar "c" $ DVar "e") $ DVar
         ≈ "(\\a -> a b) (c e) d \\a -> \\b -> a"
 testDoc = Refl
 
+var : String -> Tm a
+var n = gLHS (CHead (named n Stuck))
+
+
+printTy'    : Nat -> Ty -> Doc
+printTm'    : Nat -> Tm a -> Doc
+printSpine' : Nat -> Spine a -> Doc
 
 printTy    : Ty -> Doc
+printTy = printTy' Z
 printTm    : Tm a -> Doc
+printTm = printTm' Z
 printSpine : Spine a -> Doc
+printSpine = printSpine' Z
 
-printSpine (Head x) = DVar (name x)
-printSpine (s $  x) = printSpine s $ printTm x
-printSpine (s $$ x) = printSpine s $ printTm x
+printSpine' _ (Head x) = DVar (name x)
+printSpine' i (s $  x) = printSpine' i s $ printTm' i x
+printSpine' i (s $$ x) = printSpine' i s $ printTm' i x
 
-printTy U = DVar "U"
-printTy Top = DVar "Top"
-printTy (t => x)   = DVar "Arr" $ printTy t $ printTy x
-printTy (Pi t x)   = DVar "Pi" $ printTy t $ printTm' x
-printTy (TC tc x)  = DVar (name tc) $ printTm x
-printTy (RTC rc x) = DVar (name rc) $ printTm x
-printTy (a × a') = DVar "_×_" $ printTy a $ printTy a'
-printTy (Sigma a b) = DVar "_,_" $ printTy a $ printTm' b
-printTy (TLHS {s = s} l x) = printSpine s
+printTy' _ U = DVar "U"
+printTy' _ Top = DVar "Top"
+printTy' i (t => x)   = DVar "Arr" $ printTy' i t $ printTy' i x
+printTy' i (Pi t x)   = DVar "Pi" $ printTy' i t $ printTm' i x
+printTy' i (RTC rc x) = DVar (name rc) $ printTm' i x
+printTy' i (a × a') = DVar "_×_" $ printTy' i a $ printTy' i a'
+printTy' i (Sigma a b) = DVar "_,_" $ printTy a $ printTm b
+printTy' i (x ⊎ y) = DVar "_⊎_" $ printTy' i x $ printTy' i y
+printTy' i (Id x y) = DVar "Id" $ printTm' i y $ printTm' i y
+printTy' i (NU (TLHS {s = s} {l = Stuck} x)) = printSpine' i s
 
-printTm {a = U}    t  = printTy   t
-printTm {a = NU _} TT = DVar "tt"
-printTm {a = NU _} (x ,  y)  = DVar "_,_"   $ printTm x $ printTm y
-printTm {a = NU _} (x ,, y)  = DVar "_,,_"  $ printTm x $ printTm y
-printTm {a = NU _} (Left  x) = DVar "Left"  $ printTm x
-printTm {a = NU _} (Right x) = DVar "Right" $ printTm x
-printTm {a = NU _} Refl      = DVar "Refl"
-printTm {a = NU _} (RDC {rc = rc} args) = DVar ("Mk" +++ name rc) $ printTm args
-printTm {a = NU _} (LHS {s = s} _) = printSpine s
+{-# TERMINATING #-}
+printTm' {a = U}      i  t        = printTy' i t
+printTm' {a = NU _}   i TT        = DVar "tt"
+printTm' {a = a => b} i f         = let sv = "v" +++ primShowNat i in DLam sv (printTm' i (f ∙ var sv))
+printTm' {a = NU _}   i (x ,  y)  = DVar "_,_"   $ printTm' i x $ printTm' i y
+printTm' {a = NU _}   i (x ,, y)  = DVar "_,,_"  $ printTm' i x $ printTm' i y
+printTm' {a = NU _}   i (Left  x) = DVar "Left"  $ printTm' i x
+printTm' {a = NU _}   i (Right x) = DVar "Right" $ printTm' i x
+printTm' {a = NU _}   i Refl      = DVar "Refl"
+printTm' {a = NU _}   i (RDC {rc = rc} args) = DVar ("Mk" +++ name rc) $ printTm' i args
+printTm' {a = NU _}   i (LHS {s = s} _) = printSpine' i s
 
 
 showTm : Tm a -> String
@@ -657,8 +761,6 @@ showTm t = showDoc (printTm t)
 
 ----------------
 
-var : String -> Tm a
-var n = gLHS (CHead (named n Stuck))
 
 betaPi : ∀ {f : Tm a -> Tm a'} {x : _} -> lam "l" f ∙ x ≈ f x
 betaPi = Refl
@@ -704,7 +806,7 @@ module _ where
   testQuote  : showTm {a = Nat'} (add ∙ (Suc ∙ Zero) ∙ (Suc ∙ Zero)) ≈ "MkNat (Right (MkNat (Right (MkNat (Left tt)))))"
   testQuote = Refl
 
-  testQuote2 : showTm {a = Nat'} (add ∙ (Suc ∙ var {a = Nat'} "n") ∙ var {a = Nat'} "m")   ≈ "MkNat (Right (add n m))"
+  testQuote2 : showTm {a = Nat'} (add ∙ (Suc ∙ var {a = Nat'} "n") ∙ var {a = Nat'} "m") ≈ "MkNat (Right (add n m))"
   testQuote2 = Refl
 
 
@@ -719,7 +821,8 @@ module _ where
   Fin' = def "Fin" (Lam \n -> RHS (RTC FinDesc n))
 
   testQuote' : showTm (Pi Nat' (lam "f" \n -> Fin' ∙ (add ∙ (Suc ∙ n) ∙ n)))
-                 ≈ "Pi (Nat tt) f"   -- could be:  "Pi (Nat tt) \\v0 -> Fin (add (Suc v0) v0)"
+                 ≈ "Pi (Nat tt) \\v0 -> Fin (MkNat (Right (add v0 v0)))"
+                 -- could be:  "Pi (Nat tt) \\v0 -> Fin (add (Suc v0) v0)"
   testQuote' = Refl
 
   --------------------------------------
