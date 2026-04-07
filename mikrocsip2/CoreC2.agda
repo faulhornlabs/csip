@@ -5,9 +5,13 @@ Lam and ifTag is not a netural term; to achieve this LHS terms are separated fro
 -}
 
 
-{-# OPTIONS --type-in-type --rewriting --prop #-}
+{-# OPTIONS --type-in-type --rewriting --prop --guardedness #-}
 
-open import Agda.Builtin.String using (String; primStringAppend)
+open import Agda.Builtin.Bool using (Bool) renaming (true to True; false to False)
+open import Agda.Builtin.Char using (Char; primIsLower; primIsDigit; primIsAlpha; primIsSpace; primCharEquality)
+open import Agda.Builtin.List using (List; []; _∷_)
+open import Agda.Builtin.Maybe using (Maybe) renaming (just to Just; nothing to Nothing)
+open import Agda.Builtin.String using (String; primStringAppend; primStringToList; primStringFromList; primStringEquality)
 open import Agda.Builtin.Nat using (Nat) renaming (suc to S; zero to Z)
 
 
@@ -21,16 +25,22 @@ infixr 8 _∘~_    -- transitivity for _~_
 infixr 8 _∘≈_    -- transitivity for _≈_
 infixr 7 _×_     -- non-dependent pair type
 infixr 6 _=>_    -- non-dependent function type
+infixr 5 _&&_
+infixr 4 _||_
 infix  3 _~_     -- inhomogenous Prop equality
 infix  3 _≈_     -- homogenous Prop equality
 infix  3 _≡_     -- homogenous Set equality
 infixr 2 _+++_   -- string concatenation
+infixr 2 _::_
 infixr 2 _**_    -- dependent pair type (infix Σ)
 infixr 0 _,_     -- non-dependent pair constructor
 infixr 0 _,,_    -- dependent pair constructor
+infix -1 _:=_
 
 _+++_ : String -> String -> String
 a +++ b = primStringAppend a b
+
+pattern _::_ a as = a ∷ as
 
 ---------------------
 
@@ -143,7 +153,7 @@ cong≈~ : {B : A -> Set} {a a' : A} -> (f : (a : A) -> B a) -> a ≈ a' -> f a 
 cong≈~ _ Refl = Refl
 
 cong≈ : {a a' : A} -> (f : A -> B) -> a ≈ a' -> f a ≈ f a'
-cong≈ f e = homog (cong≈~ f e)
+cong≈ _ Refl = Refl
 
 cong2≈ : {a a' : A} {b b' : B} -> (f : A -> B -> C) -> a ≈ a' -> b ≈ b' -> f a b ≈ f a' b'
 cong2≈ _ Refl Refl = Refl
@@ -164,14 +174,12 @@ cong≡ f Refl = Refl
 
 cong2≡ : {a a' : A} {b b' : B} -> (f : A -> B -> C) -> a ≡ a' -> b ≡ b' -> f a b ≡ f a' b'
 cong2≡ _ Refl Refl = Refl
-{-
-coh≈ : {a : A} {e : A ≈ B} -> coe≈ e a ≡ a
-coh≈ {e = Refl} = Refl
--}
+
 
 --------------------------------------------
 
 record Named (A : Set) : Set where
+  coinductive
   constructor named
   field
     name    : String
@@ -244,7 +252,8 @@ a =>U = Tm (a => U)
 
 data TmNU : TyNU -> Set
 
-Tm U      = Ty
+
+Tm U      = Ty       -- definitional equality between (Tm U) and Ty; proposed by Bálint Török
 Tm (NU a) = TmNU a
 
 _∙_ : Tm (a => a') -> Tm a -> Tm  a'
@@ -267,40 +276,48 @@ data LHS : Ty -> Set  where
   RHS   : Tm     a -> LHS a
   NoRHS : Lambda a -> LHS a
 
+VarName : Set
+
+private variable
+  n        : VarName
+
 {-# NO_POSITIVITY_CHECK #-}
 data Lambda where
   Lam   : (Tm a -> LHS a') ->            Lambda (a => a')
   DLam  : ((x : Tm a) -> LHS (b ∙ x)) -> Lambda (Pi a b)
-  Stuck :                                Lambda a
+  Stuck : VarName ->                     Lambda a              -- stuck by var
+
+NamedLambda : Ty -> Set
+NamedLambda a = Named (Lambda a)
 
 data Spine where
-  Head : Named (Lambda a) ->                                     Spine a
+  Head : NamedLambda a ->                                        Spine a
   _$_  : Spine (a => a') -> Tm a ->                              Spine a'
   DApp : ∀ {bx} -> Spine (Pi a b) -> (x : Tm a) -> b ∙ x ≡ bx -> Spine bx
 
 pattern _$$_ f x = DApp f x Refl
 
 data Glued where
-  CHead : (t : Named (Lambda a)) ->                                               Glued (Head t) (unnamed t)
+  CHead : (t : NamedLambda a) ->                                                  Glued (Head t) (unnamed t)
   CLam  : ∀ {s : Spine (a => a')} {f x l} -> Glued s (Lam  f) -> f x ≈ NoRHS l -> Glued (s $  x) l
   CDLam : ∀ {s : Spine (Pi a b)}  {f x l} -> Glued s (DLam f) -> f x ≈ NoRHS l -> Glued (s $$ x) l
-  C$    : ∀ {s : Spine (a => a')} {x} ->     Glued s Stuck ->                     Glued (s $  x) Stuck
-  C$$   : ∀ {s : Spine (Pi a b)}  {x} ->     Glued s Stuck ->                     Glued (s $$ x) Stuck
+  C$    : ∀ {s : Spine (a => a')} {x} ->     Glued s (Stuck n) ->                 Glued (s $  x) (Stuck n)
+  C$$   : ∀ {s : Spine (Pi a b)}  {x} ->     Glued s (Stuck n) ->                 Glued (s $$ x) (Stuck n)
 
 lhs∙ : ∀ {s : Spine (a => a')} {f x} -> Glued s (Lam f) -> (r : _) -> f x ≈ r -> Tm a'
 lhs∙ c (RHS   t) e = t
 lhs∙ c (NoRHS t) e = Ne (CLam c e)
 
-NeNU {l = Lam f} c ∙ x = lhs∙ c (f x) Refl
-NeNU {l = Stuck} c ∙ x = Ne (C$ {x = x} c)
+NeNU {l = Lam f}   c ∙ x = lhs∙ c (f x) Refl
+NeNU {l = Stuck _} c ∙ x = Ne (C$ {x = x} c)
 
 lhs∙∙ : ∀ {s : Spine (Pi a b)} {f x} -> Glued s (DLam f) -> (r : _) -> f x ≈ r -> Tm (b ∙ x)
 lhs∙∙ c (RHS   t) e = t
 lhs∙∙ c (NoRHS t) e = Ne (CDLam c e)
 
 _∙∙_ : Tm  (Pi a b) -> (x : Tm a) -> Tm (b ∙ x)
-NeNU {l = DLam f} c ∙∙ x = lhs∙∙ c (f x) Refl
-NeNU {l = Stuck}  c ∙∙ x = Ne (C$$ c)
+NeNU {l = DLam f}  c ∙∙ x = lhs∙∙ c (f x) Refl
+NeNU {l = Stuck _} c ∙∙ x = Ne (C$$ c)
 
 
 ---------------------
@@ -324,28 +341,28 @@ glued {s = s $$ x} {l = l} (CDLam {f = f} c e) = helper e (cong≈ (\k -> k ∙�
 -----------------------
 
 elimBot : (tm : Tm Bot) -> LHS a
-elimBot (NeNU _) = NoRHS Stuck
+elimBot (NeNU {l = Stuck n} _) = NoRHS (Stuck n)
 
 elim× :
   (tm : Tm (a × a')) -> 
   ((x : Tm a) (y : Tm a') -> (x , y) ≡ tm -> LHS a'') ->
     LHS a''
-elim× (x , y)  f = f x y Refl
-elim× (NeNU _) f = NoRHS Stuck
+elim× (x , y) f = f x y Refl
+elim× (NeNU {l = Stuck n} _) f = NoRHS (Stuck n)
 
 elimSigma :
   (tm : Tm (Sigma a b)) -> 
   ((x : Tm a) (y : Tm (b ∙ x)) -> (x ,, y) ≡ tm -> LHS a') ->
     LHS a'
 elimSigma (x ,, y) f = f x y Refl
-elimSigma (NeNU _) f = NoRHS Stuck
+elimSigma (NeNU {l = Stuck n} _) f = NoRHS (Stuck n)
 
 elimR : ∀ {ps} ->
   (tm : Tm (RTC rc ps)) ->
   ((args : Tm (rFields rc ∙ ps)) -> RDC args ≡ tm -> LHS a) ->
     LHS a
 elimR (RDC args) f = f args Refl
-elimR (NeNU _)   f = NoRHS Stuck
+elimR (NeNU {l = Stuck n} _) f = NoRHS (Stuck n)
 
 elim⊎ :
   (tm : Tm (a ⊎ a')) ->
@@ -354,51 +371,62 @@ elim⊎ :
     LHS a''
 elim⊎ (Left  t) l r = l t Refl
 elim⊎ (Right t) l r = r t Refl
-elim⊎ (NeNU _)  _ _ = NoRHS Stuck
+elim⊎ (NeNU {l = Stuck n} _) _ _ = NoRHS (Stuck n)
 
 elimId : {x y : Tm a} ->
   (tm : Tm (Id x y)) ->
   ({t : Tm a} -> TmNU.Refl {x = t} ~ tm -> LHS a') ->
     LHS a'
-elimId Refl     f = f Refl
-elimId (NeNU _) f = NoRHS Stuck
+elimId Refl f = f Refl
+elimId (NeNU {l = Stuck n} _) f = NoRHS (Stuck n)
 
 --------------------
 
-def : String -> Lambda a -> Tm a
-def n t = Ne (CHead (named n t))
-
-lam' : String -> (Tm a -> LHS a') -> Tm (a => a')
-lam' n f = def n (Lam f)
-
-lam : String -> (Tm a -> Tm a') -> Tm (a => a')
-lam n f = lam' n \t -> RHS (f t)
+_:=_ : String -> LHS a -> Tm a
+n := RHS   t = t
+n := NoRHS t = Ne (CHead (named n t))
 
 pattern Lam'  f = NoRHS (Lam  f)
 pattern DLam' f = NoRHS (DLam f)
 
+lam' : String -> (Tm a -> LHS a') -> Tm (a => a')
+lam' n f = n := Lam' f
+
+lam : String -> (Tm a -> Tm a') -> Tm (a => a')
+lam n f = lam' n \t -> RHS (f t)
+
 ------------------
 
 fst× : Tm (a × a' => a)
-fst× = def "fst×" (Lam \p -> elim× p \x y _ -> RHS x)
+fst× = "fst×" := Lam' \p -> elim× p \x y _ -> RHS x
 
 snd× : Tm (a × a' => a')
-snd× = def "snd×" (Lam \p -> elim× p \x y _ -> RHS y)
+snd× = "snd×" := Lam' \p -> elim× p \x y _ -> RHS y
 
 fstΣ : Tm (Sigma a b => a)
-fstΣ = def "fstΣ" (Lam \p -> elimSigma p \x y _ -> RHS x)
+fstΣ = "fstΣ" := Lam' \p -> elimSigma p \x y _ -> RHS x
 
 sndΣ : Tm (Pi (Sigma a b) (lam "sndΣLam" \t -> b ∙ (fstΣ ∙ t)))
-sndΣ = def "sndΣ" (DLam \p -> elimSigma p \{x y Refl -> RHS y})
+sndΣ = "sndΣ" := DLam' \p -> elimSigma p \{x y Refl -> RHS y}
 
 proj : ∀ {ps} -> Tm (RTC rc ps => rFields rc ∙ ps)
-proj {rc = rc} = def ("proj" +++ name rc) (Lam \t -> elimR t \t _ -> RHS t)
+proj {rc = rc} = ("proj" +++ name rc) := Lam' \t -> elimR t \t _ -> RHS t
 {-
 proj' : Tm (Pi (rParams rc) (lam "projLam" \ps -> RTC rc ps => rFields rc ∙ ps))
-proj' {rc = rc} = def ("proj" +++ name rc)  (DLam \_ -> Lam' \t -> elimR t \t _ -> RHS t)
+proj' {rc = rc} = def ("proj" +++ name rc)  (DLam' \_ -> Lam' \t -> elimR t \t _ -> RHS t)
 -}
 
 -------------------- nonstandard model
+
+record Wrap (⟦_⟧ : Ty -> Set) (rc : RDesc) (ps : Tm (rParams rc)) : Set where
+  pattern
+  constructor wrap
+  field
+    unwrap : ⟦ rFields rc ∙ ps ⟧
+
+open Wrap
+
+-------------------
 
 ⟦_⟧ : Ty -> Set
 
@@ -411,7 +439,6 @@ evalQuote : {x : Tm a} -> x ≈ quoteTm ⟦ x ⟧ₜ
 ⟦ t@U        ⟧ = Tm t
 ⟦ t@(_ => _) ⟧ = Tm t
 ⟦ t@(Pi _ _) ⟧ = Tm t
-⟦ t@(NeU _)  ⟧ = Tm t
 -------------- interpreted types
 ⟦ Top        ⟧ = Emb T
 ⟦ Bot        ⟧ = Emb ⊥
@@ -419,13 +446,12 @@ evalQuote : {x : Tm a} -> x ≈ quoteTm ⟦ x ⟧ₜ
 ⟦ a ×  a'    ⟧ = Pair   ⟦ a ⟧ ⟦ a' ⟧
 ⟦ Sigma a b  ⟧ = ⟦ a ⟧ ** \x -> ⟦ b ∙ quoteTm x ⟧
 ⟦ Id x y     ⟧ = ⟦ x ⟧ₜ ≡ ⟦ y ⟧ₜ
-⟦ RTC rc x   ⟧ = ⟦ rFields rc ∙ x ⟧
-
+⟦ RTC rc x   ⟧ = Wrap ⟦_⟧ rc x
+⟦ t@(NeU _)  ⟧ = Emb ⊥
 
 postulate
-  -- True because Stuck is not used in the model
-  noStuck  : Sing (Stuck {a = a}) -> P
-  noStuckS : Sing (Stuck {a = a}) -> A
+  -- True for closed terms
+  noVars : VarName -> ⊥
 
 {-# TERMINATING #-}
 ⟦_⟧ₜ {a = U   } t  = t
@@ -435,10 +461,10 @@ postulate
 ⟦_⟧ₜ {a = NU _} (Left  x) = Left  ⟦ x ⟧ₜ
 ⟦_⟧ₜ {a = NU _} (Right x) = Right ⟦ x ⟧ₜ
 ⟦_⟧ₜ {a = NU _} Refl = Refl
-⟦_⟧ₜ {a = NU _} (RDC {rc = rc} args) = ⟦ args ⟧ₜ
-⟦_⟧ₜ {a = NU _} (NeNU {l = l@Stuck} _) = noStuckS (sing l)
-⟦_⟧ₜ {a = NU _} x@(NeNU {l = Lam  _} _) = x
-⟦_⟧ₜ {a = NU _} x@(NeNU {l = DLam _} _) = x
+⟦_⟧ₜ {a = NU _} (RDC args) = wrap ⟦ args ⟧ₜ
+⟦_⟧ₜ {a = NU _} f@(NeNU {l = Lam  _} _) = f
+⟦_⟧ₜ {a = NU _} f@(NeNU {l = DLam _} _) = f
+⟦_⟧ₜ {a = NU _} (NeNU {l = Stuck n} _) = exfalso (noVars n)
 
 quoteTm {a = U}       t = t
 quoteTm {a = a => a'} t = t
@@ -446,51 +472,67 @@ quoteTm {a = Pi a b}  t = t
 quoteTm {a = Top}     t = TT
 quoteTm {a = a ⊎  a'} (Left  x) = Left  (quoteTm x)
 quoteTm {a = a ⊎  a'} (Right y) = Right (quoteTm y)
-quoteTm {a = a ×  a'} (x , y) = quoteTm x , quoteTm y
+quoteTm {a = a ×  a'}   (x ,  y) = quoteTm x ,  quoteTm y
 quoteTm {a = Sigma a b} (x ,, y) = quoteTm x ,, quoteTm y
-quoteTm {a = Id x y} e with setEq (evalQuote {x = x} ∘≈ cong≈ quoteTm (propEq e) ∘≈ sym≈ (evalQuote {x = y}))
+quoteTm {a = Id x y} e with setEq (evalQuote {x = x} ∘≈ cong≈ quoteTm (propEq e) ∘≈ sym≈ evalQuote)
 ... | Refl = Refl
-quoteTm {a = RTC rc x} args = RDC (quoteTm args)
-quoteTm {a = NeU g} t = t
+quoteTm {a = RTC rc x} args = RDC (quoteTm (unwrap args))
+quoteTm {a = NeU g} ()
 
 evalQuote {a = U} = Refl
-evalQuote {a = Bot} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = Top} {x = TT} = Refl
-evalQuote {a = Top} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = a => a'} {x = NeNU {l = Lam _} _} = Refl
-evalQuote {a = a => a'} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = Pi a b} {x = NeNU {l = DLam _} _} = Refl
-evalQuote {a = Pi a b} {x = NeNU {l = l@Stuck} _} =  noStuck (sing l)
-evalQuote {a = a × a'} {x = x , y} = cong2≈ _,_ (evalQuote {a = a} {x = x}) (evalQuote {a = a'} {x = y})
-evalQuote {a = a × a'} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = a ⊎ a'} {x = Left  x} = cong≈ Left  (evalQuote {a = a}  {x = x})
-evalQuote {a = a ⊎ a'} {x = Right x} = cong≈ Right (evalQuote {a = a'} {x = x})
-evalQuote {a = a ⊎ a'} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = Sigma a b} {x = x ,, y} with evalQuote {a = a} {x = x} | evalQuote {a = b ∙ x} {x = y}
-... | r | rr = helper r Refl rr  where
+evalQuote {a = NU _} {x = NeNU {l = Stuck n} _} = exfalsoP (noVars n)
+evalQuote {a = Top}  {x = TT} = Refl
+evalQuote {a = a => a'} {x = NeNU {l = Lam  _} _} = Refl
+evalQuote {a = Pi a b}  {x = NeNU {l = DLam _} _} = Refl
+evalQuote {a = a × a'} {x = _ , _} = cong2≈ _,_ evalQuote evalQuote
+evalQuote {a = a ⊎ a'} {x = Left  _} = cong≈ Left  evalQuote
+evalQuote {a = a ⊎ a'} {x = Right _} = cong≈ Right evalQuote
+evalQuote {a = Sigma a b} {x = x ,, y} = helper Refl evalQuote evalQuote  where
   helper :
-    {x' : Tm a} -> (r' : x ≈ quoteTm ⟦ x' ⟧ₜ) ->
-    x ≈ x' ->
-    {y' y'' : Tm (b ∙ x')} -> (r'' : y' ≈ quoteTm {a = b ∙ x'} ⟦ y'' ⟧ₜ) ->
-    _≈_ {A = Tm (Sigma a b)} (x ,, y)
-      (quoteTm ⟦ x' ⟧ₜ ,, quoteTm (coe≈ (cong≈ (λ k → ⟦ b ∙ k ⟧) r') ⟦ y ⟧ₜ))
-  helper Refl e Refl = {!!}
-evalQuote {a = Sigma a b} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
+    {x' : Tm a} (e : x' ≈ x) (r' : x ≈ quoteTm ⟦ x' ⟧ₜ) ->
+    {y' : Tm (b ∙ x')} -> (y ≈ quoteTm (coe≈ (cong≈ (\k -> ⟦ b ∙ k ⟧) e) ⟦ y' ⟧ₜ)) ->
+    _≈_ {A = Tm (Sigma a b)}
+      (x ,, y)
+      (quoteTm ⟦ x' ⟧ₜ ,, quoteTm (coe≈ (cong≈ (\k -> ⟦ b ∙ k ⟧) (e ∘≈ r')) ⟦ y' ⟧ₜ))
+  helper _ Refl Refl = Refl
 evalQuote {a = Id y z} {x = Refl} = Refl
-evalQuote {a = Id y z} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = RTC rc y} {x = RDC args} = cong≈ RDC (evalQuote {x = args})
-evalQuote {a = RTC rc y} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
-evalQuote {a = NeU g} {x = NeNU {l = l@Stuck} _} = noStuck (sing l)
+evalQuote {a = RTC rc y} {x = RDC _} = cong≈ RDC evalQuote
+
+
+--------------------
+
+⟦_⟧'  : Ty -> Set
+⟦_⟧ₜ' : Tm a -> ⟦ a ⟧'
+
+⟦ U         ⟧' = Set
+⟦ Top       ⟧' = Emb T
+⟦ Bot       ⟧' = Emb ⊥
+⟦ a ⊎ a'    ⟧' = Either ⟦ a ⟧' ⟦ a' ⟧'
+⟦ a × a'    ⟧' = Pair   ⟦ a ⟧' ⟦ a' ⟧'
+⟦ a => a'   ⟧' = ⟦ a ⟧ -> ⟦ a' ⟧'
+⟦ Sigma a b ⟧' = ⟦ a ⟧ ** \x -> ⟦ b ∙ quoteTm x ⟧'
+⟦ Pi a b    ⟧' = (x : ⟦ a ⟧) -> ⟦ b ∙ quoteTm x ⟧'
+⟦ Id x y    ⟧' = ⟦ x ⟧ₜ' ≡ ⟦ y ⟧ₜ'
+⟦ RTC rc x  ⟧' = Wrap ⟦_⟧' rc x
+⟦ t@(NeU _) ⟧' = Emb ⊥
+
+{-# TERMINATING #-}
+⟦_⟧ₜ' {a = U}    t  = ⟦ t ⟧
+⟦_⟧ₜ' {a = NU _} TT = emb tt
+⟦_⟧ₜ' {a = NU _} (x ,  y) = ⟦ x ⟧ₜ' , ⟦ y ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} (_,,_ {b = b} x y) = ⟦ x ⟧ₜ ,, coe≈ (cong≈ (\k -> ⟦ b ∙ k ⟧') evalQuote) ⟦ y ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} (Left  x) = Left  ⟦ x ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} (Right x) = Right ⟦ x ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} Refl = Refl
+⟦_⟧ₜ' {a = NU _} (RDC args) = wrap ⟦ args ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} f@(NeNU {l = Lam  _} _) x = ⟦ f ∙  quoteTm x ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} f@(NeNU {l = DLam _} _) x = ⟦ f ∙∙ quoteTm x ⟧ₜ'
+⟦_⟧ₜ' {a = NU _} (NeNU {l = Stuck n} x) = exfalso (noVars n)
 
 
 
 --------------------
 
-data Bool : Set where True False : Bool
-
-_&&_ : Bool -> Bool -> Bool
-False && _ = False
-True  && a = a
 {-
 data Dec' (A : Set) : Set where
   Yes : A -> Dec' A
@@ -564,27 +606,260 @@ convTm {a = NeU l g} i t t' = convTmNU i t t'
 
 -------------------------------------
 
+_||_ : Bool -> Bool -> Bool
+True  || _ = True
+False || b = b
+
+_&&_ : Bool -> Bool -> Bool
+False && _ = False
+True  && b = b
+
+
+groupBy : (A -> A -> Bool) -> List A -> List (List A)
+groupBy f [] = []
+groupBy {A = A} f (a :: as) = h a as _::_  where
+  h : A -> List A -> (List A -> List (List A) -> B) -> B
+  h a [] c = c (a :: []) []
+  h a (b :: bs) c with f a b
+  ... | True  = h b bs \r rs -> c (a :: r) rs 
+  ... | False = c (a :: []) (h b bs _::_)
+
+foldr : (A -> B -> B) -> B -> List A -> B
+foldr c n [] = n
+foldr c n (x :: as) = c x (foldr c n as)
+
+map : (A -> B) -> List A -> List B
+map f []        = []
+map f (a :: as) = f a :: map f as 
+
+all : (A -> Bool) -> List A -> Bool
+all p as = foldr _&&_ True (map p as)
+
+filter : (A -> Bool) -> List A -> List A
+filter p [] = []
+filter p (a :: as) with p a
+... | False = filter p as
+... | True  = a :: filter p as
+
+isAlphaNumeric : Char -> Bool
+isAlphaNumeric '_' = True
+isAlphaNumeric a = primIsAlpha a || primIsDigit a
+
+isGraphic : Char -> Bool
+isGraphic '=' = True
+isGraphic '>' = True
+isGraphic c = False
+
+glueChar : Char -> Char -> Bool
+glueChar a b
+   = isAlphaNumeric a && isAlphaNumeric b
+  || isGraphic a      && isGraphic      b
+
+tokens : String -> List String
+tokens s = map primStringFromList (filter f (groupBy glueChar (primStringToList s)))  where
+  f : List Char -> Bool
+  f (' ' :: _) = False
+  f _          = True
+
+isVarToken : String -> Bool
+isVarToken s = all isAlphaNumeric (primStringToList s)
+
+testTokens : tokens "(a + bc)" ≡ ("(" :: "a" :: "+" :: "bc" :: ")" :: [])
+testTokens = Refl
+
+----------------------------------
+
+record Monad (M : Set -> Set) : Set where
+  field
+    _>>=_ : M A -> (A -> M B) -> M B
+    pure  : A -> M A
+
+open Monad {{...}}
+
+instance
+  MaybeMonad : Monad Maybe
+
+  _>>=_ {{MaybeMonad}} (Just x) f = f x
+  _>>=_ {{MaybeMonad}} Nothing  _ = Nothing
+
+  pure {{MaybeMonad}} = Just
+
+instance
+  EitherMonad : Monad (Either A)
+
+  _>>=_ {{EitherMonad}} (Right x) f = f x
+  _>>=_ {{EitherMonad}} (Left e)  _ = Left e
+
+  pure {{EitherMonad}} = Right
+
+----------------------------------
+
+TC : Set -> Set
+TC = Either String
+
+throwError : String -> TC A
+throwError = Left
+
+-------------------------------------
+
+data Doc : Set where
+  DVar : String ->     Doc
+  _$_  : Doc -> Doc -> Doc
+
+parse : String -> TC Doc
+parse s = h0 end (tokens s)  where
+
+  X = List String -> TC Doc
+
+  end : Doc -> X
+  end d [] = pure d
+  end d _  = throwError "End expected"
+
+  expect : String -> X -> X
+  expect t r (t' :: ts) with primStringEquality t' t
+  ... | True  = r ts
+  ... | False = throwError (t +++ " expected instead of " +++ t')
+  expect t _ [] = throwError (t +++ " expected instead of end")
+
+  h0 : (Doc -> X) -> X
+
+  h9 : (Doc -> X) -> X -> X
+  h9 r _ ("(" :: ts) = h0 (\b -> expect ")" (r b)) ts
+  h9 r z (t :: ts) with isVarToken t
+  ... | True  = r (DVar t) ts
+  ... | False = z (t :: ts)
+  h9 _ z ts = z ts
+
+  h8' : (Doc -> X) -> Doc -> X
+  h8' r a ts = h9 (\b -> h8' r (a $ b)) (r a) ts
+
+  h8 : (Doc -> X) -> X
+  h8 r = h9 (h8' r) \_ -> throwError "unknown token"
+
+  hn : String -> ((Doc -> X) -> X) -> (Doc -> X) -> X
+  hn t g r = g (hn' r) where
+    hn' : (Doc -> X) -> Doc -> X
+    hn' r a (t' :: ts) with primStringEquality t' t
+    ... | True = hn t g (\b -> r (DVar t $ a $ b)) ts
+    ... | False = r a (t' :: ts)
+    hn' r a ts = r a ts
+
+  h0 = hn ";"
+      (hn "="
+      (hn "."
+      (hn ":"
+      (hn ","
+      (hn "=>"
+      (hn "⊎"
+      (hn "×"
+       h8)))))))
+
+testParse : parse "f (b a × c) d" ≡ pure (DVar "f" $ (DVar "×" $ (DVar "b" $ DVar "a") $ DVar "c") $ DVar "d")
+testParse = Refl
+
+TyTm : Set
+TyTm = Ty ** \a -> Tm a
+
+convert : (x : Tm a) (y : Tm a) -> TC (x ≡ y)
+convert {a = U} U U = pure Refl
+convert x y = throwError "TODO0"
+
+----------------------------------
+
+infer : Doc -> TC TyTm
+
+check : Doc -> (a : Ty) -> TC (Tm a)
+check (DVar "Refl") (Id x y) = do
+  Refl <- convert x y
+  pure Refl
+check (DVar "," $ x $ x') (a × a') = do
+  x  <- check x  a
+  x' <- check x' a'
+  pure (x , x')
+check (DVar "," $ x $ y) (Sigma a b) = do
+  x <- check x  a
+  y <- check y (b ∙ x)
+  pure (x ,, y)
+check (DVar "." $ DVar n $ e) (a => b) = throwError "TODO1"
+check d a = do
+  a' ,, x <- infer d
+  Refl <- convert a a'
+  pure x
+
+infer (DVar "U")   = pure (U ,, U)
+infer (DVar "Top") = pure (U ,, Top)
+infer (DVar "tt")  = pure (Top ,, TT)
+infer (DVar "Bot") = pure (U ,, Bot)
+infer (DVar "×" $ a $ a') = do
+  a  <- check a  U
+  a' <- check a' U
+  pure (U ,, a × a')
+infer (DVar "⊎" $ a $ a') = do
+  a  <- check a  U
+  a' <- check a' U
+  pure (U ,, a ⊎ a')
+infer (DVar "=>" $ a $ a') = do
+  a  <- check a  U
+  a' <- check a' U
+  pure (U ,, a => a')
+infer (DVar "Pi" $ a $ b) = do
+  a <- check a U
+  b <- check b (a => U)
+  pure (U ,, Pi a b)
+infer (DVar "Sigma" $ a $ b) = do
+  a <- check a U
+  b <- check b (a => U)
+  pure (U ,, Sigma a b)
+infer (DVar "Id" $ x $ y) = do
+  a ,, x <- infer x
+  y <- check y a
+  pure (U ,, Id x y)
+infer _ = throwError "infer"
+
+checkLHS : Doc -> (a : Ty) -> TC (LHS a)
+checkLHS (DVar "." $ DVar n $ t) (a => a') = do
+  throwError "TODO2"
+checkLHS d a = throwError "checkLHS"
+
+inferTop : Doc -> TC TyTm
+inferTop (DVar ";" $ (DVar "=" $ (DVar ":" $ DVar n $ a) $ t) $ ds) = do
+  a <- check a U
+  t <- checkLHS t a
+  -- TODO: store the definition
+  inferTop ds
+inferTop d = infer d
+
+
+tc : String -> TC TyTm
+tc s = parse s >>= inferTop
+
+-- te = tc "Pi Top (Lam x x)"
+
+
+test = tc "f : Top => U = x. Top; Pi Top f"
+
+-------------------------------------
+
 parens : String -> String
 parens a = "(" +++ a +++ ")"
 
-data Doc : Set where
-  DVar : String ->        Doc
-  DLam : String -> Doc -> Doc
-  _$_  : Doc -> Doc ->    Doc
+pattern SLam n d = DVar "λ" $ DVar n $ d
 
 showDoc' : Nat -> Nat -> Doc -> String
 showDoc' _ _ (DVar n)   = n
-showDoc' p 1 (DLam n d) = parens ("\\" +++ n +++ " -> " +++ showDoc' 0 0 d)
-showDoc' p q (DLam n d) =         "\\" +++ n +++ " -> " +++ showDoc' 0 q d
+showDoc' p 1 (SLam n d) = parens ("λ" +++ n +++ " -> " +++ showDoc' 0 0 d)
+showDoc' p q (SLam n d) =         "λ" +++ n +++ " -> " +++ showDoc' 0 q d
 showDoc' 1 q (a $ b)    = parens (showDoc' 0 1 a +++ " " +++ showDoc' 1 0 b)
 showDoc' p q (a $ b)    =         showDoc' p 1 a +++ " " +++ showDoc' 1 q b
 
 showDoc = showDoc' Z Z
 
-testDoc : showDoc (DLam "a" (DVar "a" $ DVar "b") $ (DVar "c" $ DVar "e") $ DVar "d" $ DLam "a" (DLam "b" (DVar "a")))
-        ≈ "(\\a -> a b) (c e) d \\a -> \\b -> a"
+testDoc : showDoc (SLam "a" (DVar "a" $ DVar "b") $ (DVar "c" $ DVar "e") $ DVar "d" $ SLam "a" (SLam "b" (DVar "a")))
+        ≈ "(λa -> a b) (c e) d λa -> λb -> a"
 testDoc = Refl
 
+
+-------------------------------------
 
 printTm    : Tm a -> Doc
 printSpine : Spine a -> Doc
@@ -592,9 +867,6 @@ printSpine : Spine a -> Doc
 printSpine (Head x) = DVar (name x)
 printSpine (s $  x) = printSpine s $ printTm x
 printSpine (s $$ x) = printSpine s $ printTm x
-
-var : String -> Tm a
-var n = Ne (CHead (named n Stuck))
 
 -- {-# TERMINATING #-}
 printTm {a = U} U           = DVar "U"
@@ -633,10 +905,16 @@ betaPi = Refl
 
 
 const : Tm (a' => a => a')
-const = def "const" (Lam \x -> Lam' \_ -> RHS x)
+const = "const" := Lam' \x -> Lam' \_ -> RHS x
 
 pi : (A : Ty) -> (Tm A -> Ty) -> Ty
 pi A B = Pi A (lam "piLam" \a -> B a)
+
+VarName = String
+
+var : String -> Tm a
+var n = n := NoRHS (Stuck n)
+
 
 module _ where
 
@@ -651,21 +929,20 @@ module _ where
   True' = RDC (Right TT)
 
   and : Tm (Bool' => Bool' => Bool')
-  and = def "and" (Lam \a -> Lam' \b -> elimR a \a _ -> elim⊎ a
+  and = "and" := Lam' \a -> Lam' \b -> elimR a \a _ -> elim⊎ a
        (\_ _ -> RHS False')
-       \_ _ -> RHS b
-     )
+       (\_ _ -> RHS b)
 
-  mkBool : Bool -> Tm Bool'
-  mkBool False = False'
-  mkBool True  = True'
+  mkBool : Bool -> ⟦ Bool' ⟧
+  mkBool False = wrap (Left  (emb tt))
+  mkBool True  = wrap (Right (emb tt))
 
-  getBool : Either (Emb T) (Emb T) -> Bool
-  getBool (Left  _) = False
-  getBool (Right _) = True
+  getBool : ⟦ Bool' ⟧' -> Bool
+  getBool (wrap (Left  _)) = False
+  getBool (wrap (Right _)) = True
 
   andM : Bool -> Bool -> Bool
-  andM a b = getBool ⟦ and ∙ mkBool a ∙ mkBool b ⟧ₜ
+  andM a b = getBool (⟦ and ⟧ₜ' (mkBool a) (mkBool b))
 
   andTest : andM True True ≡ True
   andTest = Refl
@@ -684,29 +961,24 @@ module _ where
   Zero = RDC (Left TT)
 
   Suc : Tm (Nat' => Nat')
-  Suc = def "Suc" (Lam \n -> RHS (RDC (Right n)))
+  Suc = "Suc" := Lam' \n -> RHS (RDC (Right n))
 
   {-# TERMINATING #-}
   add : Tm (Nat' => Nat' => Nat')
-  add = def "add" (Lam \n -> Lam' \m -> elimR n \n _ -> elim⊎ n
+  add = "add" := Lam' \n -> Lam' \m -> elimR n \n _ -> elim⊎ n
       (\_ _ -> RHS m                     )
       (\k _ -> RHS (Suc ∙ (add ∙ k ∙ m)) )
-    )
 
-  mkNat : Nat -> Tm Nat'
-  mkNat Z = Zero
-  mkNat (S n) = Suc ∙ (mkNat n)
+  mkNat : Nat -> ⟦ Nat' ⟧
+  mkNat Z     = wrap (Left (emb tt))
+  mkNat (S n) = wrap (Right (mkNat n))
 
-  {-# NON_TERMINATING #-}
-  X : Set
-  X = Either (Emb T) X
-
-  getNat : ⟦ Nat' ⟧ -> Nat
-  getNat (Left _) = Z
-  getNat (Right x) = S (getNat x)
+  getNat : ⟦ Nat' ⟧' -> Nat
+  getNat (wrap (Left  _)) = Z
+  getNat (wrap (Right x)) = S (getNat x)
 
   addM : Nat -> Nat -> Nat
-  addM a b = getNat ⟦ add ∙ mkNat a ∙ mkNat b ⟧ₜ
+  addM a b = getNat (⟦ add ⟧ₜ' (mkNat a) (mkNat b))
 
   testAdd : addM (S (S Z)) (S (S Z)) ≡  S (S (S (S Z)))
   testAdd = Refl
@@ -732,11 +1004,11 @@ module _ where
      ⊎ Sigma Nat' (lam "Fin3" \n -> Id p (Suc ∙ n) × Fin' ∙ n)
     ))
 
-  Fin' = def "Fin" (Lam \n -> RHS (RTC FinDesc n))
+  Fin' = "Fin" := Lam' \n -> RHS (RTC FinDesc n)
 
   testQuote' : showTm (Pi Nat' (lam "f" \n -> Fin' ∙ (add ∙ (Suc ∙ n) ∙ n)))
                  ≈ "Pi (Nat tt) f" 
---                 ≈ "Pi (Nat tt) \\v -> Fin (MkNat (Right (add v v)))"
+--                 ≈ "Pi (Nat tt) λv -> Fin (MkNat (Right (add v v)))"
   testQuote' = Refl
 
   ss = showTm (Pi Nat' (lam "f" (λ n → Fin' ∙ (add ∙ (Suc ∙ n) ∙ n))))
@@ -749,16 +1021,16 @@ module _ where
     )
 
   Sigma'' : Tm (Pi U (lam "SL" \a -> (a => U) => U))
-  Sigma'' = def "Sigma" (DLam \a -> Lam' \b -> RHS (RTC SigmaDesc (a ,, b)))
+  Sigma'' = "Sigma" := DLam' \a -> Lam' \b -> RHS (RTC SigmaDesc (a ,, b))
 
   Pair' : Tm (pi U \a -> pi (a => U) \b -> pi (a) \x -> b ∙ x => (Sigma'' ∙∙ a ∙ b))
-  Pair' = def "Pair" (DLam \a -> DLam' \b -> DLam' \x -> Lam' \y -> RHS (RDC (x ,, y)))
+  Pair' = "Pair" := DLam' \a -> DLam' \b -> DLam' \x -> Lam' \y -> RHS (RDC (x ,, y))
 
   Fst' : Tm (pi U \a -> pi (a => U) \b -> (Sigma'' ∙∙ a ∙ b) => a)
-  Fst' = def "fst" (DLam \a -> DLam' \b -> Lam' \p -> elimR p \p _ -> elimSigma p \a _ _ -> RHS a)
+  Fst' = "fst" := DLam' \a -> DLam' \b -> Lam' \p -> elimR p \p _ -> elimSigma p \a _ _ -> RHS a
 
   Snd' : Tm (pi U \a -> pi (a => U) \b -> pi ((Sigma'' ∙∙ a ∙ b)) \t -> (b ∙ (Fst' ∙∙ a ∙∙ b ∙ t)))
-  Snd' = def "snd" (DLam \A -> DLam' \B -> DLam' \p -> elimR p \{p Refl -> elimSigma p \{_ b Refl -> RHS b}})
+  Snd' = "snd" := DLam' \A -> DLam' \B -> DLam' \p -> elimR p \{p Refl -> elimSigma p \{_ b Refl -> RHS b}}
 
   betaFst : ∀ {a b} {x : Tm (a)} {y : Tm (b ∙ x)} -> Fst' ∙∙ a ∙∙ b ∙ (Pair' ∙∙ a ∙∙ b ∙∙ x ∙ y) ≈ x
   betaFst = Refl
@@ -779,8 +1051,7 @@ module _ where
 
   etaSigma : Tm (pi U \a -> pi (a => U) \b -> pi ((Sigma'' ∙∙ a ∙ b)) \t ->
      Id t (Pair' ∙∙ a ∙∙ b ∙∙ (Fst' ∙∙ a ∙∙ b ∙ t) ∙ (Snd' ∙∙ a ∙∙ b ∙∙ t)))
-  etaSigma = def "etaSigma" (DLam \a -> DLam' \b -> DLam' \t ->
+  etaSigma = "etaSigma" := DLam' \a -> DLam' \b -> DLam' \t ->
     elimR t \{t' Refl -> elimSigma t' \{x y Refl -> RHS Refl}}
-    )
 
 
