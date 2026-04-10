@@ -135,8 +135,8 @@ postulate
 
 {-# REWRITE coe~Refl #-}
 opaque
-  coh : {a : A} {e : A ~ B} -> coe~ e a ~ a
-  coh {e = Refl} = Refl
+  coh~ : {a : A} {e : A ~ B} -> coe~ e a ~ a
+  coh~ {e = Refl} = Refl
 
 -----------------------
 
@@ -146,8 +146,14 @@ opaque
   inhomog : {a a' : A} -> a ≈ a' -> a ~ a'
   inhomog Refl = Refl
 
+eqt : {a : A}{b : B} -> a ~ b -> A ≈ B
+eqt Refl = Refl
+
 coe≈ : A ≈ B → A → B
 coe≈ e = coe~ (inhomog e)
+
+coh≈ : {a : A} {e : A ≈ B} -> coe≈ e a ~ a
+coh≈ {e = Refl} = Refl
 
 cong≈~ : {B : A -> Set} {a a' : A} -> (f : (a : A) -> B a) -> a ≈ a' -> f a ~ f a'
 cong≈~ _ Refl = Refl
@@ -160,6 +166,12 @@ subst≈ P x x₁ = coe≈ (homog (cong≈~ P x)) x₁
 
 subst≈' : (P : A -> Prop) -> {a a' : A} -> a ≈ a' -> P a -> P a'
 subst≈' _ Refl x₁ = x₁
+
+subst~' : {a : A}{b : B}(P : A -> Prop) -> a ~ b -> (eq : B ≈ A) -> P a -> P (coe≈ (eq) b)
+subst~' _ Refl Refl x₁ = x₁
+
+subst~ : {a : A}{b : B}(P : A -> Set) -> a ~ b -> (eq : B ≈ A) -> P a -> P (coe≈ (eq) b)
+subst~ {b = b} P x eq x₁ = subst≈ P (sym≈ (homog (coh≈ {e = eq} ∘~ sym~ x))) x₁
 ---------------------
 
 cong≈' : {a a' : A} -> (f : A -> B) -> a ≈ a' -> f a ≈ f a'
@@ -426,6 +438,7 @@ either' = "either" := (Lam' (λ f → NoRHS (Lam (λ g → NoRHS (Lam (λ x → 
 
 proj : ∀ {ps} -> Tm (RTC rc ps => rFields rc ∙ ps)
 proj {rc = rc} = ("proj" +++ name rc) := Lam' \t -> elimR t \t _ -> RHS t
+
 {-
 proj' : Tm (Pi (rParams rc) (lam "projLam" \ps -> RTC rc ps => rFields rc ∙ ps))
 proj' {rc = rc} = def ("proj" +++ name rc)  (DLam' \_ -> Lam' \t -> elimR t \t _ -> RHS t)
@@ -553,12 +566,13 @@ postulate
 data Dec' (A : Set) : Set where
   Yes : A -> Dec' A
   No  :      Dec' A
-
+{-
 Tm~  : {a : Ty} -> Tm a -> {b : Ty} -> Tm b -> Set
 data TmNU~ : {a : TyNU} -> TmNU a -> {b : TyNU} -> TmNU b -> Set
 -- convertible types
 data Ty~ : Ty -> Ty -> Set where
   U : Ty~ U U
+  Bot' : Ty~ Bot Bot
   Top' : Ty~ Top Top
   Arr : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a => b) (a' => b')
   Tuple : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a × b) (a' × b')
@@ -567,6 +581,7 @@ data Ty~ : Ty -> Ty -> Set where
   Sigma' : {a a' : _}{b : _}{b' : _} -> Ty~ a a' -> TmNU~ b b' -> Ty~ (Sigma a b) (Sigma a' b')
   Id' : {t : Ty}{a b a' b' : Tm t} -> Tm~ a a' -> Tm~ b b' -> Ty~ (Id a b) (Id a' b')
   RTC' : {desc desc' : _} -> (eq : desc' ≈ desc) -> {p : Tm (rParams desc)}{p' : Tm (rParams desc')} -> Tm~ p p' -> Ty~ (RTC desc p) (RTC desc' p')
+  NeU' : {s : _}{l : _}{g : Glued s l} -> Ty~ (NeU g) (NeU g)
 
 Tm~ {a = U} t {b = U} t' = Ty~ t t'
 Tm~ {a = NU _} t {b = NU _} t' = TmNU~ t t'
@@ -577,18 +592,49 @@ coeTm : Tm~ a a' -> Tm a -> Tm a'
 
 data TmNU~ where
   EtaTT : ∀ {t t'} -> TmNU~ {a = Top'} t {b = Top'} t'
+  EtaBot : ∀ {t t'} -> TmNU~ {a = Bot'} t {b = Bot'} t'
   Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× ∙ t) (fst× ∙ t') -> Tm~ (snd× ∙ t) (snd× ∙ t') -> TmNU~ t t'
+  Eta⊎ : {a b : _}{t t' : Tm (a ⊎ b)} -> ({c : _}(f : Tm (a => c))(g : Tm (b => c)) -> Tm~ (either' ∙ f ∙ g ∙ t ) (either' ∙ f ∙ g ∙ t')) -> TmNU~ t t'
   EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {t t' : Tm (rFields h ∙ g )} -> Tm~ t t' -> TmNU~ (RDC {rc = h} t) (RDC {rc = h} t')
   EtaArr : {a : _}{b : _} -> {arr arr' : TmNU (a =>' b)} -> ((x : _) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> TmNU~ arr arr'
   EtaSigma : {a : _}{b : _}{b' : _}{sig : Tm (Sigma a b)}{sig' : Tm (Sigma a b')} -> (e : Tm~ (fstΣ ∙ sig) (fstΣ ∙ sig')) -> (eq : Ty~ (b ∙ (fstΣ ∙ sig)) (b' ∙ (fstΣ ∙ sig'))) -> Tm~ (sndΣ ∙∙ sig) (sndΣ ∙∙ sig') -> TmNU~ sig sig'
   EtaPi : {a : _}{b : _}{b' : _}{pi : Tm (Pi a b)}{pi' : Tm (Pi a b')} -> (f : (x : Tm a) -> Tm~ (b ∙ x) (b' ∙ x)) -> ((x : Tm a) -> Tm~ (pi ∙∙ x) (pi' ∙∙ x)) -> TmNU~ pi pi'
   EtaId : {t : _}{a b : Tm t}{id id' : Tm (Id a b)} -> TmNU~ id id' -- Use J instead?
+--  EtaVar : {s : _}{n : _}{g g' : Glued s (Stuck n)} -> TmNU~ (NeNU g) (NeNU g')
   -- ...
 
+reflTm~ : {a : Ty}(a' : Tm a) -> Tm~ a' a'
+reflTm~ {U} U = U
+reflTm~ {U} Top = Top'
+reflTm~ {U} Bot = Bot'
+reflTm~ {U} (x => x₁) = Arr (reflTm~ x) (reflTm~ x₁)
+reflTm~ {U} (x × x₁) = Tuple (reflTm~ x) (reflTm~ x₁)
+reflTm~ {U} (x ⊎ x₁) = Either' (reflTm~ x) (reflTm~ x₁)
+reflTm~ {U} (Pi a x) = Pi' (reflTm~ a) (reflTm~ x)
+reflTm~ {U} (Sigma a x) = Sigma' (reflTm~ a) (reflTm~ x)
+reflTm~ {U} (Id x x₁) = Id' (reflTm~ x) (reflTm~ x₁)
+reflTm~ {U} (RTC rc x) = RTC' Refl (reflTm~ x)
+reflTm~ {U} (NeU x) = NeU'
+reflTm~ {Top} a' = EtaTT
+reflTm~ {Bot} a' = EtaBot
+reflTm~ {x => x₁} a' = EtaArr (λ x₂ → reflTm~ (a' ∙ x₂))
+reflTm~ {x × x₁} a' = Eta× (reflTm~ (fst× ∙ a')) (reflTm~ (snd× ∙ a'))
+reflTm~ {x ⊎ x₁} a' = Eta⊎ (λ f g → reflTm~ (either' ∙ f ∙ g ∙ a'))
+reflTm~ {Pi a x} a' = EtaPi (λ k → reflTm~ (x ∙ k)) λ x₁ → reflTm~ (a' ∙∙ x₁)
+reflTm~ {Sigma a x} a' = EtaSigma (reflTm~ (fstΣ ∙ a')) (reflTm~ (x ∙ (fstΣ ∙ a'))) (reflTm~ (sndΣ ∙∙ a'))
+reflTm~ {Id x x₁} a' = EtaId
+reflTm~ {RTC rc x} (RDC args) = EtaRDC (reflTm~ args)
+reflTm~ {RTC rc x} (NeNU {l = Stuck x₂} x₁) = {!  !}
+reflTm~ {NeU x} (NeNU {s = s} {l = Stuck x₂} x₁) = {! EtaVar !}
+
+Tm≡Ty : {t t' : Ty} -> Tm t ≡ Tm t' -> t ≡ t'
+Tm≡Ty {t} {t'} x = TODO
 
 inhomtoTy~ : {t t' : Ty}{a : Tm t}{b : Tm t'} -> a ~ b -> Ty~ t t'
 Ty~Toeq : {t t' : Ty} -> Ty~ t t' -> t ≡ t'
-inhomtoTy~ x = {!  !}
+inhomtoTy~ {t} x with Tm≡Ty (setEq (eqt x))
+inhomtoTy~ {t} x | Refl = reflTm~ t
+
 Ty~Toeq U = Refl
 Ty~Toeq Top' = Refl
 Ty~Toeq (Arr x x₁) with (Ty~Toeq x) | (Ty~Toeq x₁)
@@ -600,10 +646,15 @@ Ty~Toeq (Pi' x (EtaArr x₁)) | Refl = {!  !}
 Ty~Toeq (Sigma' x x₁) = {!  !}
 Ty~Toeq (Id' x x₁) = {!  !}
 Ty~Toeq (RTC' eq x) = {!  !}
-Ty~Toeq (Either' x x₁) = {!  !}
+Ty~Toeq (Either' x x₁) with Ty~Toeq x | Ty~Toeq x₁
+... | Refl | Refl = Refl
+Ty~Toeq Bot' = Refl
+Ty~Toeq NeU' = Refl
 
 
 symTm~ {U} {U} {U} {U} x = x
+symTm~ {U} {U} {Bot} {Bot} x = x
+symTm~ {U} {U} {NeU y} {NeU z} NeU' = NeU'
 symTm~ {U} {U} {Top} {Top} x = x
 symTm~ {U} {U} {x₁ => x₃} {x₂ => x₄} (Arr x x₅) = Arr (symTm~ x) (symTm~ x₅)
 symTm~ {U} {U} {x₁ × x₃} {x₂ × x₄} (Tuple x x₅) = Tuple (symTm~ x) (symTm~ x₅)
@@ -620,6 +671,8 @@ symTm~ {Pi _ _} {Pi _ _} {a} {b} (EtaPi f x) = EtaPi (λ x₁ → symTm~ (f x₁
 symTm~ {Sigma _ _} {Sigma _ _} {a} {b} (EtaSigma e eq x) = EtaSigma (symTm~ e) (symTm~ eq) (symTm~ x)
 symTm~ {Id _ _} {Id _ _} {a} {b} EtaId = EtaId
 symTm~ {RTC _ _} {RTC _ _} {a} {b} (EtaRDC x) = EtaRDC (symTm~ x)
+symTm~ {Bot} {Bot} {a} {b} EtaBot = EtaBot
+symTm~ {x ⊎ x₁} {x₂ ⊎ x₃} (Eta⊎ x₄) = Eta⊎ (λ f g → symTm~ (x₄ f g))
 
 
 {-# TERMINATING #-}
@@ -629,45 +682,29 @@ coeM {a = a} (EtaArr x) x₁ with x a
 
 
 coeApp : {t : Ty}{b : Tm (t => U)}(a a' : Tm t) -> Tm~ a a' -> Tm (b ∙ a) -> Tm (b ∙ a')
-coeApp {U} a a' U x₁ = x₁
-coeApp {U} a a' Top' x₁ = x₁
-coeApp {U} a a' (Arr x x₂) x₁ = {!  !}
-coeApp {U} a a' (Tuple x x₂) x₁ = {!  !}
-coeApp {U} a a' (Pi' x x₂) x₁ = {!  !}
-coeApp {U} a a' (Sigma' x x₂) x₁ = {!  !}
-coeApp {U} a a' (Id' x x₂) x₁ = {!  !}
-coeApp {U} a a' (RTC' eq x) x₁ = {!  !}
-coeApp {U} a a' (Either' y y₁) k = {!  !}
-coeApp {NU x₂} a a' x x₁ = {!  !}
+coeApp = TODO
 
 coeTm {U} U x₁ = x₁
 coeTm {Top} Top' x₁ = x₁
+coeTm {Bot} Bot' y = y
 coeTm {x₂ => x₃} (Arr x x₄) l = lam "" λ x₁ → coeTm x₄ (l ∙ (coeTm (symTm~ x) x₁))
 coeTm {x₂ × x₃} (Tuple x x₄) y = coeTm x (fst× ∙ y ) , coeTm x₄ (snd× ∙ y)
 coeTm {Pi a x₂} (Pi' {b' = b'} x (EtaArr f)) x₁ = NeNU (CHead (named "" (DLam (λ i → RHS (coeM {b = x₂} {b' = b'} {a = i} (EtaArr f) (x₁ ∙∙ i))))))
 coeTm {Sigma a x₂} (Sigma' {b' = b'} x (EtaArr f)) x₁ = fstΣ ∙ x₁ ,, coeM {_} {x₂} {b'} {fstΣ ∙ x₁} (EtaArr f) (sndΣ ∙∙ x₁)
-coeTm {Id x₂ x₃} (Id' x x₄) r = TODO
+coeTm {Id x₂ x₃} (Id' x x₄) r with elimId r (λ {x₁ → RHS {! subst~ ? x₁ (eqt x₁) ?  !}})
+... | RHS x₁ = x₁
+... | NoRHS (Stuck x₁) = {!  !}
 coeTm {a ⊎ b} (Either' y y₁) z = either' ∙ lam "f" (λ x → Left (coeTm y x)) ∙ lam "g" (λ x → Right (coeTm y₁ x)) ∙ z
 coeTm {RTC rc x₂} (RTC' eq x) y with setEq eq
 ... | Refl = RDC (coeApp {b = rc .unnamed .UnnamedRDesc.rFields} _ _ x (proj ∙ y))
-
+coeTm {NeU _} NeU' x = x
+-}
 postulate decString : (str str' : String) -> Dec' (str ≡ str')
+{-
 {-# TERMINATING #-}
 convTy  : Nat -> (a a' : Ty) -> Dec' (Ty~ a a')
 convTmNU : ∀ {a a'} -> Nat -> (t : TmNU a)(t' : TmNU a') -> Dec' (TmNU~ t t')
 convTm  : Nat -> (t : Tm  a)(t' : Tm a') -> Dec' (Tm~ t t')
-
-decUnnamedRDesc : (rc rc' : UnnamedRDesc) -> Dec' (rc ≡ rc')
-decUnnamedRDesc (RD rParams₁ rFields₁) (RD rParams₂ rFields₂) with convTy 0 rParams₁ rParams₂
-... | prms = {!  !}
-
-postulate decDesc : (rc rc' : RDesc) -> Dec' (rc ≡ rc')
-{-
-decDesc (named name₁ unnamed₁) (named name₂ unnamed₂) with decString name₁ name₂ | decUnnamedRDesc unnamed₁ unnamed₂
-... | No | _ = No
-... | Yes _ | No = No
-... | Yes Refl | Yes Refl = Yes Refl
--}
 
 convTy x U U = Yes U
 convTy i Top Top = Yes Top'
@@ -694,10 +731,15 @@ convTy i (Sigma a x) (Sigma a' x') with convTy i a a'
 ... | Yes x₂ = Yes (Sigma' x₁ x₂)
 ... | No = No
 convTy i (Id x x₁) (Id x₂ x₃) with convTm i x x₂ | convTm i x₁ x₃
-... | Yes x₄ | Yes x₅ = Yes TODO
+... | Yes x₄ | Yes x₅ = Yes {! Id' {?} ? ? !}
 ... | Yes x₄ | No = No
 ... | No | bq = No
-convTy i (RTC rc x) (RTC rc₁ x₁) = {!  !}
+convTy i (RTC rc x) (RTC rc₁ x₁) with decString (name rc) (name rc₁)
+... | No = No
+... | Yes eq with setEq (uniqueNames {_} {rc} {rc₁} (propEq eq))
+... | Refl with convTm i x x₁
+... | Yes x₂ = Yes (RTC' Refl x₂)
+... | No = No
 convTy i (NU (NeU' x)) (NU (NeU' y)) = TODO --Spline conversion
 convTy _ _ _ = No
 
@@ -722,6 +764,91 @@ convTm {a = U} {a' = U} i t t' = convTy i t t'
 convTm {a = NU _} {a' = NU _} i t t' = convTmNU i t t'
 convTm {a = _} {a' = _} _ _ _ = No
 
+-}
+
+convTm  : Nat -> (t t' : _ ** Tm) -> Dec' (t ≡ t')
+convTm x (U ,, U) (U ,, U) = Yes Refl
+convTm x (U ,, Top) (U ,, Top) = Yes Refl
+convTm x (U ,, Bot) (U ,, Bot) = Yes Refl
+convTm x (U ,, x₁ => x₃) (U ,, x₂ => x₄) with convTm x (U ,, x₁) (U ,, x₂) | convTm x (U ,, x₃) (U ,, x₄)
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes x₅ | No = No
+... | No | bq = No
+convTm x (U ,, x₁ × x₃) (U ,, x₂ × x₄) with convTm x (U ,, x₁) (U ,, x₂) | convTm x (U ,, x₃) (U ,, x₄)
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes x₅ | No = No
+... | No | bq = No
+convTm x (U ,, (x₁ ⊎ x₃)) (U ,, (x₂ ⊎ x₄)) with convTm x (U ,, x₁) (U ,, x₂) | convTm x (U ,, x₃) (U ,, x₄)
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes x₅ | No = No
+... | No | bq = No
+convTm x (U ,, Pi a x₁) (U ,, Pi a₁ x₂) with convTm x (U ,, a) (U ,, a₁)
+... | No = No
+... | Yes Refl with convTm x (a => U ,, x₁) (a => U ,, x₂)
+... | Yes Refl = Yes Refl
+... | No = No
+convTm x (U ,, Sigma a x₁) (U ,, Sigma a' x') with convTm x (U ,, a) (U ,, a')
+... | No = No
+... | Yes Refl with convTm x (a => U ,, x₁) (a => U ,, x')
+... | Yes Refl = Yes Refl
+... | No = No
+convTm x (U ,, Id x₁ x₃) (U ,, Id x₂ x₄) with convTm x (_ ,, x₁) (_ ,, x₂) | convTm x (_ ,, x₃) (_ ,, x₄)
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes x₅ | No = No
+... | No | bq = No
+convTm x (U ,, RTC rc x₁) (U ,, RTC rc₁ x₂) with decString (name rc) (name rc₁)
+... | No = No
+... | Yes eq with setEq (uniqueNames {_} {rc} {rc₁} (propEq eq))
+... | Refl with convTm x (_ ,, x₁) (_ ,, x₂)
+... | Yes Refl = Yes Refl
+... | No = No
+convTm x (U ,, NeU x₁) (U ,, NeU x₂) = {!  !}
+convTm x (U ,, _) (U ,, _) = No
+convTm x (NU x₁ ,, TT) (NU x₂ ,, TT) = Yes Refl
+convTm x (NU x₁ ,, x₃ , x₄) (NU x₂ ,, x₅ , x₆) with convTm x (_ ,, x₃) (_ ,, x₅) | convTm x (_ ,, x₄) (_ ,, x₆)
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes x₁ | No = No
+... | No | bq = No
+convTm x (NU x₁ ,, (_,,_ x₃  x₄)) (NU x₂ ,, x₅ ,, x₆) with convTm x (_ ,, x₃) (_ ,, x₅)
+... | No = No
+convTm x (NU (Sigma' _ b) ,, x₃ ,, x₄) (NU (Sigma' _ b') ,, x₅ ,, x₆) | Yes Refl with convTm x (_ ,, x₄) (_ ,, x₆) | convTm x (_ ,, b) (_ ,, b')
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes y | No = No
+... | No | _ = No
+convTm x ((_ ⊎ a') ,, Left x₃) ((_ ⊎ a'') ,, Left x₄) with convTm x (_ ,, x₃) (_ ,, x₄) | convTm x (_ ,, a') (_ ,, a'')
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes Refl | No = No
+... | No | _ = No
+convTm x ((a' ⊎ _) ,, Right x₃) ((a'' ⊎ _) ,, Right x₄) with convTm x (_ ,, x₃) (_ ,, x₄) | convTm x (_ ,, a') (_ ,, a'')
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes Refl | No = No
+... | No | _ = No
+convTm x ((Id a b) ,, Refl) ((Id a' b') ,, Refl) with convTm x (_ ,, a) (_ ,, a') | convTm x (_ ,, b) (_ ,, b')
+... | Yes Refl | Yes Refl = Yes Refl
+... | Yes x₁ | No = No
+... | No | bq = No
+convTm x (RTC rc y ,, RDC args) (NU (RTC' rc' y') ,, RDC args₁) with decString (name rc) (name rc')
+... | No = No
+... | Yes x₁ with setEq (uniqueNames {_} {rc} {rc'} (propEq x₁))
+... | Refl with convTm x (_ ,, y) (_ ,, y')
+... | No = No
+... | Yes Refl with convTm x (_ ,, args) (_ ,, args₁)
+... | Yes Refl = Yes Refl
+... | No = No
+convTm x (Top ,, NeNU x₃) (Top ,, NeNU x₄) = No
+convTm x (Bot ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (x₁ => x₅ ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (x₁ × x₅ ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x ((x₁ ⊎ x₅) ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (Pi a x₁ ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (Sigma a x₁ ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (Id x₁ x₅ ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (RTC rc x₁ ,, NeNU x₃) (NU x₂ ,, NeNU x₄) = No
+convTm x (NeU x₁ ,, NeNU x₃) (NeU x₂ ,, NeNU x₄) = No
+convTm x (NU x₁ ,, _) (NU x₂ ,, _) = No
+convTm x (U ,, t) (NU x₁ ,, t') = No
+convTm x (NU x₁ ,, t) (U ,, t') = No
+
 -------------------------------------
 
 _||_ : Bool -> Bool -> Bool
@@ -739,7 +866,7 @@ groupBy {A = A} f (a :: as) = h a as _::_  where
   h : A -> List A -> (List A -> List (List A) -> B) -> B
   h a [] c = c (a :: []) []
   h a (b :: bs) c with f a b
-  ... | True  = h b bs \r rs -> c (a :: r) rs 
+  ... | True  = h b bs \r rs -> c (a :: r) rs
   ... | False = c (a :: []) (h b bs _::_)
 
 foldr : (A -> B -> B) -> B -> List A -> B
