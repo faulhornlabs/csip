@@ -9,7 +9,7 @@ Try as
 -}
 
 
-{-# OPTIONS --type-in-type --rewriting --prop --guardedness --with-K #-}
+{-# OPTIONS --type-in-type --rewriting --prop #-}
 
 open import Agda.Builtin.Bool using (Bool) renaming (true to True; false to False)
 open import Agda.Builtin.Char using (Char; primIsLower; primIsDigit; primIsAlpha; primIsSpace; primCharEquality; primCharToNat)
@@ -17,13 +17,13 @@ open import Agda.Builtin.Char.Properties using (primCharToNatInjective)
 open import Agda.Builtin.String.Properties using (primStringToListInjective)
 open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe) renaming (just to Just; nothing to Nothing)
-open import Agda.Builtin.String using (String; primStringAppend; primStringToList; primStringFromList; primStringEquality)
+open import Agda.Builtin.String using (String; primStringAppend; primStringToList; primStringFromList; primStringEquality; primShowNat)
 open import Agda.Builtin.Nat using (Nat; _<_; _==_) renaming (suc to S; zero to Z)
-open import Agda.Builtin.Coinduction
+--open import Agda.Builtin.Coinduction
 open import Agda.Builtin.Unit renaming (⊤ to Unit)
 open import Agda.Builtin.IO using (IO)
 open import Agda.Builtin.TrustMe using (primTrustMe)
-import Agda.Builtin.Equality as Eq
+open import Agda.Builtin.Equality renaming (_≡_ to Eq; refl to Refl)
 
 -------------------
 
@@ -168,8 +168,9 @@ cong2≈ _ Refl Refl = Refl
 
 ------------------
 
-data _≡_ {A : Set} (a : A) : A -> Set where
-  Refl : a ≡ a
+
+_≡_ : {A : Set} (a : A) -> A -> Set
+_≡_ = Eq
 
 propEq : {a a' : A} -> a ≡ a' -> a ≈ a'
 propEq Refl = Refl
@@ -189,8 +190,8 @@ cong≡ f Refl = Refl
 cong2≡ : {a a' : A} {b b' : B} -> (f : A -> B -> C) -> a ≡ a' -> b ≡ b' -> f a b ≡ f a' b'
 cong2≡ _ Refl Refl = Refl
 
-eq : {a a' : A} -> Eq._≡_ a a' -> a ≡ a'
-eq Eq.refl = Refl
+coe≡ : A ≡ B → A → B
+coe≡ Refl a = a
 
 -------------------
 
@@ -282,7 +283,7 @@ data Dec (A : Set) : Set where
   No  :      Dec A
 
 decString : (c c' : String) -> Dec (c ≡ c')
-decString c c' = if primStringEquality c c' then Yes (eq primTrustMe) else No
+decString c c' = if primStringEquality c c' then Yes (primTrustMe) else No
 
 -----------
 
@@ -298,7 +299,7 @@ nameEquality : Name -> Name -> Bool
 nameEquality n m = nameId n == nameId m
 
 decName : (c c' : Name) -> Dec (c ≡ c')
-decName c c' = if nameEquality c c' then Yes (eq primTrustMe) else No
+decName c c' = if nameEquality c c' then Yes (primTrustMe) else No
 
 
 ----------------------------------
@@ -522,7 +523,7 @@ elimSigma :
 elimSigma (x ,, y) f = f x y Refl
 elimSigma (NeNU {l = Stuck n} _) f = NoRHS (Stuck n)
 
-elimR : ∀ {ps} ->
+elimR : ∀ {rc ps a} ->
   (tm : Tm (RTC rc ps)) ->
   ((args : Tm (rFields rc ∙ ps)) -> RDC args ≡ tm -> LHS a) ->
     LHS a
@@ -554,38 +555,9 @@ n := NoRHS t = Ne (CHead (named n t))
 pattern Lam'  f = NoRHS (Lam  f)
 pattern DLam' f = NoRHS (DLam f)
 
-lam' : Name -> (Tm a -> LHS a') -> Tm (a => a')
-lam' n f = n := Lam' f
-
-lam : Name -> (Tm a -> Tm a') -> Tm (a => a')
-lam n f = lam' n \t -> RHS (f t)
-
 var : Name -> Tm a
 var n = n := NoRHS (Stuck n)
 
-
-------------------
-
-fst× : Tm (a × a' => a)
-fst× = MkName "fst×" 0 := Lam' \p -> elim× p \x y _ -> RHS x
-
-snd× : Tm (a × a' => a')
-snd× = MkName "snd×" 1 := Lam' \p -> elim× p \x y _ -> RHS y
-
-fstΣ : Tm (Sigma a b => a)
-fstΣ = MkName "fstΣ" 2 := Lam' \p -> elimSigma p \x y _ -> RHS x
-
-sndΣ : Tm (Pi (Sigma a b) (lam (MkName "sndΣLam" 5) \t -> b ∙ (fstΣ ∙ t)))
-sndΣ = MkName "sndΣ" 3 := DLam' \p -> elimSigma p \{x y Refl -> RHS y}
-
-proj : ∀ {ps} -> Tm (RTC rc ps => rFields rc ∙ ps)
-proj {rc = rc} = MkName ("proj" +++ nameStr (name rc)) 4 := Lam' \t -> elimR t \t _ -> RHS t
-{-
-proj' : Tm (Pi (rParams rc) (lam "projLam" \ps -> RTC rc ps => rFields rc ∙ ps))
-proj' {rc = rc} = def ("proj" +++ name rc)  (DLam' \_ -> Lam' \t -> elimR t \t _ -> RHS t)
--}
-
--------------------------------------------------
 
 -------------------------------------------------------
 
@@ -593,10 +565,14 @@ data Tys : Set          --  [] (A : U) (x : A) (y : A) (e : x ≡ y)
 
 Tms : Tys -> Set        --  (((tt, Bool), True), True), Refl
 
+-- type depending on context
 CTy : Tys -> Set
 CTy ts = Tms ts -> Ty
 
-CTm : Tys -> Ty -> Set
+-- term depending on context
+CTm : (ts : Tys) -> CTy ts -> Set
+CTm ts t = (xs : Tms ts) -> Tm (t xs)
+
 
 data Tys where
   []      :                                 Tys
@@ -610,92 +586,92 @@ private variable
 
 ---------------
 
+infixl 10 _//ᵤ_
 infixl 10 _//_
-infixl 10 _//ₜ_
 infixl 10 _//ₛ_
 
 {-# TERMINATING #-}
-_//_  : Ty -> CTy ts
+_//ᵤ_  : Ty -> CTy ts
 
-CTm ts a = (xs : Tms ts) -> Tm (a // xs)
-
--- ?
---CTm' : (ts : Tys) -> CTy ts -> Set
---CTm' ts t = {!!}
-
-_//ₜ_ : Tm a    -> CTm ts a
-_//ₛ_ : Spine a -> CTm ts a
+_//_ : Tm a    -> CTm ts (_//ᵤ_ a)
+_//ₛ_ : Spine a -> CTm ts (_//ᵤ_ a)
 
 
 postulate
-  rParamsClosed : {xs : Tms ts} -> rParams rc // xs ≈ rParams rc
+  rParamsClosed : {xs : Tms ts} -> rParams rc //ᵤ xs ≈ rParams rc
 
-U         // xs = U
-Top       // xs = Top
-Bot       // xs = Bot
-(a => a') // xs = a // xs => a' // xs
-(a ×  a') // xs = a // xs ×  a' // xs
-(a ⊎  a') // xs = a // xs ⊎  a' // xs
-Pi    a b // xs = Pi    (a // xs) (b //ₜ xs)
-Sigma a b // xs = Sigma (a // xs) (b //ₜ xs)
-Id x y    // xs = Id (x //ₜ xs) (y //ₜ xs)
-RTC rc x  // xs = RTC rc (coe≈ (cong≈ Tm (rParamsClosed {rc = rc})) (x //ₜ xs))
-NU (NeU' {s = s} _) // xs = s //ₛ xs
+U         //ᵤ xs = U
+Top       //ᵤ xs = Top
+Bot       //ᵤ xs = Bot
+(a => a') //ᵤ xs = a //ᵤ xs => a' //ᵤ xs
+(a ×  a') //ᵤ xs = a //ᵤ xs ×  a' //ᵤ xs
+(a ⊎  a') //ᵤ xs = a //ᵤ xs ⊎  a' //ᵤ xs
+Pi    a b //ᵤ xs = Pi    (a //ᵤ xs) (b // xs)
+Sigma a b //ᵤ xs = Sigma (a //ᵤ xs) (b // xs)
+Id x y    //ᵤ xs = Id (x // xs) (y // xs)
+RTC rc x  //ᵤ xs = RTC rc (coe≈ (cong≈ Tm (rParamsClosed {rc = rc})) (x // xs))
+NU (NeU' {s = s} _) //ᵤ xs = s //ₛ xs
 
 postulate
   TODO : P
 
-//∙ : ∀ {a} (b : a =>U) {x : Tm a} (xs : Tms ts) -> (b ∙ x) // xs ≈ b //ₜ xs ∙ x //ₜ xs
-//∙ = TODO
+//ᵤ∙ : ∀ {a} (b : a =>U) {x : Tm a} (xs : Tms ts) -> (b ∙ x) //ᵤ xs ≈ b // xs ∙ x // xs
+//ᵤ∙ = TODO
 
-//[] : _//_ {ts = []} a _ ≈ a
-//[] {a = U        } = Refl
-//[] {a = Top      } = Refl
-//[] {a = Bot      } = Refl
-//[] {a = a => a'  } = cong2≈ _=>_ //[] //[]
-//[] {a = a ×  a'  } = cong2≈ _×_  //[] //[]
-//[] {a = a ⊎  a'  } = cong2≈ _⊎_  //[] //[]
-//[] {a = Pi    a b} = TODO
-//[] {a = Sigma a b} = TODO
-//[] {a = Id x y   } = TODO
-//[] {a = RTC rc x } = TODO
-//[] {a = NeU g    } = TODO
+//ᵤ[] : _//ᵤ_ {ts = []} a _ ≈ a
+//ᵤ[] {a = U        } = Refl
+//ᵤ[] {a = Top      } = Refl
+//ᵤ[] {a = Bot      } = Refl
+//ᵤ[] {a = a => a'  } = cong2≈ _=>_ //ᵤ[] //ᵤ[]
+//ᵤ[] {a = a ×  a'  } = cong2≈ _×_  //ᵤ[] //ᵤ[]
+//ᵤ[] {a = a ⊎  a'  } = cong2≈ _⊎_  //ᵤ[] //ᵤ[]
+//ᵤ[] {a = Pi    a b} = TODO
+//ᵤ[] {a = Sigma a b} = TODO
+//ᵤ[] {a = Id x y   } = TODO
+//ᵤ[] {a = RTC rc x } = TODO
+//ᵤ[] {a = NeU g    } = TODO
 
 postulate
+{-
   rFieldsClosed : {ps : Tm (rParams rc)} {xs : Tms ts} ->
-      rFields rc //ₜ xs ∙                                            ps //ₜ xs       ≈
-      rFields rc        ∙ coe≈ (cong≈ Tm (rParamsClosed {rc = rc})) (ps //ₜ xs)
+      rFields rc // xs ∙                                            ps // xs       ≈
+      rFields rc        ∙ coe≈ (cong≈ Tm (rParamsClosed {rc = rc})) (ps // xs)
+-}
 
-_//ₜ_ {a = U}    t          xs = t // xs
-_//ₜ_ {a = NU _} TT         xs = TT
-_//ₜ_ {a = NU _} (x ,  y)   xs = x //ₜ xs ,  y //ₜ xs
-_//ₜ_ {a = NU _} (_,,_ {b = b} x y) xs = x //ₜ xs ,, coe≈ (cong≈ Tm (//∙ b xs)) (y //ₜ xs)
-_//ₜ_ {a = NU _} (Left  x)  xs = Left  (x //ₜ xs)
-_//ₜ_ {a = NU _} (Right x)  xs = Right (x //ₜ xs)
-_//ₜ_ {a = NU _} Refl       xs = Refl
-_//ₜ_ {a = NU _} (RDC {rc = rc} args) xs = RDC (coe≈ (cong≈ Tm (//∙ (rFields rc) xs ∘≈ rFieldsClosed {rc = rc})) (args //ₜ xs))
-_//ₜ_ {a = NU _} (NeNU {s = s} _) xs = s //ₛ xs
+  rFieldsClosed : {ps : Tm (rParams rc)} {xs : Tms ts} ->
+      (rFields rc ∙ ps) //ᵤ xs       ≈
+      rFields rc ∙ coe≈ (cong≈ Tm (rParamsClosed {rc = rc})) (ps // xs)
+
+_//_ {a = U}    t          xs = t //ᵤ xs
+_//_ {a = NU _} TT         xs = TT
+_//_ {a = NU _} (x ,  y)   xs = x // xs ,  y // xs
+_//_ {a = NU _} (_,,_ {b = b} x y) xs = x // xs ,, coe≈ (cong≈ Tm (//ᵤ∙ b xs)) (y // xs)
+_//_ {a = NU _} (Left  x)  xs = Left  (x // xs)
+_//_ {a = NU _} (Right x)  xs = Right (x // xs)
+_//_ {a = NU _} Refl       xs = Refl
+_//_ {a = NU _} (RDC {rc = rc} args) xs = RDC (coe≈ (cong≈ Tm (rFieldsClosed {rc = rc})) (args // xs))
+_//_ {a = NU _} (NeNU {s = s} _) xs = s //ₛ xs
 
 postulate
   nameIsDefined : Name -> Tm a
-  freeFrom : ∀ n a {ts} {t : CTy ts} {xs : Tms ts} {x : Tm (t xs)} -> _//_ {ts = ts >> n :: t} a (xs ,, x) ≈ a // xs
-  thisIsIt : {t : CTy ts} {xs : Tms ts} {x : Tm (t xs)} -> Tm (t xs) ≈ Tm (_//_ {ts = ts >> n :: t} a (xs ,, x))
-  b∙var// : (b : a =>U) {xs : Tms ts} {x : Tm (a // xs)} -> _//_ {ts = ts >> n :: \xs' -> a // xs'} (b ∙ var n) (xs ,, x) ≈ b //ₜ xs ∙ x
+  freeFrom : ∀ n a {ts} {t : CTy ts} {xs : Tms ts} {x : Tm (t xs)} -> _//ᵤ_ {ts = ts >> n :: t} a (xs ,, x) ≈ a //ᵤ xs
+  thisIsIt : {t : CTy ts} {xs : Tms ts} {x : Tm (t xs)} -> Tm (t xs) ≈ Tm (_//ᵤ_ {ts = ts >> n :: t} a (xs ,, x))
+  b∙var//ᵤ : (b : a =>U) {xs : Tms ts} {x : Tm (a //ᵤ xs)} -> _//ᵤ_ {ts = ts >> n :: \xs' -> a //ᵤ xs'} (b ∙ var n) (xs ,, x) ≈ b // xs ∙ x
 
-indexTms : ∀ {a ts} -> Name -> (xs : Tms ts) -> Tm (a // xs)
+indexTms : ∀ {a ts} -> Name -> CTm ts (_//ᵤ_ a)
 indexTms {ts = []} n xs = nameIsDefined n
 indexTms {a = a} {ts = ts >> n' :: t} n (xs ,, x) with nameEquality n' n
 ... | False = coe≈ (cong≈ Tm (sym≈ (freeFrom n' a))) (indexTms {a = a} n xs)
 ... | True  = coe≈ (thisIsIt {a = a}) x
 
 postulate
-  NamedLambdaClosed : {xs : Tms ts} -> NamedLambda (a // xs) ≈ NamedLambda a
+  NamedLambdaClosed : {xs : Tms ts} -> NamedLambda (a //ᵤ xs) ≈ NamedLambda a
 
 Head {a = a} (named n (Stuck x)) //ₛ xs = indexTms {a = a} n xs
 Head h@(named _ (Lam  _))   //ₛ xs = spineToTm (Head (coe≈ (sym≈ NamedLambdaClosed) h))
 Head h@(named _ (DLam _))   //ₛ xs = spineToTm (Head (coe≈ (sym≈ NamedLambdaClosed) h))
-(s $  x)                    //ₛ xs = s //ₛ xs ∙ x //ₜ xs
-DApp {b = b} s x Refl       //ₛ xs = coe≈ (cong≈ Tm (sym≈ (//∙ b xs))) (s //ₛ xs ∙∙ x //ₜ xs)
+(s $  x)                    //ₛ xs = s //ₛ xs ∙ x // xs
+DApp {b = b} s x Refl       //ₛ xs = coe≈ (cong≈ Tm (sym≈ (//ᵤ∙ b xs))) (s //ₛ xs ∙∙ x // xs)
 
 
 -------------------------------------------------
@@ -796,10 +772,16 @@ testShowDoc' = Refl
 
 -------------------------------------
 
+printName : Name -> Doc
+printName n = DVar (pr (nameStr n))  where
+  pr : String -> String
+  pr "lam" = "lam" +++ primShowNat (nameId n)
+  pr n     = n
+
 printTm    : Tm a -> Doc
 printSpine : Spine a -> Doc
 
-printSpine (Head x) = DVar (nameStr (name x))
+printSpine (Head x) = printName (name x)
 printSpine (s $  x) = printSpine s $ printTm x
 printSpine (s $$ x) = printSpine s $ printTm x
 
@@ -813,7 +795,7 @@ printTm {a = U} (a ⊎ a')    = printTm a [ "+"  ] printTm a'
 printTm {a = U} (Pi a b)    = DVar "Pi"      $ printTm a $ printTm b
 printTm {a = U} (Sigma a b) = DVar "Sigma"   $ printTm a $ printTm b
 printTm {a = U} (Id x y)    = DVar "Id"      $ printTm x $ printTm y
-printTm {a = U} (RTC rc x)  = DVar (nameStr (name rc)) $ printTm x
+printTm {a = U} (RTC rc x)  = printName (name rc) $ printTm x
 printTm {a = U} (NU (NeU' {s = s} _)) = printSpine s
 --printTm {a = NU (a =>' a')} f = DLam "v" (printTm (f ∙ var "v"))
 printTm {a = NU _} TT        = DVar "tt"
@@ -822,7 +804,7 @@ printTm {a = NU _} (x ,, y)  = printTm x [ ",," ] printTm y
 printTm {a = NU _} (Left  x) = DVar "Left"  $ printTm x
 printTm {a = NU _} (Right x) = DVar "Right" $ printTm x
 printTm {a = NU _} Refl      = DVar "Refl"
-printTm {a = NU _} (RDC {rc = rc} args) = DVar ("Mk" +++ nameStr (name rc)) $ printTm args
+printTm {a = NU _} (RDC {rc = rc} args) = DVar "wrap" $ printTm args
 printTm {a = NU _} (NeNU {s = s} _) = printSpine s
 
 
@@ -844,12 +826,14 @@ TyTm = Ty ** \a -> Tm a
 Ctx : Set
 Ctx = NameMap TyTm
 
+TCState = Nat
+
 -- type checking monad
 record TC (A : Set) : Set where
   coinductive
   constructor MkTC
   field
-    getTC : Ctx -> Nat -> Either Error (Pair Nat A)
+    getTC : Ctx -> TCState -> Either Error (Pair TCState A)
 
 open TC
 
@@ -858,7 +842,7 @@ throwError e = MkTC \_ _ -> Left e
 
 runTC : TC A -> Either Error A
 runTC tc with getTC tc emptySM 10
-... | Left e = Left e
+... | Left  e       = Left e
 ... | Right (_ , r) = Right r
 
 instance
@@ -870,11 +854,11 @@ instance
 
   pure {{TCMonad}} x = MkTC \_ c -> Right (c , x)
 
-addGlobal : Name -> TyTm -> TC A -> TC A
-getTC (addGlobal s d m) ctx = getTC m (insertSM s  d ctx)
+declareTm : Name -> TyTm -> TC A -> TC A
+getTC (declareTm s d m) ctx = getTC m (insertSM s  d ctx)
 
-lookupGlobal : String -> TC TyTm
-getTC (lookupGlobal s) ctx c with lookupSMStr s ctx
+lookupTm : String -> TC TyTm
+getTC (lookupTm s) ctx c with lookupSMStr s ctx
 ... | Just x  = Right (c , x)
 ... | Nothing = Left ("Not defined: " +++ s)
 
@@ -931,6 +915,13 @@ testParse = Refl
 
 ----------------------------------
 
+{-
+postulate
+  fstΣ : Tm (Sigma a b => a)
+  lamSnd : Tm (Sigma a b => U)
+  lam : (Tm a -> Tm U) -> Tm (a => U)
+  sndΣ : Tm (Pi (Sigma a b) (lam \s -> b ∙ (fstΣ ∙ s)))
+-}
 convertSpine : (s : Spine a) (s' : Spine a') -> TC (s ≡~ s')
 convertRDesc : (rc rc' : RDesc) -> TC (rc ≡ rc')
 
@@ -981,7 +972,8 @@ convert {a = a ⊎ a'} x y = {!!}
 convert {a = Pi a b} x y = {!!}
 convert {a = Sigma a b} x y = do
   e <- convert (fstΣ ∙ x) (fstΣ ∙ y)
-  {!!}
+  e' <- convert (sndΣ ∙∙ x) (coe≈ {!!} (sndΣ ∙∙ y))     --  Tm (b ∙ (fstΣ ∙ x))
+  pure (setEq {!!})
 convert {a = Id x y} u v = {!!}
 convert {a = RTC rc ps} x y = {!!}
 convert {a = NeU _} x y = {!!}
@@ -990,7 +982,7 @@ convert x y = throwError (showTm x +++ "  =?=  " +++ showTm y)
 
 -- this is only an optimization (when used instead of convert)
 convertTrustMe : (x : Tm a) (y : Tm a) -> TC (x ≡ y)
-convertTrustMe _ _ = pure (eq primTrustMe)
+convertTrustMe _ _ = pure primTrustMe
 
 convertRDesc rc rc' with decName (name rc) (name rc')
 ... | No = throwError "convertRDesc"
@@ -1017,6 +1009,7 @@ convertSpine (DApp {a = a} {b = b} s x Refl) (DApp {a = a'} {b = b'} s' x' Refl)
   pure Refl
 convertSpine _ _ = throwError "convertSpine"
 
+
 ----------------------------------
 
 infer : Doc -> TC TyTm
@@ -1035,22 +1028,22 @@ check (DVar "Right" $ x) (a ⊎ a') = do
   pure (Right x)
 check (DVar sn [ "." ] e) (a => a') = do
   n <- newName sn
-  e <- addGlobal n (a ,, var n) (check e a')
-  ln <- newName ("lam" +++ sn)
-  pure (ln := Lam' \x -> RHS (coe≈ (cong≈ Tm (freeFrom n a' ∘≈ //[])) (_//ₜ_ {ts = [] >> n :: \xs -> a // xs} e (tt ,, coe≈ (cong≈ Tm (sym≈ //[])) x))))
---  pure (("lam" +++ n) := Lam' \x -> RHS (coe≈ (cong≈ Tm (freeFrom n a' ∘≈ //[])) (_//ₜ_ {ts = [] >> n :: \xs -> a} e (tt ,, x))))
+  e <- declareTm n (a ,, var n) (check e a')
+  ln <- newName "lam"
+  pure (ln := Lam' \x -> RHS (coe≈ (cong≈ Tm (freeFrom n a' ∘≈ //ᵤ[])) (_//_ {ts = [] >> n :: \xs -> a //ᵤ xs} e (tt ,, coe≈ (cong≈ Tm (sym≈ //ᵤ[])) x))))
+--  pure (("lam" +++ n) := Lam' \x -> RHS (coe≈ (cong≈ Tm (freeFrom n a' ∘≈ //ᵤ[])) (_//_ {ts = [] >> n :: \xs -> a} e (tt ,, x))))
 check (DVar sn [ "." ] e) (Pi a b)  = do
   n <- newName sn
-  e <- addGlobal n (a ,, var n) (check e (b ∙ var n))
-  ln <- newName ("lam" +++ sn)
-  pure (ln := DLam' \x -> RHS (coe≈ (cong≈ Tm (b∙var// b ∘≈ TODO)) (_//ₜ_ {ts = [] >> n :: \xs -> a // xs} e (tt ,, coe≈ (cong≈ Tm (sym≈ //[])) x))))
+  e <- declareTm n (a ,, var n) (check e (b ∙ var n))
+  ln <- newName "lam"
+  pure (ln := DLam' \x -> RHS (coe≈ (cong≈ Tm (b∙var//ᵤ b ∘≈ TODO)) (_//_ {ts = [] >> n :: \xs -> a //ᵤ xs} e (tt ,, coe≈ (cong≈ Tm (sym≈ //ᵤ[])) x))))
 check (x [ "," ] y) (Sigma a b) = do
   x <- check x  a
   y <- check y (b ∙ x)
   pure (x ,, y)
 check (DVar "Refl") (Id x y) = do
-  Refl <- convert x y
-  pure Refl
+  e <- convert x y
+  pure (coe≈ (cong≈ (\k -> Tm (Id x k)) (propEq e)) Refl)
 check (DVar "wrap" $ x) (RTC rc ps) = do
   x <- check x (rFields rc ∙ ps)
   pure (RDC x)
@@ -1086,10 +1079,6 @@ infer (DVar "Id" $ x $ y) = do
   a ,, x <- infer x
   y <- check y a
   pure (U ,, Id x y)
-infer (DVar "unwrap" $ t) = do
-  RTC rc ps ,, t <- infer t where
-     _ -> throwError "unwrap"
-  pure (rFields rc ∙ ps ,, proj ∙ t)
 infer (f $ x) = infer f >>= matchPi  where
   matchPi : TyTm -> TC TyTm
   matchPi (a => a' ,, f) = do
@@ -1099,7 +1088,7 @@ infer (f $ x) = infer f >>= matchPi  where
     x <- check x a
     pure (b ∙ x ,, f ∙∙ x)
   matchPi _ = throwError "matchPi"
-infer (DVar n) = lookupGlobal n
+infer (DVar n) = lookupTm n
 infer d = throwError ("infer: " +++ showDoc d)
 
 
@@ -1107,37 +1096,43 @@ infer d = throwError ("infer: " +++ showDoc d)
 
 -- first order representation of LHS
 data LHS' : Ty -> Set where
-  Lam  : ∀ {a a'} -> (n : Name) -> LHS' a' ->          LHS' (a => a')
-  DLam : ∀ {a b}  -> (n : Name) -> LHS' (b ∙ var n) -> LHS' (Pi a b)
-  RHS  : ∀ {a} -> Tm a ->                              LHS' a
-  MatchPair   : Tm (a × a') -> Name -> Name -> LHS' a'' -> LHS' a''
+  RHS         : ∀ {a} -> Tm a ->                                       LHS' a
+  Lam         : ∀ {a a'} -> (n : Name) -> LHS' a' ->                   LHS' (a => a')
+  DLam        : ∀ {a b}  -> (n : Name) -> LHS' (b ∙ var n) ->          LHS' (Pi a b)
+  MatchPair   : Tm (a × a') -> Name -> Name -> LHS' a'' ->             LHS' a''
   MatchEither : Tm (a ⊎ a') -> Name -> LHS' a'' -> Name -> LHS' a'' -> LHS' a''
+  MatchRecord : ∀ {ps a''} -> Tm (RTC rc ps) -> Name -> LHS' a'' ->    LHS' a''
   -- MatchSigma : ...
   -- MatchRefl : ...
 
-quoteLHS : {a : Ty} -> LHS' a -> {ts : Tys} -> (xs : Tms ts) -> LHS (a // xs)
+quoteLHS : {a : Ty} -> LHS' a -> {ts : Tys} -> (xs : Tms ts) -> LHS (a //ᵤ xs)
 quoteLHS (Lam {a = a} {a' = a'} n t) {ts = ts} xs
-  = NoRHS (Lam {a = a // xs} {a' = a' // xs} \x -> coe≈ (cong≈ LHS (freeFrom n a')) (quoteLHS t {ts = ts >> n :: \xs' -> a // xs'} (xs ,, x)))
+  = NoRHS (Lam {a = a //ᵤ xs} {a' = a' //ᵤ xs} \x -> coe≈ (cong≈ LHS (freeFrom n a')) (quoteLHS t {ts = ts >> n :: \xs' -> a //ᵤ xs'} (xs ,, x)))
 quoteLHS (DLam {a = a} {b = b} n t) {ts = ts} xs
-  = NoRHS (DLam {a = a // xs} {b = b //ₜ xs} \x -> coe≈ (cong≈ LHS (b∙var// b)) (quoteLHS t {ts = ts >> n :: \xs' -> a // xs'} (xs ,, x)))
+  = NoRHS (DLam {a = a //ᵤ xs} {b = b // xs} \x -> coe≈ (cong≈ LHS (b∙var//ᵤ b)) (quoteLHS t {ts = ts >> n :: \xs' -> a //ᵤ xs'} (xs ,, x)))
 quoteLHS (MatchPair {a = a} {a' = a'} {a'' = a''} p n n' e) {ts = ts} xs
-  = elim× {a = a // xs} {a' = a' // xs} (p //ₜ xs) \x x' ee ->
+  = elim× {a = a //ᵤ xs} {a' = a' //ᵤ xs} (p // xs) \x x' ee ->
        coe≈ (cong≈ LHS (freeFrom n' a'' ∘≈ freeFrom n a'')) (
-         quoteLHS e {ts = (ts >> n :: \xs' -> a // xs') >> n' :: \(xs'' ,, _) -> a' // xs''} ((xs ,, x) ,, x')
+         quoteLHS e {ts = (ts >> n :: \xs' -> a //ᵤ xs') >> n' :: \(xs'' ,, _) -> a' //ᵤ xs''} ((xs ,, x) ,, x')
        )
 quoteLHS (MatchEither {a = a} {a' = a'} {a'' = a''} p n e n' e') {ts = ts} xs
-  = elim⊎ {a = a // xs} {a' = a' // xs} (p //ₜ xs)
-     (\x _ -> coe≈ (cong≈ LHS (freeFrom n  a'')) (quoteLHS e  {ts = ts >> n  :: \xs' -> a  // xs'} (xs ,, x)))
-     (\x _ -> coe≈ (cong≈ LHS (freeFrom n' a'')) (quoteLHS e' {ts = ts >> n' :: \xs' -> a' // xs'} (xs ,, x)))
-quoteLHS (RHS t) xs = RHS (t //ₜ xs)
+  = elim⊎ {a = a //ᵤ xs} {a' = a' //ᵤ xs} (p // xs)
+     (\x _ -> coe≈ (cong≈ LHS (freeFrom n  a'')) (quoteLHS e  {ts = ts >> n  :: \xs' -> a  //ᵤ xs'} (xs ,, x)))
+     (\x _ -> coe≈ (cong≈ LHS (freeFrom n' a'')) (quoteLHS e' {ts = ts >> n' :: \xs' -> a' //ᵤ xs'} (xs ,, x)))
+quoteLHS (MatchRecord {rc = rc} {ps = ps} {a'' = a''} p n e) {ts = ts} xs
+  = elimR {rc = rc} {ps = coe≈ (cong≈ Tm (rParamsClosed {rc = rc})) (ps // xs)} {a = a'' //ᵤ xs} (p // xs) \x ee ->
+       coe≈ (cong≈ LHS (freeFrom n a'')) (
+         quoteLHS e {ts = ts >> n :: \xs' -> (rFields rc ∙ ps) // xs} (xs ,, coe≈ (cong≈ Tm (sym≈ (rFieldsClosed {rc = rc}))) x)
+       )
+quoteLHS (RHS t) xs = RHS (t // xs)
 
 quoteLHS' : LHS' a -> LHS a
-quoteLHS' t = coe≈ (cong≈ LHS //[]) (quoteLHS t {ts = []} (tt))
+quoteLHS' t = coe≈ (cong≈ LHS //ᵤ[]) (quoteLHS t {ts = []} (tt))
 
 checkLHS : Doc -> (a : Ty) -> TC (LHS' a)
 checkLHS (DVar n [ "." ] t) (a => a') = do
   n <- newName n
-  t <- addGlobal n (a ,, var n) (checkLHS t a')
+  t <- declareTm n (a ,, var n) (checkLHS t a')
   pure (Lam n t)
 checkLHS (DVar n [ "." ] t) (Pi a b) = do
   n <- newName n
@@ -1151,16 +1146,22 @@ checkLHS (DVar "pair" $ p $ (DVar n [ "." ] DVar n' [ "." ] e)) a'' = do
   n' <- newName n'
   a × a' ,, p <- infer p where
     _ -> throwError "pair"
-  e <- addGlobal n (a ,, var n) (addGlobal n' (a' ,, var n') (checkLHS e a''))
+  e <- declareTm n (a ,, var n) (declareTm n' (a' ,, var n') (checkLHS e a''))
   pure (MatchPair p n n' e)
 checkLHS (DVar "either" $ p $ (DVar n [ "." ] e) $ (DVar n' [ "." ] e')) a'' = do
   n <- newName n
   n' <- newName n'
   a ⊎ a' ,, p <- infer p where
     r ,, _ -> throwError ("either: " +++ showTm r)
-  e  <- addGlobal n  (a  ,, var n ) (checkLHS e  a'')
-  e' <- addGlobal n' (a' ,, var n') (checkLHS e' a'')
+  e  <- declareTm n  (a  ,, var n ) (checkLHS e  a'')
+  e' <- declareTm n' (a' ,, var n') (checkLHS e' a'')
   pure (MatchEither p n e n' e')
+checkLHS (DVar "unwrap" $ p $ (DVar n [ "." ] e)) a'' = do
+  n <- newName n
+  RTC rc ps ,, p <- infer p where  
+    r ,, _ -> throwError ("unwrap: " +++ showTm r)
+  e  <- declareTm n  (rFields rc ∙ ps ,, var n) (checkLHS e  a'')
+  pure (MatchRecord p n e)
 checkLHS d a = throwError ("checkLHS: " +++ showDoc d)
 
 inferTop : Doc -> TC TyTm
@@ -1168,14 +1169,14 @@ inferTop (((DVar n [ ":" ] a) [ "=" ] t) [ ";" ] ds) = do
   n <- newName n
   a <- check a U
   t <- checkLHS t a
-  addGlobal n (a ,, (n := quoteLHS' t)) (inferTop ds)
-inferTop ((DVar "data" $ DVar n $ ps $ fs) [ ";" ] ds) = do
+  declareTm n (a ,, (n := quoteLHS' t)) (inferTop ds)
+inferTop ((DVar n [ "=" ] DVar "record" $ ps $ fs) [ ";" ] ds) = do
   dn <- newName n
   ps <- check ps U
   fs <- check fs (ps => U)
   let desc = named dn (RD ps fs)
-  dnl <- newName (n +++ "Lam")
-  addGlobal dn (ps => U ,, (dnl := Lam' \x -> RHS (RTC desc x))) (inferTop ds)
+  dnl <- newName "lam"
+  declareTm dn (ps => U ,, (dnl := Lam' \x -> RHS (RTC desc x))) (inferTop ds)
 inferTop (t [ ":" ] a) = do
   a <- check a U
   t <- check t a
@@ -1340,20 +1341,21 @@ evalQuote {a = RTC rc y} {x = RDC _} = cong≈ RDC evalQuote
 TODOs
 
 parser:
-- check name clashes
-- multi lambda desugaring
 - recursion
+- multi lambda desugaring
 - more powerful lhs eliminators
 
 eta rules for conversion checking
 
-pattern matching for Refl (dependent pattern matching algorithm)
-
-backend
-
 frontend:
 - case tree compilation
 - data compilation
+
+---------------------------
+
+pattern matching for Refl (dependent pattern matching algorithm)
+
+backend
 
 -}
 
