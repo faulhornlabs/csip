@@ -2,7 +2,7 @@ id : Pi U (A. A -> A)
   = A. x. ret x;
 
 f : U * U -> U * U
-  = p. pair p (A. B. ret (B , A));
+  = p. pair p (A. B. _. ret (B , A));
 
 bool = record Top (_. Top + Top);
 Bool  : U    =  ret (bool tt);
@@ -10,13 +10,30 @@ False : Bool =  ret (wrap (Left  tt));
 True  : Bool =  ret (wrap (Right tt));
 
 and : Bool -> Bool -> Bool
-  = a. b. unwrap a (a. either a (_. ret False) (_. ret b));
+  = a. b. unwrap a (a. _. either a (_. _. ret False) (_. _. ret b));
 
 ite : Pi U (A. Bool -> A -> A -> A)
-  = A. b. t. f. unwrap b (b. either b (_. ret f) (_. ret t));
+  = A. b. t. f. unwrap b (b. _. either b (_. _. ret f) (_. _. ret t));
+
+exfalso : Pi U (A. Bot -> A)
+  = A. b. absurd b;
 
 Maybe = record U (A. Top + A);
 Nothing : Pi U Maybe              = A. ret (wrap (Left tt));
 Just    : Pi U (A. A -> Maybe A)  = A. a. ret (wrap (Right a));
+
+eqLam : Sigma U (A. A * A) -> U
+  = s. sigma s (A. xy. _. pair xy (x. y. _. ret (Id x y)));
+
+Eq = record (Sigma U (A. A * A)) eqLam;
+
+ll : Pi U (A. A -> U)
+  = A. x. ret (Eq (A , x , x));
+
+reflLam : U -> U
+  = A. ret (Pi A (ll A));
+
+refl : Pi U reflLam
+  = A. x. ret (wrap Refl);
 
 f (id U Top , ite U True Bot U) : id U (U * U)
