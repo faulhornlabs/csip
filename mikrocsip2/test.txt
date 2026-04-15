@@ -23,17 +23,11 @@ Nothing : Pi U Maybe              = A. ret (wrap (Left tt));
 Just    : Pi U (A. A -> Maybe A)  = A. a. ret (wrap (Right a));
 
 eqLam : Sigma U (A. A * A) -> U
-  = s. sigma s (A. xy. _. pair xy (x. y. _. ret (Id x y)));
+  = s. sigma s (A. xy. _. pair xy (x. y. _. ret (x = y)));
 
-Eq = record (Sigma U (A. A * A)) eqLam;
+Id = record (Sigma U (A. A * A)) eqLam;
 
-ll : Pi U (A. A -> U)
-  = A. x. ret (Eq (A , x , x));
-
-reflLam : U -> U
-  = A. ret (Pi A (ll A));
-
-refl : Pi U reflLam
+refl : Pi U (A. Pi A (x. Id (A , x , x)))
   = A. x. ret (wrap Refl);
 
 f (id U Top , ite U True Bot U) : id U (U * U)
