@@ -5,7 +5,7 @@ Lam and ifTag is not a netural term; to achieve this LHS terms are separated fro
 -}
 
 
-{-# OPTIONS --type-in-type --rewriting --prop --guardedness #-}
+{-# OPTIONS --type-in-type --rewriting --prop --erasure --with-K --injective-type-constructors #-}
 
 open import Agda.Builtin.Bool using (Bool) renaming (true to True; false to False)
 open import Agda.Builtin.Char using (Char; primIsLower; primIsDigit; primIsAlpha; primIsSpace; primCharEquality)
@@ -13,6 +13,7 @@ open import Agda.Builtin.List using (List; []; _∷_)
 open import Agda.Builtin.Maybe using (Maybe) renaming (just to Just; nothing to Nothing)
 open import Agda.Builtin.String using (String; primStringAppend; primStringToList; primStringFromList; primStringEquality; primShowNat)
 open import Agda.Builtin.Nat using (Nat) renaming (suc to S; zero to Z)
+open import Agda.Builtin.Equality renaming (_≡_ to Eq; refl to Refl)
 
 -------------------
 
@@ -72,6 +73,9 @@ record _**_ (A : Set) (B : A -> Set) : Set where
     snd : B fst
 
 open _**_
+
+Σ = _**_
+syntax Σ A (λ x → B) = x :: A ** B
 
 ------------------
 
@@ -182,8 +186,7 @@ cong2≈ _ Refl Refl = Refl
 
 ------------------
 
-data _≡_ {A : Set} (a : A) : A -> Set where
-  Refl : a ≡ a
+_≡_ = Eq
 
 propEq : {x y : A} -> x ≡ y -> x ≈ y
 propEq Refl = Refl
@@ -201,7 +204,6 @@ cong2≡ _ Refl Refl = Refl
 --------------------------------------------
 
 record Named (A : Set) : Set where
-  coinductive
   constructor named
   field
     name    : String
@@ -216,8 +218,6 @@ postulate
 ----------------------
 
 data Ty : Set
-
-Tm : Ty -> Set
 
 _=>U : Ty -> Set
 
@@ -234,6 +234,7 @@ RDesc = Named UnnamedRDesc
 
 rParams : RDesc -> Ty
 rParams r = UnnamedRDesc.rParams (unnamed r)
+
 
 rFields : (r : RDesc) -> rParams r =>U
 rFields r = UnnamedRDesc.rFields (unnamed r)
@@ -252,6 +253,14 @@ data TyNU : Set
 data Ty where
   U   :         Ty
   NU  : TyNU -> Ty
+
+
+data TmNU : TyNU -> Set
+
+Tm : Ty -> Set
+Tm U      = Ty       -- definitional equality between (Tm U) and Ty; proposed by Bálint Török
+Tm (NU a) = TmNU a
+
 
 data TyNU where
   Top' Bot'  :                                     TyNU
@@ -273,12 +282,6 @@ pattern RTC rc ps = NU (RTC' rc ps)
 pattern NeU g     = NU (NeU' g)
 
 a =>U = Tm (a => U)
-
-data TmNU : TyNU -> Set
-
-
-Tm U      = Ty       -- definitional equality between (Tm U) and Ty; proposed by Bálint Török
-Tm (NU a) = TmNU a
 
 _∙_ : Tm (a => a') -> Tm a -> Tm  a'
 
@@ -566,7 +569,7 @@ postulate
 data Dec' (A : Set) : Set where
   Yes : A -> Dec' A
   No  :      Dec' A
-{-
+
 Tm~  : {a : Ty} -> Tm a -> {b : Ty} -> Tm b -> Set
 data TmNU~ : {a : TyNU} -> TmNU a -> {b : TyNU} -> TmNU b -> Set
 -- convertible types
@@ -574,11 +577,11 @@ data Ty~ : Ty -> Ty -> Set where
   U : Ty~ U U
   Bot' : Ty~ Bot Bot
   Top' : Ty~ Top Top
-  Arr : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a => b) (a' => b')
-  Tuple : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a × b) (a' × b')
-  Either' : {a a' : _}{b b' : _} -> Ty~ a a' -> Ty~ b b' -> Ty~ (a ⊎ b) (a' ⊎ b')
-  Pi' : {a a' : _}{b : _}{b' : _} -> Ty~ a a' -> TmNU~ b b' -> Ty~ (Pi a b) (Pi a' b')
-  Sigma' : {a a' : _}{b : _}{b' : _} -> Ty~ a a' -> TmNU~ b b' -> Ty~ (Sigma a b) (Sigma a' b')
+  Arr : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> Ty~ (a => b) (a' => b')
+  Tuple : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> Ty~ (a × b) (a' × b')
+  Either' : {a a' : _}{b b' : _} -> Tm~ a a' -> Tm~ b b' -> Ty~ (a ⊎ b) (a' ⊎ b')
+  Pi' : {a a' : _}{b : _}{b' : _} -> Tm~ a a' -> Tm~ b b' -> Ty~ (Pi a b) (Pi a' b')
+  Sigma' : {a a' : _}{b : _}{b' : _} -> Tm~ a a' -> Tm~ b b' -> Ty~ (Sigma a b) (Sigma a' b')
   Id' : {t : Ty}{a b a' b' : Tm t} -> Tm~ a a' -> Tm~ b b' -> Ty~ (Id a b) (Id a' b')
   RTC' : {desc desc' : _} -> (eq : desc' ≈ desc) -> {p : Tm (rParams desc)}{p' : Tm (rParams desc')} -> Tm~ p p' -> Ty~ (RTC desc p) (RTC desc' p')
   NeU' : {s : _}{l : _}{g : Glued s l} -> Ty~ (NeU g) (NeU g)
@@ -595,13 +598,18 @@ data TmNU~ where
   EtaBot : ∀ {t t'} -> TmNU~ {a = Bot'} t {b = Bot'} t'
   Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× ∙ t) (fst× ∙ t') -> Tm~ (snd× ∙ t) (snd× ∙ t') -> TmNU~ t t'
   Eta⊎ : {a b : _}{t t' : Tm (a ⊎ b)} -> ({c : _}(f : Tm (a => c))(g : Tm (b => c)) -> Tm~ (either' ∙ f ∙ g ∙ t ) (either' ∙ f ∙ g ∙ t')) -> TmNU~ t t'
-  EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {t t' : Tm (rFields h ∙ g )} -> Tm~ t t' -> TmNU~ (RDC {rc = h} t) (RDC {rc = h} t')
+  EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {m m' : Tm (RTC h g)} -> Tm~ (proj {h} {g} ∙ m) (proj {h} {g} ∙ m') -> TmNU~ m m'
   EtaArr : {a : _}{b : _} -> {arr arr' : TmNU (a =>' b)} -> ((x : _) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> TmNU~ arr arr'
   EtaSigma : {a : _}{b : _}{b' : _}{sig : Tm (Sigma a b)}{sig' : Tm (Sigma a b')} -> (e : Tm~ (fstΣ ∙ sig) (fstΣ ∙ sig')) -> (eq : Ty~ (b ∙ (fstΣ ∙ sig)) (b' ∙ (fstΣ ∙ sig'))) -> Tm~ (sndΣ ∙∙ sig) (sndΣ ∙∙ sig') -> TmNU~ sig sig'
-  EtaPi : {a : _}{b : _}{b' : _}{pi : Tm (Pi a b)}{pi' : Tm (Pi a b')} -> (f : (x : Tm a) -> Tm~ (b ∙ x) (b' ∙ x)) -> ((x : Tm a) -> Tm~ (pi ∙∙ x) (pi' ∙∙ x)) -> TmNU~ pi pi'
+  EtaPi : {a : _}{b : _}{b' : _}{pi : Tm (Pi a b)}{pi' : Tm (Pi a b')} -> (Tm~ b b') -> ((x : Tm a) -> Tm~ (pi ∙∙ x) (pi' ∙∙ x)) -> TmNU~ pi pi'
   EtaId : {t : _}{a b : Tm t}{id id' : Tm (Id a b)} -> TmNU~ id id' -- Use J instead?
 --  EtaVar : {s : _}{n : _}{g g' : Glued s (Stuck n)} -> TmNU~ (NeNU g) (NeNU g')
   -- ...
+
+data Spine~ : {a : Ty} -> Spine a -> Spine a -> Set where
+  Head : {a : Ty}{l l' : NamedLambda a} -> name l ≡ name l' -> Spine~ (Head l) (Head l')
+  App : {a b : Ty}{s : Spine (b => a)}{s' : Spine (b => a)} -> Spine~ s s' -> {x : Tm b}{x' : Tm b} -> Tm~ x x' -> Spine~ (s $ x) (s' $ x')
+  DApp' : {c : Ty}{b : Tm (c => U)}{s s' : Spine (Pi c b)} -> Spine~ s s' -> {x x' : Tm c}(eq : Tm~ x x')(proof : b ∙ x ≡ a) -> Spine~ (DApp s x proof) (DApp s' x' {!  !})
 
 reflTm~ : {a : Ty}(a' : Tm a) -> Tm~ a' a'
 reflTm~ {U} U = U
@@ -620,19 +628,24 @@ reflTm~ {Bot} a' = EtaBot
 reflTm~ {x => x₁} a' = EtaArr (λ x₂ → reflTm~ (a' ∙ x₂))
 reflTm~ {x × x₁} a' = Eta× (reflTm~ (fst× ∙ a')) (reflTm~ (snd× ∙ a'))
 reflTm~ {x ⊎ x₁} a' = Eta⊎ (λ f g → reflTm~ (either' ∙ f ∙ g ∙ a'))
-reflTm~ {Pi a x} a' = EtaPi (λ k → reflTm~ (x ∙ k)) λ x₁ → reflTm~ (a' ∙∙ x₁)
+reflTm~ {Pi a x} a' = EtaPi (reflTm~ x) λ x₁ → reflTm~ (a' ∙∙ x₁)
 reflTm~ {Sigma a x} a' = EtaSigma (reflTm~ (fstΣ ∙ a')) (reflTm~ (x ∙ (fstΣ ∙ a'))) (reflTm~ (sndΣ ∙∙ a'))
 reflTm~ {Id x x₁} a' = EtaId
-reflTm~ {RTC rc x} (RDC args) = EtaRDC (reflTm~ args)
-reflTm~ {RTC rc x} (NeNU {l = Stuck x₂} x₁) = {!  !}
+reflTm~ {RTC rc x} r = EtaRDC (reflTm~ (proj ∙ r))
 reflTm~ {NeU x} (NeNU {s = s} {l = Stuck x₂} x₁) = {! EtaVar !}
 
-Tm≡Ty : {t t' : Ty} -> Tm t ≡ Tm t' -> t ≡ t'
-Tm≡Ty {t} {t'} x = TODO
+subst≡ : {A : Set}(@0 P : (a : A) -> Set){a a' : A} -> (@0 eq : a ≡ a') -> P a -> P a'
+subst≡ _ Refl x = x
+
+injTm : {t t' : Ty} -> Tm t ≈ Tm t' -> t ≈ t'
+
+postulate
+  funExt : {A : Set}{B : A -> Set}{f g : (a : A) -> B a} -> ((x : A) -> f x ≡ g x) -> f ≡ g
+  inj∙ : {a b : _}(b b' : Tm (a => b)) -> _∙_ b ≡ _∙_ b' -> b ≡ b'
 
 inhomtoTy~ : {t t' : Ty}{a : Tm t}{b : Tm t'} -> a ~ b -> Ty~ t t'
 Ty~Toeq : {t t' : Ty} -> Ty~ t t' -> t ≡ t'
-inhomtoTy~ {t} x with Tm≡Ty (setEq (eqt x))
+inhomtoTy~ {t} x with setEq (injTm (eqt x))
 inhomtoTy~ {t} x | Refl = reflTm~ t
 
 Ty~Toeq U = Refl
@@ -642,10 +655,14 @@ Ty~Toeq (Arr x x₁) with (Ty~Toeq x) | (Ty~Toeq x₁)
 Ty~Toeq (Tuple x x₁) with (Ty~Toeq x) | (Ty~Toeq x₁)
 ... | Refl | Refl = Refl
 Ty~Toeq (Pi' x x₁) with (Ty~Toeq x)
-Ty~Toeq (Pi' x (EtaArr x₁)) | Refl = {!  !}
-Ty~Toeq (Sigma' x x₁) = {!  !}
-Ty~Toeq (Id' x x₁) = {!  !}
-Ty~Toeq (RTC' eq x) = {!  !}
+Ty~Toeq (Pi' {b = b} {b' = b'} x (EtaArr k)) | Refl with inj∙ b b' (funExt (λ x₁ → Ty~Toeq (k x₁)))
+... | Refl = Refl
+Ty~Toeq (Sigma' x x₁) with (Ty~Toeq x)
+Ty~Toeq (Sigma' {b = b} {b' = b'} x (EtaArr k)) | Refl with inj∙ b b' (funExt (λ x₁ → Ty~Toeq (k x₁)))
+... | Refl = Refl
+Ty~Toeq (Id' x x₁) = TODO
+Ty~Toeq (RTC' eq {p} {p'} x) with setEq eq
+... | Refl = TODO
 Ty~Toeq (Either' x x₁) with Ty~Toeq x | Ty~Toeq x₁
 ... | Refl | Refl = Refl
 Ty~Toeq Bot' = Refl
@@ -667,7 +684,7 @@ symTm~ {U} {U} {RTC rc x₁} {RTC rc₁ x₂} (RTC' eq x) with setEq eq
 symTm~ {Top} {Top} {a} {b} EtaTT = EtaTT
 symTm~ {_ => _} {_ => _} {a} {b} (EtaArr x) = EtaArr (λ x₃ → symTm~ (x x₃))
 symTm~ {_ × _} {_ × _} {a} {b} (Eta× x x₁) = Eta× (symTm~ x) (symTm~ x₁)
-symTm~ {Pi _ _} {Pi _ _} {a} {b} (EtaPi f x) = EtaPi (λ x₁ → symTm~ (f x₁)) λ x₃ → symTm~ (x x₃)
+symTm~ {Pi _ _} {Pi _ _} {a} {b} (EtaPi f x) = EtaPi (symTm~ f) λ x₃ → symTm~ (x x₃)
 symTm~ {Sigma _ _} {Sigma _ _} {a} {b} (EtaSigma e eq x) = EtaSigma (symTm~ e) (symTm~ eq) (symTm~ x)
 symTm~ {Id _ _} {Id _ _} {a} {b} EtaId = EtaId
 symTm~ {RTC _ _} {RTC _ _} {a} {b} (EtaRDC x) = EtaRDC (symTm~ x)
@@ -682,7 +699,9 @@ coeM {a = a} (EtaArr x) x₁ with x a
 
 
 coeApp : {t : Ty}{b : Tm (t => U)}(a a' : Tm t) -> Tm~ a a' -> Tm (b ∙ a) -> Tm (b ∙ a')
-coeApp = TODO
+coeApp {U} a a' x x₁ with Ty~Toeq x
+... | Refl = x₁
+coeApp {NU x₂} a a' x x₁ = {!  !}
 
 coeTm {U} U x₁ = x₁
 coeTm {Top} Top' x₁ = x₁
@@ -698,13 +717,14 @@ coeTm {a ⊎ b} (Either' y y₁) z = either' ∙ lam "f" (λ x → Left (coeTm y
 coeTm {RTC rc x₂} (RTC' eq x) y with setEq eq
 ... | Refl = RDC (coeApp {b = rc .unnamed .UnnamedRDesc.rFields} _ _ x (proj ∙ y))
 coeTm {NeU _} NeU' x = x
--}
+
 postulate decString : (str str' : String) -> Dec' (str ≡ str')
-{-
+
 {-# TERMINATING #-}
 convTy  : Nat -> (a a' : Ty) -> Dec' (Ty~ a a')
 convTmNU : ∀ {a a'} -> Nat -> (t : TmNU a)(t' : TmNU a') -> Dec' (TmNU~ t t')
 convTm  : Nat -> (t : Tm  a)(t' : Tm a') -> Dec' (Tm~ t t')
+convSpine : Nat -> (s : Spine a)(s' : Spine a) -> Dec' (Spine~ s s')
 
 convTy x U U = Yes U
 convTy i Top Top = Yes Top'
@@ -747,7 +767,7 @@ convTmNU {a = Top'} {a' = Top'} i t t' = Yes EtaTT
 convTmNU {a = x =>' x₁} {a' = x' =>' x₁'} i t t' = {!  !}
 convTmNU {a = x ×' x₁} {a' = x' ×' x₁'} i t t'
     with convTy i x x' | convTy i x₁ x₁' | convTm i (fst× ∙ t) (fst× ∙ t') | convTm i (snd× ∙ t) (snd× ∙ t')
-... | Yes x₂ | Yes x₃ | Yes x₄ | Yes x₅ = Yes {!  !}
+... | Yes x₂ | Yes x₃ | Yes x₄ | Yes x₅ = Yes {! x₂ !}
 ... | Yes x₂ | Yes x₃ | Yes x₄ | No = No
 ... | Yes x₂ | Yes x₃ | No | bq = No
 ... | Yes x₂ | No | aq | bq = No
@@ -760,12 +780,21 @@ convTmNU {a = RTC' rc x} {a' = RTC' rc' x'} i t t' = {!  !}
 --convTmNU {a = TLHS x} {a' = TLHS x'} i t t' = {!  !}
 convTmNU {a = _} {a' = _} _ _ _ = No
 
+convSpine x (Head x₁) (Head x₂) with decString (name x₁) (name x₂)
+... | No = No
+... | Yes Refl = Yes (Head Refl)
+convSpine x (_$_ {a = a} {a' = a'} s x₁) (_$_ {a = b} {a' = b'} s' x₂) with convTy x a b | convTy x a' b'
+... | No | bq = No
+... | Yes x₃ | No = No
+... | Yes x₃ | Yes x₄ = {!  !}
+convSpine x (DApp s x₁ x₂) (DApp s' x₃ x₄) = {!  !}
+convSpine x _ _ = No
+
 convTm {a = U} {a' = U} i t t' = convTy i t t'
 convTm {a = NU _} {a' = NU _} i t t' = convTmNU i t t'
 convTm {a = _} {a' = _} _ _ _ = No
 
--}
-
+{-
 convTm  : Nat -> (t t' : _ ** Tm) -> Dec' (t ≡ t')
 convTm x (U ,, U) (U ,, U) = Yes Refl
 convTm x (U ,, Top) (U ,, Top) = Yes Refl
@@ -848,7 +877,7 @@ convTm x (NeU x₁ ,, NeNU x₃) (NeU x₂ ,, NeNU x₄) = No
 convTm x (NU x₁ ,, _) (NU x₂ ,, _) = No
 convTm x (U ,, t) (NU x₁ ,, t') = No
 convTm x (NU x₁ ,, t) (U ,, t') = No
-
+-}
 -------------------------------------
 
 _||_ : Bool -> Bool -> Bool
