@@ -47,17 +47,21 @@ refl : (A : U) (x : A) -> Id (A , x , x)
 
 ---------------------
 
--- Nat : U = ret (fix U (n. Top + n))
+Nat : U = ret (fix U (n. Top + n))
 
--- Zero : Nat = ret (Left TT)
+Zero : Nat = ret (Left TT)
 
--- One : Nat = ret (Right (Left TT))
--- Suc : Nat -> Nat = n. ret (Right n)
+One : Nat = ret (Right (Left TT))
+Two : Nat = ret (Right (Right (Left TT)))
+-- With the new "fix", only the "Suc" constructor does not work
+--Suc : Nat -> Nat = n. ret (Right n)
+-- Note: when Nat is used as a parameter THEN the interpreter loops!
+--       Could it be that our lambdas are not lazy?
 
--- isZero : Nat -> Top + Top
---  = n. either n (_ _. ret (Left TT)) (_ _. ret (Right TT))
+isZero : Nat -> Top + Top
+  = n. either n (_ _. ret (Left TT)) (_ _. ret (Right TT))
 
---isZero Zero : Top + Top
+isZero Zero : Top + Top
 
 ---------------------
 

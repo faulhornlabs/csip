@@ -621,6 +621,7 @@ record TCState : Set where
   constructor MkTCState
   field
     counter : Nat
+    errors : List Error
 
 record TCEnv : Set where
   constructor MkTCEnv
@@ -634,17 +635,17 @@ open TCEnv
 record TC (A : Set) : Set where
   coinductive
   field
-    getTC : TCEnv -> TCState -> Either Error (Pair TCState A)
+    getTC : TCEnv -> TCState -> Either (List Error) (Pair TCState A)
 
 open TC
 
 throwError : Error -> TC A
-getTC (throwError e) _ _ = Left e
+getTC (throwError e) _ (MkTCState _ errors) = Left (e :: errors)
 
 runTC : TC A -> Either Error A
-runTC tc with getTC tc (MkTCEnv emptySM emptySM) (MkTCState 10)
-... | Left  e       = Left e
-... | Right (_ , r) = Right r
+runTC tc with getTC tc (MkTCEnv emptySM emptySM) (MkTCState 10 [])
+... | Left  e       = Left (foldr (\ a b -> a ++ "\n" ++ b) "" e)
+... | Right ((MkTCState _ _) , r) = Right r
 
 _>>=_ : TC A -> (A -> TC B) -> TC B
 getTC (m >>= f) ctx c with getTC m ctx c
@@ -668,10 +669,10 @@ getTC (lookupTm s) env c with lookupSMStr s (localEnv env)
 ... | Just (n , x)  = Right (c , (x ,, var (MkTName n)))
 ... | Nothing with lookupSMStr s (globalEnv env)
 ...   | Just (n , x)  = Right (c , x)
-...   | Nothing = Left ("Not defined: " ++ s)
+...   | Nothing = Left (("Not defined: " ++ s) :: [])
 
 newName : String -> TC Name
-getTC (newName s) ctx (MkTCState c) = Right (MkTCState (Suc c) , MkName s c)
+getTC (newName s) ctx (MkTCState c e) = Right (MkTCState (Suc c) e , MkName s c)
 
 newNameT : String -> TC (TName a)
 newNameT s = do
@@ -797,9 +798,11 @@ data Ty~ where
   RTC' : {desc desc' : _} -> (eq : desc' ≈ desc) -> {p : Tm (rParams desc)}{p' : Tm (rParams desc')} -> Tm~ p p' -> Ty~ (Rec desc p) (Rec desc' p')
   NeU' : {s s' : _}{l : _}{g : Glued s l}{g' : Glued s' l} -> Spine~ s s' -> Ty~ (NeU g) (NeU g')
 
-postulate symTm~ : {a' b' : Ty} {a : Tm a'}{b : Tm b'} -> Tm~ a b -> Tm~ b a
-postulate coeTm : Tm~ a a' -> Tm a -> Tm a'
-postulate substTm : (P : Tm a -> Set) -> {x y : Tm a} -> Tm~ x y -> P x -> P y
+postulate
+  symTm~   : {a' b' : Ty} {a : Tm a'}{b : Tm b'} -> Tm~ a b -> Tm~ b a
+  coeTm    : Tm~ a a' -> Tm a -> Tm a'
+  substTm  : (P : Tm a -> Set) -> {x y : Tm a} -> Tm~ x y -> P x -> P y
+  substTm' : (P : Tm a -> Prop) -> {x y : Tm a} -> Tm~ x y -> P x -> P y
 
 fst× : Tm (a × a' => a)
 fst× = MkTName (MkName "fst×" 0) := Lam' \p -> elim× p \x y _ -> RHS x
@@ -829,7 +832,7 @@ data TmNU~ where
   Eta× : {a : _}{a' : _} -> {t t' : Tm (a × a')} -> Tm~ (fst× ∙ t) (fst× ∙ t') -> Tm~ (snd× ∙ t) (snd× ∙ t') -> TmNU~ t t'
   Eta⊎ : {a b : _}{t t' : Tm (a ⊎ b)} -> ({c : _}(f : Tm (a => c))(g : Tm (b => c)) -> Tm~ (either' ∙ f ∙ g ∙ t ) (either' ∙ f ∙ g ∙ t')) -> TmNU~ t t'
   EtaRDC : {h : RDesc}{g : Tm (rParams h)} -> {m m' : Tm (Rec h g)} -> Tm~ (proj {h} {g} ∙ m) (proj {h} {g} ∙ m') -> TmNU~ m m'
-  EtaArr : {a : _}{b : _} -> {arr arr' : TmNU (a =>' b)} -> ((x : _) -> Tm~ (arr ∙ x) (arr' ∙ x)) -> TmNU~ arr arr'
+  EtaArr : {a : _}{b : _} -> {arr arr' : TmNU (a =>' b)}{n : _} -> (Tm~ (arr ∙ var n) (arr' ∙ var n)) -> TmNU~ arr arr'
   EtaSigma : {a : _}{b : _}{b' : _}{sig : Tm (Sigma a b)}{sig' : Tm (Sigma a b')} -> (e : Tm~ (fstΣ ∙ sig) (fstΣ ∙ sig')) -> (eq : Ty~ (b ∙ (fstΣ ∙ sig)) (b' ∙ (fstΣ ∙ sig'))) -> Tm~ (sndΣ ∙∙ sig) (sndΣ ∙∙ sig') -> TmNU~ sig sig'
   EtaPi : {a : _}{b : _}{b' : _}{pi : Tm (Pi a b)}{pi' : Tm (Pi a b')} -> (Tm~ b b') -> {n : _} -> (Tm~ (pi ∙∙ var n) (pi' ∙∙ var n)) -> TmNU~ pi pi'
   EtaId : {t : _}{a b : Tm t}{id id' : Tm (Id a b)} -> TmNU~ id id' -- Use J instead?
@@ -843,32 +846,6 @@ data Spine~ where
   Head : {a : Ty}{l l' : NamedLambda a} -> name l ≡ name l' -> Spine~ (Head l) (Head l')
   App : {a b b' : Ty}{s : Spine (b => a)}{s' : Spine (b' => a)}(proof : Ty~ b' b) -> Spine~ s s' -> {x : Tm b}{x' : Tm b'} -> Tm~ x x' -> Spine~ (s $ x) (s' $ x')
   DApp' : {a c : Ty}{b : Tm (c => U)}{s s' : Spine (Pi c b)} -> Spine~ s s' -> {x x' : Tm c}(eq : Tm~ x x')(proof : b ∙ x ≡ a) -> Spine~ {a = a} (DApp {a = c} {bx = a} s x proof) {a' = a} (DApp s' x' primTrustMe)
-
-{-# TERMINATING #-}
-reflTm~ : {a : Ty}(a' : Tm a) -> Tm~ a' a'
-reflTm~ {U} U = U
-reflTm~ {U} Top = Top'
-reflTm~ {U} Bot = Bot'
-reflTm~ {U} (x => x₁) = Arr (reflTm~ x) (reflTm~ x₁)
-reflTm~ {U} (x × x₁) = Tuple (reflTm~ x) (reflTm~ x₁)
-reflTm~ {U} (x ⊎ x₁) = Either' (reflTm~ x) (reflTm~ x₁)
-reflTm~ {U} (Pi a x) = Pi' (reflTm~ a) (reflTm~ x)
-reflTm~ {U} (Sigma a x) = Sigma' (reflTm~ a) (reflTm~ x)
-reflTm~ {U} (Id x x₁) = Id' (reflTm~ x) (reflTm~ x₁)
-reflTm~ {U} (Rec rc x) = RTC' Refl (reflTm~ x)
-reflTm~ {U} (NU (NeU' {s = Head x₁} x)) = NeU' (Head Refl)
-reflTm~ {U} (NU (NeU' {s = s $ x₁} x)) = NeU' (App (reflTm~ _) TODO (reflTm~ _))
-reflTm~ {U} (NU (NeU' {s = DApp s x₁ x₂} x)) = NeU' TODO
-reflTm~ {Top} a' = EtaTT
-reflTm~ {Bot} a' = EtaBot
-reflTm~ {x => x₁} a' = EtaArr (λ x₂ → reflTm~ (a' ∙ x₂))
-reflTm~ {x × x₁} a' = Eta× (reflTm~ (fst× ∙ a')) (reflTm~ (snd× ∙ a'))
-reflTm~ {x ⊎ x₁} a' = Eta⊎ (λ f g → reflTm~ (either' ∙ f ∙ g ∙ a'))
-reflTm~ {Pi a x} a' = EtaPi (reflTm~ x) {n = MkTName (MkName "var" 1000)} (reflTm~ _) -- TODO: Less cheating
-reflTm~ {Sigma a x} a' = EtaSigma (reflTm~ (fstΣ ∙ a')) (reflTm~ (x ∙ (fstΣ ∙ a'))) (reflTm~ (sndΣ ∙∙ a'))
-reflTm~ {Id x x₁} a' = EtaId
-reflTm~ {Rec rc x} r = EtaRDC (reflTm~ (proj ∙ r))
-reflTm~ {NeU x} (NeNU {s = s} {l = Stuck x₂} x₁) = TODO
 
 subst≡ : {A : Set}(@0 P : (a : A) -> Set){a a' : A} -> (@0 eq : a ≡ a') -> P a -> P a'
 subst≡ _ Refl x = x
@@ -987,19 +964,55 @@ convTy i (NU (NeU' {s = s} x)) (NU (NeU' {s = s'} y)) = do
   pure (emb TODO)
 convTy _ _ _ = throwError "convTy: No conversion rule for type"
 
+postulate
+  reflTm~     : {t : _}{a : Tm t} -> Tm~ a a
+  substSpine  : {t : _}{s : Spine t}{s' : Spine t}(P : Spine t -> Set) -> Spine~ s s' -> P s -> P s'
+  substSpine' : {t : _}{s : Spine t}{s' : Spine t}(P : Spine t -> Prop) -> Spine~ s s' -> P s -> P s'
+  Spine~Toeq  : {t : _}{s : Spine t}{s' : Spine t} -> Spine~ s s' -> s ≡ s'
+
 convTmNU {a = Top'} {a' = Top'} i t t' = pure (emb EtaTT)
 convTmNU {a = Bot'} {a' = Bot'} i t t' = pure (emb EtaBot)
-convTmNU {a = x =>' x₁} {a' = x' =>' x₁'} i t t' = pure (emb TODO)
-convTmNU {a = x ×' x₁} {a' = x' ×' x₁'} i t t' = throwError "convTmNU2"
-convTmNU {a = x ⊎' x₁} {a' = x' ⊎' x₁'} i t t' = throwError "convTmNU3"
+convTmNU {a = x =>' x₁} {a' = x' =>' x₁'} i t t' = do
+  (emb ty) <- convTm i x x'
+  Refl <- pure (Ty~Toeq ty)
+  (emb yt) <- convTm i x₁ x₁'
+  Refl <- pure (Ty~Toeq yt)
+  n <- newNameT "v"
+  (emb m) <- convTm i (t ∙ var n) (t' ∙ var n)
+  pure (emb (EtaArr m))
+convTmNU {a = x ×' x₁} {a' = x' ×' x₁'} i t t' = do
+  (emb ty) <- convTm i x x'
+  Refl <- pure (Ty~Toeq ty)
+  (emb yt) <- convTm i x₁ x₁'
+  Refl <- pure (Ty~Toeq yt)
+  (emb m) <- convTm i (fst× ∙ t) (fst× ∙ t')
+  (emb n) <- convTm i (snd× ∙ t) (snd× ∙ t')
+  pure (emb (Eta× m n))
+convTmNU {a = x ⊎' x₁} {a' = x' ⊎' x₁'} i (Left x₂) (Left x₃) = do
+  (emb ty) <- convTm i x x'
+  Refl <- pure (Ty~Toeq ty)
+  (emb yt) <- convTm i x₁ x₁'
+  Refl <- pure (Ty~Toeq yt)
+  (emb tm) <- convTm i x₂ x₃
+  pure (emb (Eta⊎ (λ f g → substTm' (λ k → Tm~ (f ∙ x₂) (f ∙ k)) tm reflTm~)))
+convTmNU {a = x ⊎' x₁} {a' = x' ⊎' x₁'} i (Right x₂) (Right x₃) = do
+  (emb ty) <- convTm i x x'
+  Refl <- pure (Ty~Toeq ty)
+  (emb yt) <- convTm i x₁ x₁'
+  Refl <- pure (Ty~Toeq yt)
+  (emb tm) <- convTm i x₂ x₃
+  pure (emb (Eta⊎ (λ f g → substTm' (λ k → Tm~ (g ∙ x₂) (g ∙ k)) tm reflTm~)))
 convTmNU {a = Pi' a x} {a' = Pi' a' x'} i t t' = throwError "convTmNU4"
 convTmNU {a = Sigma' a x} {a' = Sigma' a' x'} i t t' = throwError "convTmNU4"
-convTmNU {a = Id' x x₁} {a' = Id' x' x₁'} i t t' = throwError "convTmNU5"
+convTmNU {a = Id' x x₁} {a' = Id' x' x₁'} i t t' = do
+  pure (emb TODO)
 convTmNU {a = Rec' rc x} {a' = Rec' rc' x'} i t t' = throwError "convTmNU6"
-convTmNU {a = NeU' {s = s} x} {a' = NeU' {s = s'} x'} i t t' = do
-  (emb m) <- convSpine 0 s s'
---  _ <- pure {!  !}
-  throwError "convTmNU7"
+convTmNU {a = NeU' {s = s} {l = l} x} {a' = NeU' {s = s'} {l = l'} x'} i (NeNU x₁) (NeNU x₂) = do
+    (emb m) <- convSpine i s s'
+    Refl <- pure (Spine~Toeq m)
+--    Refl <- pure (setEq (_∘_ (sym (glued x')) (glued (substSpine' (λ l → Glued l _) m x))))
+    pure (emb TODO)
+
 convTmNU {a = _} {a' = _} _ _ _ = throwError "convTmNU: Unable to convert terms"
 
 {-
@@ -1009,22 +1022,19 @@ convertSpine (s $$ x) (s' $$ x') = do
   pure Refl
 -}
 
--- Is this a lie?
-postulate Ty~2eq : Ty~ a a' -> a ≡ a'
-
 convSpine x (Head l) (Head l') = do
   Yes Refl <- pure (decNamed l l') where
     No -> throwError "convSpine1"
   pure (emb (Head Refl))
 convSpine i (_$_ {a = a} {a' = a'} s  x) (_$_ {a = b} {a' = b'} s' x') = do
   (emb ty) <- convTm i b a
-  Refl <- pure (Ty~2eq ty)
+  Refl <- pure (Ty~Toeq ty)
   (emb c) <- convSpine i s s'
   (emb t) <- convTm i x x'
   pure (emb (App ty c t))
 convSpine x (DApp {a = a} {b = b} s x₁ Refl) (DApp {a = a'} {b = b'} s' x₃ x₄) = do
   (emb ty) <- convTm x a a'
-  Refl <- pure (Ty~2eq ty)
+  Refl <- pure (Ty~Toeq ty)
   pure (emb TODO)
 convSpine x _ _ = throwError "convSpine"
 
@@ -1419,7 +1429,7 @@ check (KW' "?" ds) a = printGoal ds a
 check d a = do
   a' ,, t <- infer d
   (emb k) <- convTm 0 a' a
-  Refl <- pure (Ty~2eq k)
+  Refl <- pure (Ty~Toeq k)
   pure t
 
 
@@ -1554,7 +1564,7 @@ checkLHS (KW' "absurd" ds) a'' = do
   Bot ,, p <- infer p where
     r ,, _ -> throwError ("absurd: " ++ showTm r)
   pure (MatchBot p)
-{-
+
 checkLHS (KW' "jRule" ds) a'' = do
   w , ds <- getArg ds
   P , ds <- getArg ds
@@ -1562,23 +1572,25 @@ checkLHS (KW' "jRule" ds) a'' = do
   NU (Id' {a = a} x y) ,, e <- infer e  where
     r ,, _ -> throwError ("jRule: " ++ showTm r)
   P <- check P (jPTy ∙∙ a ∙ x)
-  Refl <- convert a'' (P ∙∙ y ∙ e)
+  (emb j) <- convTm 0 a'' (P ∙∙ y ∙ e)
+  Refl <- pure (Ty~Toeq j)
   w <- checkLHS w (P ∙∙ x ∙ Refl)
   pure (MatchJ e P w)
--}
-{-
+
 checkLHS (KW' "kRule" ds) a'' = do
   w , ds <- getArg ds
   P , ds <- getArg ds
   e      <- firstArg ds
   NU (Id' {a = a} x y) ,, e <- infer e  where
     r ,, _ -> throwError ("jRule: " ++ showTm r)
-  Refl <- convert x y
+  (emb k) <- convTm 0 y x
   P <- check P (kPTy ∙∙ a ∙ x)
-  Refl <- convert a'' (P ∙ e)
+  let h = substTm (λ m → TmNU (Id' x m)) k e
+  (emb k') <- (convTm 0 a'' (P ∙ h))
+  Refl <- pure (Ty~Toeq k')
   w <- checkLHS w (P ∙ Refl)
-  pure (MatchK e P w)
--}
+  pure (MatchK h P w)
+
 checkLHS (KW' "?" ds) a = printGoal ds a
 checkLHS d a = throwError ("checkLHS: " ++ showDoc d)
 
