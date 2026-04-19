@@ -1,0 +1,65 @@
+id : (A : U) -> A -> A
+  = A x. ret x
+
+f : U * U -> U * U
+  = p. pair p (A B _. ret (B , A))
+
+bool = record Top (_. Top + Top)
+Bool  : U    =  ret (bool TT)
+False : Bool =  ret (Wrap (Left  TT))
+True  : Bool =  ret (Wrap (Right TT))
+
+and : (a b : Bool) -> Bool
+  = a b. unwrap a (a _. either a (_ _. ret False) (_ _. ret b))
+
+ite : (A : U) -> Bool -> A -> A -> A
+  = A b t f. unwrap b (b _. either b (_ _. ret f) (_ _. ret t))
+
+exfalso : (A : U) -> Bot -> A
+  = A b. absurd b
+
+Maybe = record U (A. Top + A)
+Nothing : (A : U) ->      Maybe A  = A.   ret (Wrap (Left TT))
+Just    : (A : U) -> A -> Maybe A  = A a. ret (Wrap (Right a))
+
+---------------------
+
+id1 : U -> U  = A. ret A
+id2 : U -> U  = A. ret A
+
+lamEtaTest : id1 == id2  = ret Refl
+
+J : (A : U) (a : A) (P : (x : A) -> a == x -> U) -> P a Refl -> (x : A) (e : a == x) -> P x e
+  = A a P w x e. jRule e P (ret w)
+
+K : (A : U) (a : A) (e : a == a) -> e == Refl
+  = A a e. kRule e (e. e == Refl) (ret Refl)
+
+---------------------
+
+idField : (A : U) * A * A -> U
+  = s. sigma s (A xy _. pair xy (x y _. ret (x == y)))
+
+Id = record ((A : U) * A * A) idField
+
+refl : (A : U) (x : A) -> Id (A , x , x)
+  = A x. ret (Wrap Refl)
+
+---------------------
+
+-- Nat : U = ret (fix U (n. Top + n))
+
+-- Zero : Nat = ret (Left TT)
+
+-- One : Nat = ret (Right (Left TT))
+-- Suc : Nat -> Nat = n. ret (Right n)
+
+-- isZero : Nat -> Top + Top
+--  = n. either n (_ _. ret (Left TT)) (_ _. ret (Right TT))
+
+--isZero Zero : Top + Top
+
+---------------------
+
+f (id U Top , ite U True Bot U) : id U (U * U)
+
