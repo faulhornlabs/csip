@@ -54,10 +54,6 @@ postulate
 {-# FOREIGN GHC import qualified Data.Text.IO as TIO #-}
 {-# COMPILE GHC interact = TIO.interact #-}
 
-postulate
-  fix : {A : Set} -> (A -> A) -> A
-{-# COMPILE GHC fix = \_ f -> let x = f x in x #-}
-
 
 ---------------------
 
@@ -134,6 +130,29 @@ open _**_
 cong~ : {a a' : A} {B : A -> Set} -> (f : (x : A) -> B x) -> a ≈ a' -> _≈_ {A ** B} (_ ,, f a) (_ ,, f a')
 cong~ _ Refl = Refl
 
+
+---------------------------------------
+
+postulate
+  future : (Pair A (A -> C -> C) -> B) -> B
+
+{-# FOREIGN GHC import System.IO.Unsafe (unsafePerformIO) #-}
+{-# FOREIGN GHC import Data.IORef (IORef, newIORef, readIORef, writeIORef) #-}
+{-# FOREIGN GHC
+  {-# NOINLINE unsafe #-}
+  unsafe :: IO a -> (a -> b) -> b
+  unsafe m f = unsafePerformIO (f <$> m)
+
+  future :: ((a, a -> c -> c) -> b) -> b
+  future = unsafe (do
+      r <- newIORef (error "value not yet defined")
+      pure (unsafePerformIO (readIORef r), \x f -> unsafe (writeIORef r x) (\() -> f))
+    )
+#-}
+{-# COMPILE GHC Pair = data (,) ((,)) #-}
+{-# COMPILE GHC future = \_ _ _ -> future #-}
+
+
 -------------------------------------
 
 _||_ : Bool -> Bool -> Bool
@@ -184,11 +203,8 @@ record Name : Set where
 
 open Name
 
-eqName : Name -> Name -> Bool
-eqName n m = nameId n == nameId m
-
 decName : (n n' : Name) -> Dec (n ≡ n')
-decName n n' = if eqName n n' then Yes primTrustMe else No
+decName n n' = if nameId n == nameId n' then Yes primTrustMe else No
 
 
 ----------------------------------
@@ -211,22 +227,6 @@ lookupSMStr s ((n , x) :: sm) with eqString (nameStr n) s
 ... | False = lookupSMStr s sm
 
 
-
------------------------------------------------------------------- end of Lib
-
-infixl 9 _∙_     -- non-dependent application
-infixl 9 _∙∙_    -- dependent application
-infixl 9 _$_     -- non-dependent application
-infixl 9 _$$_    -- dependent application
-infixr 8 _[_]_   -- operator syntax for Doc
-infixr 7 _×_     -- non-dependent pair type
-infixr 6 _⊎_     -- non-dependent function type
-infixr 5 _=>_    -- non-dependent function type
-infixr 0 _,_     -- non-dependent pair constructor
-infixr 0 _,,_    -- dependent pair constructor
-infix -1 _:=_
-
-
 --------------------------------------------
 
 record Named (A : Set) : Set where
@@ -242,6 +242,22 @@ decNamed : (a : Named A) (b : Named B) -> Dec (_≡_ {A = Set ** Named} (_ ,, a)
 decNamed a b with decName (name a) (name b)
 ... | Yes _ = Yes primTrustMe
 ... | No    = No
+
+
+------------------------------------------------------------------ end of Lib
+
+infixl 9 _∙_     -- non-dependent application
+infixl 9 _∙∙_    -- dependent application
+infixl 9 _$_     -- non-dependent application
+infixl 9 _$$_    -- dependent application
+infixr 8 _[_]_   -- operator syntax for Doc
+infixr 7 _×_     -- non-dependent pair type
+infixr 6 _⊎_     -- non-dependent function type
+infixr 5 _=>_    -- non-dependent function type
+infixr 0 _,_     -- non-dependent pair constructor
+infixr 0 _,,_    -- dependent pair constructor
+infix -1 _:=_
+
 
 ----------------------
 
@@ -581,9 +597,9 @@ postulate
 
 indexTms : ∀ {a ts} -> Name -> CTm ts ⟦ a ⟧ᵤ
 indexTms {ts = []} n = \xs -> nameIsDefined (nameStr n)
-indexTms {a = a} {ts = ts >> n' :: t} n with eqName n' n
-... | True  = \(xs ,, x) -> coe (thisIsIt {a = a}) x
-... | False = \(xs ,, x) -> subst Tm (weaken a) (f xs)
+indexTms {a = a} {ts = ts >> n' :: t} n with decName n' n
+... | Yes _  = \(xs ,, x) -> coe (thisIsIt {a = a}) x
+... | No     = \(xs ,, x) -> subst Tm (weaken a) (f xs)
  where
   f = indexTms {a = a} {ts = ts} n
 
@@ -620,21 +636,33 @@ Ctx = NameMap TyTm
 
 LCtx = NameMap Ty
 
+data FLHS : Ty -> Set
+
+record TC (A : Set) : Set
+
+Fill = Ty ** \a -> FLHS a -> TC TyTm -> TC TyTm
+
+Fills = NameMap Fill
+
 record TCState : Set where
+  pattern
   constructor MkTCState
   field
     counter : Nat
 
+{-# NO_POSITIVITY_CHECK #-}
 record TCEnv : Set where
+  pattern
   constructor MkTCEnv
   field
     globalEnv : Ctx
     localEnv  : LCtx
+    fillEnv   : Fills
 
 open TCEnv
 
 -- type checking monad
-record TC (A : Set) : Set where
+record TC A where
   coinductive
   field
     getTC : TCEnv -> TCState -> Either Error (Pair TCState A)
@@ -645,7 +673,7 @@ throwError : Error -> TC A
 getTC (throwError e) _ _ = Left e
 
 runTC : TC A -> Either Error A
-runTC tc with getTC tc (MkTCEnv emptySM emptySM) (MkTCState 10)
+runTC tc with getTC tc (MkTCEnv emptySM emptySM emptySM) (MkTCState 10)
 ... | Left  e       = Left e
 ... | Right (_ , r) = Right r
 
@@ -658,10 +686,18 @@ pure : A -> TC A
 getTC (pure x) _ c = Right (c , x)
 
 addGlobal : Name -> TyTm -> TC A -> TC A
-getTC (addGlobal s d m) (MkTCEnv g l) = getTC m (MkTCEnv (insertSM s d g) l)
+getTC (addGlobal s d m) (MkTCEnv g l f) = getTC m (MkTCEnv (insertSM s d g) l f)
 
 addLocal : Name -> Ty -> TC A -> TC A
-getTC (addLocal s d m) (MkTCEnv g l) = getTC m (MkTCEnv g (insertSM s d l))
+getTC (addLocal s d m) (MkTCEnv g l f) = getTC m (MkTCEnv g (insertSM s d l) f)
+
+addFill : Name -> Fill -> TC A -> TC A
+getTC (addFill s d m) (MkTCEnv g l f) = getTC m (MkTCEnv g l (insertSM s d f))
+
+lookupFill : String -> TC Fill
+getTC (lookupFill s) env c with lookupSMStr s (fillEnv env)
+... | Just (n , x)  = Right (c , x)
+... | Nothing       = Left ("Not declared: " ++ s)
 
 locals : TC LCtx
 getTC locals env c = Right (c , localEnv env)
@@ -680,6 +716,11 @@ newNameT : String -> TC (TName a)
 newNameT s = do
   n <- newName s
   pure (MkTName n)
+
+futureTC : (Pair A (A -> TC B -> TC B) -> TC C) -> TC C
+futureTC = future
+
+
 
 -------------------------------------------------
 
@@ -778,7 +819,7 @@ isOperator s = any (eqString s) operators
 
 keywords : List String
 keywords
-  =  "ret" :: "fix" :: "U" :: "?"
+  =  "ret" :: "U" :: "?"
 -- type       constructor            eliminator  
 ---------------------------------------------------
   {- _->_ -}  {- _._ -}              {- _ _ -}
@@ -967,6 +1008,7 @@ showLocals ((n , a) :: ls) = showLocals ls ++ "\n" ++ showDoc (printName n [ ":"
 
 
 ----------------------------------
+-- TODO: make these closed?
 
 fst× : Tm (a × a' => a)
 fst× = MkTName (MkName "fst×" 0) := Lam' \p -> elim× p \x y _ -> RHS x
@@ -985,6 +1027,8 @@ sndΣ = MkTName (MkName "sndΣ" 4) := DLam' \p -> elimSigma p \{x y Refl -> RHS 
 
 proj : ∀ {ps} -> Tm (Rec rc ps => rFields rc ∙ ps)
 proj = MkTName (MkName "unwrap" 5) := Lam' \t -> elimR t \t _ -> RHS t
+
+----------------------------------
 
 -- data Tm≈ : Tm a -> Tm a -> Prop where
 --    TopEta : (x y : Tm Top) -> Tm≈ x y
@@ -1143,29 +1187,40 @@ vars : (ts : Tys) -> Tms ts
 vars []             = tt
 vars (ts >> n :: t) = vars ts ,, var (MkTName n)
 
+postulate
+  unusedId : Nat   -- TODO?
 
--- TODO!
-lamm : (Tm a -> Tm U) -> a =>U
-lamm f = MkTName (MkName "lamm" 9) := Lam' \x -> RHS (f x)
+lam : (Tm a -> Tm U) -> a =>U
+lam f = MkTName (MkName "uLam" unusedId) := Lam' \x -> RHS (f x)
+
+Sigs : Tys -> Ty
+
+sigsToTms : Tm (Sigs ts) -> Tms ts
+
+Sigs [] = Top
+Sigs (ts >> n :: t) = Sigma (Sigs ts) (lam \xs -> t (sigsToTms xs))
+
+sigsToTms {ts = []}           xs = tt
+sigsToTms {ts = ts >> n :: t} xs = (sigsToTms (fstΣ ∙ xs)) ,, sndΣ ∙∙ xs
 
 upTy : (ts : Tys) -> CTy ts -> Ty
-upTy []             a = a tt
-upTy (ts >> n :: t) a = upTy ts \xs -> Pi (t xs) (lamm \x -> a (xs ,, x))
+upTy ts t = Pi (Sigs ts) (lam \xs -> t (sigsToTms xs))
 
 up : ∀ ts -> {t : CTy ts} -> ((xs : Tms ts) -> LHS (t xs)) -> LHS (upTy ts t)
-up [] l = l tt
-up (ts >> n :: t) l = up ts \xs -> DLam' \x -> l (xs ,, x)
+up ts l = DLam' \xs -> l (sigsToTms xs)
+
+vars' : (ts : Tys) -> Tm (Sigs ts)
+vars' []             = TT
+vars' (ts >> n :: t) = vars' ts ,, var (MkTName n)
 
 down : (ts : Tys) -> {t : CTy ts} -> Tm (upTy ts t) -> Tm (t (vars ts))
-down []             x = x
-down (ts >> n :: f) x = down ts x ∙∙ var (MkTName n)
+down ts x = coe TODO (x ∙∙ vars' ts)
 
 postulate
   ⟦⟧vars : ⟦ a ⟧ᵤ (vars ts) ≈ a
 
 the : (A : Set) -> A -> A
 the _ x = x
-
 
 mkLam : Name -> Tys -> TName a -> Tm a' -> Tm (a => a')
 mkLam {a = a} {a' = a'} ln ts n e
@@ -1182,12 +1237,12 @@ mkDLam : Name -> Tys -> (n : TName a) -> Tm (b ∙ var n) -> Tm (Pi a b)
 mkDLam {a = a} {b = b} ln ts n e
   = subst Tm (⟦⟧vars {a = Pi a b} {ts = ts}) (
       down ts {t = ⟦ Pi a b ⟧ᵤ} (
-        MkTName ln := up ts \xs -> DLam' \x -> RHS (subst Tm (b∙var⟦⟧ᵤ b) (e' (xs ,, x)))
+        MkTName ln := up ts {t = ⟦ Pi a b ⟧ᵤ} \xs -> DLam' \x -> RHS (subst Tm (b∙var⟦⟧ᵤ b) (e' (xs ,, x)))
       )
     )
  where
   e' : CTm (ts >>> n) ⟦ b ∙ var n ⟧ᵤ
-  e' = ⟦ e ⟧
+  e' = ⟦_⟧ {ts = ts >>> n} e
 
 
 printGoal : List Doc -> Ty -> TC A
@@ -1285,15 +1340,6 @@ check d a = do
   Refl <- convert a' a
   pure t
 
-fixTm : Tm (a => a) -> Tm a
-fixTm f = fix (\x -> f ∙ x)
-
-infer (KW' "fix" ds) = do
-  f , ds <- getArg ds
-  a <- firstArg ds
-  a <- check a U
-  f <- check f (a => a)
-  pure (a ,, fixTm f)
 infer (f $ x) = infer f >>= matchPi  where
   matchPi : TyTm -> TC TyTm
   matchPi (a => a' ,, f) = do
@@ -1341,7 +1387,7 @@ kPTy = MkTName (MkName "kLam" 14) := DLam' \a -> Lam' \x -> RHS (Id x x => U)
 
 -- first order representation of LHS
 -- TODO: add Ctx index
-data FLHS : Ty -> Set where
+data FLHS where
   RHS         : Tm a ->                                   FLHS a
   Lam         : (n : TName a) -> FLHS a' ->               FLHS (a => a')
   DLam        : (n : TName a) -> FLHS (b ∙ var n) ->      FLHS (Pi a b)
@@ -1424,10 +1470,6 @@ newTName' d = throwError ("lambda expected instead of: " ++ showDoc d)
 
 {-# TERMINATING #-}
 checkLHS : Doc -> (a : Ty) -> TC (FLHS a)
-checkLHS (KW' "ret" ds) a = do
-  d <- firstArg ds
-  t <- check d a
-  pure (RHS t)
 checkLHS (n [ "." ] t) (a => a') = do
   n <- newTName n
   t <- declareVar n (checkLHS t a')
@@ -1504,55 +1546,35 @@ checkLHS (KW' "kRule" ds) a'' = do
   Refl <- convert a'' (P ∙ e)
   w <- checkLHS w (P ∙ Refl)
   pure (MatchK e P w)
-checkLHS (KW' "?" ds) a = printGoal ds a
-checkLHS d a = throwError ("checkLHS: " ++ showDoc d)
-{-
-postulate
-  repl : Name -> Tm a -> Tm a' -> Tm a'
+checkLHS d a = do
+  t <- check d a
+  pure (RHS t)
 
-fixDecl : Name -> Name -> (ps : Ty) -> (ps =>U) -> RDesc
-fixDecl n nl ps fs = d
- where
-  d : RDesc
 
-  fs' : ps =>U
-  fs' = repl n (nl := Lam' \x -> RHS (Rec d x)) fs
-
-  d = named n (RD ps fs)
--}
 inferTop : Doc -> TC TyTm
 inferTop (((n [ ":" ] a) [ "=" ] t) [ ";" ] ds) = do
   a <- check a U
   n <- newNameD n
   t <- checkLHS t a
   addGlobal n (a ,, (MkTName n := quoteFLHS t)) (inferTop ds)
-{-
-inferTop ((DVar n [ ":" ] a) [ ";" ] (DVar n' [ "=" ] t) [ ";" ] ds) = do
-  True <- pure (primStringEquality n' n) where
-    _ -> throwError "TODO"
-  n <- newName n
-  a <- check a U
-  t <- addGlobal n (a ,, var n) (checkLHS t a)
-  addGlobal n (a ,, (n := quoteFLHS t)) (inferTop ds)
--}
 inferTop ((n [ "=" ] KW' "record" ds) [ ";" ] ds') = do
   fs , ds <- getArg ds
   ps <- firstArg ds
   ps <- check ps U
-  fs <- check fs (ps => U)
   dn <- newNameD n
   dnl <- newNameT "lam"
+  fs <- check fs (ps => U)
   let desc = named dn (Record ps fs)
   addGlobal dn (ps => U ,, (dnl := Lam' \x -> RHS (Rec desc x))) (inferTop ds')
-{-
-inferTop ((n [ "=" ] KW "fix" $ KW "record" $ ps $ fs) [ ";" ] ds) = do
-  dn <- newNameD n
-  ps <- check ps U
-  fs <- addGlobal dn (ps => U ,, var dn) (check fs (ps => U))
-  dnl <- newName "lam"
-  let desc = fixDecl dn dnl ps fs
-  addGlobal dn (ps => U ,, (dnl := Lam' \x -> RHS (Rec desc x))) (inferTop ds)
--}
+inferTop ((n [ ":" ] a) [ ";" ] ds) = do
+  a <- check a U
+  n <- newNameD n
+  futureTC \(t' , fill) -> do
+    addFill n (a ,, fill) (addGlobal n (a ,, (MkTName n := quoteFLHS t')) (inferTop ds))
+inferTop ((DVar' n [ "=" ] t) [ ";" ] ds) = do
+  a ,, fill <- lookupFill n
+  t <- checkLHS t a
+  fill t (inferTop ds)
 inferTop (t [ ":" ] a) = do
   a <- check a U
   t <- check t a
@@ -1564,15 +1586,15 @@ tc s = runTC (parse s >>= inferTop)
 
 --------
 
-testTC : tc "f : Top -> U  = x. ret Top;  U : U"
+testTC : tc "f : Top -> U  = x. Top;  U : U"
        ≡ Right (U ,, U)
 testTC = Refl
 
-testTC3 : tc "id : U -> U  = x. ret x;  id U : U"
+testTC3 : tc "id : U -> U  = x. x;  id U : U"
        ≡ Right (U ,, U)
 testTC3 = Refl
 
-testTC4 : tc "idFun : U -> U  = A. ret (A -> A);  id : Pi U idFun  = A. x. ret x;  id U U : U"
+testTC4 : tc "idFun : U -> U  = A. A -> A;  id : Pi U idFun  = A. x. x;  id U U : U"
        ≡ Right (U ,, U)
 testTC4 = Refl
 
@@ -1583,34 +1605,27 @@ main'' s = do
   pure (showTm t ++ "\n : " ++ showTm a)
 
 showEither : Either String String -> String
-showEither (Left x) = x
+showEither (Left  x) = x
 showEither (Right x) = x
 
 main : IO T
 main = interact \s -> showEither (runTC (main'' s)) ++ "\n"
 
 
-{-
+{- TODOs
 
-TODOs
-
-Parser:
-- fix combinator?
-- more NameT
-- lamm hack?
-  - review all MkName
-- Raw syntax
-- first order Lambda in Core
-- env to Tm with vars
-- recursion
+- allow more question marks
+- possible refactorings
+  - more NameT
+  - Raw syntax
+  - first order Lambda in Core
+  - elim Name from Tys
+  - env to Tm with vars
 - "unifiers as equivalences" combinators
-
+- implement a dependent pattern matching strategy
 - case tree compilation
 - data compilation
-- dependent pattern matching strategy
-
-backend:
-- staging
+- staging support
 - code generation
 
 -}
