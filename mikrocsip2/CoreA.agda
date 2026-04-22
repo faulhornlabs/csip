@@ -95,6 +95,7 @@ record TCDesc : Set where
   dcArgs : dcFin -> Tys
   dcArgs n = DCDesc.dcArgs (dcDescs n)
 
+  -- rename to conTypeIndex ?
   sub : (c : dcFin) -> Tms (dcArgs c) -> Tms tcIndices
   sub n = DCDesc.sub (dcDescs n)
 

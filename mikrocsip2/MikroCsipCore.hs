@@ -153,6 +153,7 @@ data Tm
 getApps ((getApps -> (a, as)) :@ b) = (a, b: as)
 getApps (Var v) = (v, [])
 
+pattern Apps :: TName -> [Tm] -> Tm
 pattern Apps a bs <- (getApps -> (a, reverse -> bs))
   where Apps a bs =  foldl (:@) (Var a) bs
 
@@ -221,6 +222,9 @@ data St = MkSt
   , scope         :: !Scope
   }
 
+type Lens s r = s -> (r, r -> s)
+
+scopeLens :: Lens St Scope
 scopeLens st = (scope st, \x -> st {scope = x})
 
 -- TODO: better Alternative?
@@ -277,8 +281,10 @@ vVar :: TName -> EM Val
 vVar n@ConName = pure $ mkVal' (Var n)
 vVar n = mkVal (VVar n)
 
+mLift :: (t1 -> t2 -> EM b) -> EM t1 -> EM t2 -> EM b
 mLift f a b = a >>= \a -> b >>= \b -> f a b
 
+mApp :: EM Val -> EM Val -> EM Val
 mApp = mLift ($$)
 
 vPi  a b = vVar  PiName `mApp` pure a `mApp` pure b
@@ -305,6 +311,7 @@ instance Show Spine where show = show . spineToRaw
 getSApps (SApp (getSApps -> (a, as)) b) = (a, b: as)
 getSApps (SHead v) = (v, [])
 
+pattern SApps :: TName -> [Val] -> Spine
 pattern SApps a bs <- (getSApps -> (a, reverse -> bs))
 
 pattern VPi a b <- SHead PiName `SApp` a `SApp` b
@@ -317,7 +324,7 @@ sview v = view v >>= \case
 -----------
 
 eval :: Tm -> EM Val
-eval (a :@ b) = join $ ($$) <$> eval a <*> eval b
+eval (a :@ b) = eval a `mApp` eval b
 eval (Var n) = vVar n
 
 nquote :: Val -> EM Tm
@@ -447,8 +454,6 @@ checkPatternScope :: EM ()
 checkPatternScope = MkEM do
   modify \st -> st { localRules = [], localCtx = [], nameMap = Map.filterKeys (`notElem` map (nameStr . name . fst) (localCtx st)) $ nameMap st }
 
-type Lens s r = s -> (r, r -> s)
-
 localCtxLens :: Lens St [(TName, Ty)]
 localCtxLens st = (localCtx st, \x -> st {localCtx = x})
 
@@ -531,7 +536,7 @@ unify a b = equal' a b >>= \case
 
 matchPi v = sview v >>= \case
   VPi a b -> pure (a, b)
-  z -> error $ "not a pi: " ++ show z 
+  z -> error $ "not a pi: " ++ show z
 
 -----------------------------------------
 

@@ -30,7 +30,7 @@ id2 : U -> U  = A. A
 lamEtaTest : id1 == id2  = Refl
 
 J : (A : U) (a : A) (P : (x : A) -> a == x -> U) -> P a Refl -> (x : A) (e : a == x) -> P x e
-  = A a P w x e. jRule e P ?
+  = A a P w x e. jRule e P w
 
 K : (A : U) (a : A) (e : a == a) -> e == Refl
   = A a e. kRule e (e. e == Refl) Refl
