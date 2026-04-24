@@ -1,0 +1,87 @@
+
+bool = record Top (_. Top + Top)
+
+Bool = bool TT
+False : Bool = Wrap $ Left  TT
+True  : Bool = Wrap $ Right TT
+
+Nat : U
+
+nat = record Top (_. Top + Nat)
+
+Nat = nat TT
+
+Zero :        Nat =    Wrap $ Left TT
+Suc  : Nat -> Nat = n. Wrap $ Right n
+
+Half = Bool * Nat
+
+sucHalf : Half -> Half
+  = p. p => b , n $ b , Suc n
+
+half : Nat -> Half
+half = n. n => Wrap n $ either n
+  (_ _. False , Zero)
+  (n _. n => Wrap n $ either n
+     (_ _. True , Zero)
+     (n _. sucHalf $ half n))
+
+# {-# language PatternSynonyms #-}
+
+# import Data.Kind (Type)
+# pattern TT = ()
+
+Ty  :: U
+# type Ty = Type
+Arr :: Ty -> Ty -> Ty
+# type Arr a b = a -> b
+
+Tm  :: Ty -> U
+# type Tm a = a
+la :: (a b : Ty) -> (Tm a -> Tm b) -> Tm (Arr a b)
+# la = id
+ap :: (a b : Ty) -> Tm (Arr a b) -> (Tm a -> Tm b)
+# ap = id
+
+Let : (A B : Ty) -> (Tm A -> Tm B) -> Tm A -> Tm B
+  = A B f. ap A B (la A B f)
+
+IO  :: Ty -> Ty
+Unit :: Ty
+# type Unit = ()
+
+ONat :: Ty
+# type ONat = Integer
+mul  :: Tm ONat -> Tm ONat -> Tm ONat
+# mul = (*) :: ONat -> ONat -> ONat
+one  :: Tm ONat
+# one = 1 :: ONat
+sqr  :: Tm ONat -> Tm ONat
+# sqr n = n * n :: ONat
+
+printNat :: Tm ONat -> Tm (IO Unit)
+# printNat = print :: ONat -> IO Unit
+getNat :: Tm (IO ONat)
+# getNat = readLn :: IO ONat
+bindIO :: (A B : Ty) -> Tm (IO A) -> (Tm A -> Tm (IO B)) -> Tm (IO B)
+# bindIO :: IO a -> (a -> IO b) -> IO b
+# bindIO = (>>=)
+
+pow : (Tm ONat -> Tm ONat) -> Nat -> Tm ONat -> Tm ONat
+pow = sqr n m. n => Wrap n' $ either n'
+  (_ _. one)
+  (n' _. n' => Wrap n' $ either n'
+    (_ _. m)
+    (_ _. half n => b , n $ b => Wrap b $ either b
+      (_ _.         sqr $ pow sqr n m)
+      (_ _. mul m $ sqr $ pow sqr n m)))
+
+powA = pow sqr
+powB = pow (n. mul n n)
+powC = pow (Let ONat ONat (n. mul n n))
+
+k = Suc $ Suc $ Suc $ Suc $ Suc $
+    Suc $ Suc $ Suc $ Suc $ Suc Zero
+
+bindIO ONat Unit getNat (n. printNat $ powB k n) : Tm (IO Unit)
+

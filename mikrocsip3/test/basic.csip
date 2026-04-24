@@ -2,18 +2,18 @@ id : (A : U) -> A -> A
   = A x. x
 
 f : U * U -> U * U
-  = p. pair p (A B _. (B , A))
+  = p. p => A , B $ B , A
 
 bool = record Top (_. Top + Top)
 Bool  : U    =  bool TT
-False : Bool =  Wrap (Left  TT)
-True  : Bool =  Wrap (Right TT)
+False : Bool =  Wrap $ Left  TT
+True  : Bool =  Wrap $ Right TT
 
 and : (a b : Bool) -> Bool
-  = a b. unwrap a (a _. either a (_ _. False) (_ _. b))
+  = a b. a => Wrap a $ either a (_ _. False) (_ _. b)
 
 ite : (A : U) -> Bool -> A -> A -> A
-  = A b t f. unwrap b (b _. either b (_ _. f) (_ _. t))
+  = A b t f. b => Wrap b $ either b (_ _. f) (_ _. t)
 
 exfalso : (A : U) -> Bot -> A
   = A b. absurd b
@@ -38,7 +38,7 @@ K : (A : U) (a : A) (e : a == a) -> e == Refl
 ---------------------
 
 idField : (A : U) * A * A -> U
-  = s. sigma s (A xy _. pair xy (x y _. x == y))
+  = s. s => A , xy $ xy => x , y $ x == y
 
 Id = record ((A : U) * A * A) idField
 
@@ -57,15 +57,15 @@ Zero :        Nat =    Wrap (Left TT)
 Suc  : Nat -> Nat = n. Wrap (Right n)
 
 add : Nat -> Nat -> Nat
-add = n m. unwrap n (n _. either n (_ _. m) (n _. Suc (add n m)))
+add = n m. n => Wrap n $ either n (_ _. m) (n _. Suc $ add n m)
 
 two : Nat = Suc (Suc Zero)
 
 isZero : Nat -> Top + Top
-  = n. unwrap n (n _. either n (_ _. Left TT) (_ _. Right TT))
+  = n. n => Wrap n $ either n (_ _. Left TT) (_ _. Right TT)
 
 double : Nat -> Nat
-double = n. unwrap n (n _. either n (_ _. Zero) (n _. Suc (Suc (double n))))
+double = n. n => Wrap n $ either n (_ _. Zero) (n _. Suc $ Suc $ double n)
 
 add two two : Nat
 
