@@ -204,12 +204,25 @@ all p as = foldr _&&_ True (map p as)
 any : (A -> Bool) -> List A -> Bool
 any p as = foldr _||_ False (map p as)
 
+_++L_ : List A -> List A -> List A
+[] ++L xs = xs
+(x :: xs) ++L ys = x :: (xs ++L ys)
+
+reverse : List A -> List A
+reverse = go [] where
+  go : List A -> List A -> List A
+  go acc [] = acc
+  go acc (a :: as) = go (a :: acc) as
 
 -----------
 
 data Dec (A : Set) : Set where
   Yes : A -> Dec A
   No  :      Dec A
+
+decNat : (n n' : Nat) -> Dec (n ≡ n')
+decNat n n' = if n == n' then Yes primTrustMe else No
+
 
 -----------
 
@@ -223,6 +236,7 @@ open Name
 
 decName : (n n' : Name) -> Dec (n ≡ n')
 decName n n' = if nameId n == nameId n' then Yes primTrustMe else No
+
 
 
 --------------------------------------------
@@ -452,6 +466,12 @@ elimR : ∀ {rc ps a} ->
     LHS a
 elimR (Wrap args) f = f args Refl
 elimR (NeNU {l = Stuck} _) f = NoRHS Stuck
+
+elimLet : ∀ {a a'} ->
+  (tm : Tm a') ->
+  ((x : Tm a') -> x ≡ tm -> LHS a) ->
+    LHS a
+elimLet x f = f x Refl
 
 elim⊎ :
   (tm : Tm (a ⊎ a')) ->
@@ -787,7 +807,7 @@ TyTm = Ty ** \a -> Tm a
 Ctx : Set
 Ctx = NameMap Tm
 
-LCtx = NameMap \_ -> T
+LCtx = NameMap \a -> Maybe (Tm a)
 
 data FLHS : Ty -> Set
 
@@ -799,6 +819,17 @@ Fill a = FLHS a -> TC TyTm -> TC TyTm
 Fills = NameMap Fill
 
 data Doc : Set
+
+data Vec (A : Set) : Nat -> Set where
+  []    : Vec A Zero
+  _::V_ : ∀ {n} -> A -> Vec A n -> Vec A (Suc n)
+
+PatternDef' : Nat -> Set
+PatternDef' n = Vec Doc n -> Doc
+
+PatternDef = Nat ** PatternDef'
+
+Patterns = List (Pair String PatternDef)
 
 ShowEnv = NameMap \_ -> Doc
 
@@ -820,6 +851,7 @@ record TCEnv : Set where
     localEnv  : LCtx
     localEnv' : LCtx'
     fillEnv   : Fills
+    patterns  : Patterns
 
 open TCEnv
 
@@ -832,7 +864,7 @@ record TC A where
 open TC
 
 runTC : TC A -> Either Error A
-runTC tc with getTC tc (MkTCEnv emptySM emptySM emptyLCtx' emptySM) (MkTCState 100 emptySM)
+runTC tc with getTC tc (MkTCEnv emptySM emptySM emptyLCtx' emptySM []) (MkTCState 100 emptySM)
 ... | Left  e       = Left e
 ... | Right (_ , r) = Right r
 
@@ -857,6 +889,9 @@ throwError' s = do
   s <- s
   throwError s
 
+newPPName : String -> TC String
+getTC (newPPName s) ctx (MkTCState c se) = Right (MkTCState (Suc c) se , s ++ showNat c)
+
 newPName : String -> TC Name
 getTC (newPName s) ctx (MkTCState c se) = Right (MkTCState (Suc c) se , MkName s c)
 
@@ -866,21 +901,24 @@ newNameT s = do
   pure (MkTName n)
 
 addGlobal : TName a -> LHS a -> TC A -> TC A
-getTC (addGlobal s d m) (MkTCEnv g l l' f) = getTC m (MkTCEnv (insertSM s (s := d) g) l l' f)
+getTC (addGlobal s d m) (MkTCEnv g l l' f p) = getTC m (MkTCEnv (insertSM s (s := d) g) l l' f p)
 
 addLocal' : TName a -> Name -> TC A -> TC A
-getTC (addLocal' n ln m) (MkTCEnv g l l' f) = getTC m (MkTCEnv g (insertSM n tt l) (addLCtx' n ln l') f)
+getTC (addLocal' n ln m) (MkTCEnv g l l' f p) = getTC m (MkTCEnv g (insertSM n Nothing l) (addLCtx' n ln l') f p)
 
 addLocal : TName a -> TC A -> TC A
 addLocal n m = do
   ln <- newPName "lam"
   addLocal' n ln m
 
+addLocal'' : TName a -> Tm a -> TC A -> TC A
+getTC (addLocal'' n t m) (MkTCEnv g l l' f p) = getTC m (MkTCEnv g (insertSM n (Just t) l) l' f p)
+
 addFill : TName a -> Fill a -> TC A -> TC A
-getTC (addFill s d m) (MkTCEnv g l l' f) = getTC m (MkTCEnv g l l' (insertSM s d f))
+getTC (addFill s d m) (MkTCEnv g l l' f p) = getTC m (MkTCEnv g l l' (insertSM s d f) p)
 
 delFill : TName a -> TC A -> TC A
-getTC (delFill s m) (MkTCEnv g l l' f) = getTC m (MkTCEnv g l l' (deleteSM s f))
+getTC (delFill s m) (MkTCEnv g l l' f p) = getTC m (MkTCEnv g l l' (deleteSM s f) p)
 
 lookupFill : String -> TC (Maybe (Ty ** \a -> Pair (TName a) (Fill a)))
 getTC (lookupFill s) env c = Right (c , lookupSMStr s (fillEnv env))
@@ -916,10 +954,18 @@ getTC locals' env c = Right (c , localEnv' env)
 
 lookupTm : String -> TC TyTm
 getTC (lookupTm s) env c with lookupSMStr s (localEnv env)
-... | Just (_ ,, n , _)  = Right (c , (_ ,, var n))
+... | Just (_ ,, n , Nothing)  = Right (c , (_ ,, var n))
+... | Just (_ ,, n , Just t)   = Right (c , (_ ,, t))
 ... | Nothing with lookupSMStr s (globalEnv env)
 ...   | Just (_ ,, n , x)  = Right (c , (_ ,, x))
 ...   | Nothing = Left ("Not defined: " ++ s)
+
+addPattern : String -> PatternDef -> TC A -> TC A
+getTC (addPattern s d m) (MkTCEnv g l l' f p) = getTC m (MkTCEnv g l l' f ((s , d) :: p))
+
+getPatterns : TC Patterns
+getTC getPatterns env c = Right (c , patterns env)
+
 
 instance
   TCString : IsString (TC String)
@@ -936,6 +982,10 @@ data CharClass : Set where
 charClass : Char -> CharClass
 charClass '(' = Punctuation
 charClass ')' = Punctuation
+charClass '[' = Punctuation
+charClass ']' = Punctuation
+charClass '{' = Punctuation
+charClass '}' = Punctuation
 charClass ';' = Punctuation
 charClass ',' = Punctuation
 charClass '*' = Graphic
@@ -1028,14 +1078,14 @@ isAlphaToken s with headCharClass (stringToList s)
 ... | _     = False
 
 operators : List String
-operators = ";" :: "=" :: "." :: ":" :: "::" :: "$" :: "=>" :: "@" :: "," :: "->" :: "==" :: "+" :: "*" :: []
+operators = ";" :: "=" :: "|" :: "." :: ":" :: "::" :: "$" :: "=>" :: "@" :: "," :: "->" :: "==" :: "+" :: "*" :: []
 
 isOperator : String -> Bool
 isOperator s = any (eqString s) operators
 
 keywords : List String
 keywords
-  =  "FFI" :: "U" :: "?"
+  =  "Bracket" :: "Brace" :: "pattern" :: "FFI" :: "U" :: "?"
 -- type       constructor            eliminator  
 ---------------------------------------------------
   {- _->_ -}  {- _._ -}              {- _ _ -}
@@ -1151,6 +1201,8 @@ parse s = tokens' s >>= parseOps end  where
 
   parseAtom : (Doc -> X) -> X -> X
   parseAtom r _ ("(" :: ts) = parseOps (\b -> expect ")" (r b)) ts
+  parseAtom r _ ("[" :: ts) = parseOps (\b -> expect "]" (r (KW' "Bracket" {Refl} (b :: [])))) ts
+  parseAtom r _ ("{" :: ts) = parseOps (\b -> expect "}" (r (KW' "Brace" {Refl} (b :: [])))) ts
   parseAtom r z ("FFI" :: t :: ts) = r (FFI t) ts
   parseAtom r z (t :: ts) with isKeyword t
   ... | True  = r (KW' t {primTrustMe} []) ts
@@ -1172,22 +1224,32 @@ parse s = tokens' s >>= parseOps end  where
   mkSigma : Doc -> Doc -> Doc -> Doc
   mkSigma (ns $ n) a b = mkPi ns a (KW "Sigma" $D a $D (n [ "." ] b))
   mkSigma n a b = KW "Sigma" $D a $D (n [ "." ] b)
-
-  mkOp : (s : String) -> {isOperator s ≡ True} -> Doc -> Doc -> Doc
-  mkOp "$" a b = a $D b
+{-
+  mkLam : Doc -> Doc -> TC (Pair Doc Doc)
+  mkLam d b = pure (d , b)
+-}
+  mkOp : (s : String) -> {isOperator s ≡ True} -> Doc -> Doc -> TC Doc
+  mkOp "$" a b = pure (a $D b)
   mkOp "->" (bs $ (n [ ":" ] a)) b = mkOp "->" {Refl} bs (mkPi n a b)
-  mkOp "->" (n [ ":" ] a) b = mkPi n a b
+  mkOp "->" (n [ ":" ] a) b = pure (mkPi n a b)
   mkOp "*" (bs $ (n [ ":" ] a)) b = mkOp "*" {Refl} bs (mkSigma n a b)
-  mkOp "*" (n [ ":" ] a) b = mkSigma n a b
-  mkOp "." (ns $ n) b = mkOp "." {Refl} ns (n [ "." ] b)
-  mkOp t {isOp} a b = BinOp a t {isOp} b
+  mkOp "*" (n [ ":" ] a) b = pure (mkSigma n a b)
+{-
+  mkOp "." (ns $ n) b = do
+    n , b <- mkLam n b
+    mkOp "." {Refl} ns (n [ "." ] b)
+  mkOp "." n b = do
+    n , b <- mkLam n b
+    pure (n [ "." ] b)
+-}
+  mkOp t {isOp} a b = pure (BinOp a t {isOp} b)
 
   addOp : (String ** \s -> isOperator s ≡ True) -> ((Doc -> X) -> X) -> (Doc -> X) -> X
   addOp op@(t ,, isOp) g r = g (f r) where
 
     f : (Doc -> X) -> Doc -> X
     f r a (t' :: ts) with eqString t' t
-    ... | True  = addOp op g (\b -> r (mkOp t {isOp} a b)) ts
+    ... | True  = addOp op g (\b ts -> mkOp t {isOp} a b >>= \o -> r o ts) ts
     ... | False = r a (t' :: ts)
     f r a ts = r a ts
 
@@ -1630,6 +1692,7 @@ data FLHS where
   MatchBot    : Tm Bot -> FLHS a
   MatchJ      : ∀ {x y : Tm a} (tm : Tm (Id x y)) (P : Tm (jPTy x)) -> FLHS (P ∙∙ x ∙ Refl) -> FLHS (P ∙∙ y ∙ tm)
   MatchK      : ∀ {x   : Tm a} (tm : Tm (Id x x)) (P : Tm (kPTy x)) -> FLHS (P      ∙ Refl) -> FLHS (P      ∙ tm)
+  MatchLet    : ∀ {a a'} (p : Tm a') (n : TName a') -> TName (Id (var n) p) -> FLHS a -> FLHS a
 
 CLHS : (ts : Tys) -> CTy ts -> Set
 CLHS ts t = (xs : Tms ts) -> LHS (t xs)
@@ -1672,6 +1735,12 @@ quoteLHS (MatchRecord {rc = rc} {ps = ps} {a = a} p n k e) ts'@(ts ,, ns)
  where
   p' = ⟦ ns , p ⟧
   t' = quoteLHS e (ts' >>> n >> tName k :: (\(xs' ,, y) -> Id (Wrap (subst Tm (rFieldsClosed rc) y)) (p' xs')))
+quoteLHS (MatchLet {a = a} {a' = a'} p n k e) ts'@(ts ,, ns)
+  = \xs -> elimLet (p' xs) \x ee ->
+       subst LHS (strengthen a ∘ strengthen a) (t' ((xs ,, x) ,, objEq ee))
+ where
+  p' = ⟦ ns , p ⟧
+  t' = quoteLHS e (ts' >>> n >> tName k :: (\(xs' ,, y) -> Id y (p' xs')))
 quoteLHS (MatchBot p) ts
   = \xs -> elimBot p
 quoteLHS (MatchJ tm p lhs) ts'@(ts ,, ns)
@@ -1709,13 +1778,379 @@ optEq : Doc -> Pair Doc Doc
 optEq (a [ "@" ] b) = (a , b)
 optEq  a            = (a , DVar "_")
 
+----------------------------------------
+
+decTm : (n : Tm a) (m : Tm a') -> Dec (_≡_ {A = Ty ** Tm} (_ ,, n) (_ ,, m))
+
+-- TODO: merge with convertSpine
+decSpine : (s : Spine a) (s' : Spine a') -> Dec (_≡_ {A = Ty ** Spine} (a ,, s) (a' ,, s'))
+decSpine (Head x) (Head x') with decNamed x x'
+... | No = No
+... | Yes Refl = Yes Refl
+decSpine (s $ x) (s' $ x') with decSpine s s'
+... | No = No
+... | Yes Refl with decTm x x'
+...   | No = No
+...   | Yes Refl = Yes Refl
+-- decSpine (DApp s x x₁) s' = {!!}  -- TODO
+decSpine _ _ = No
+
+-- TODO: merge with convert
+decTm {a = U} {a' = U} (NU (NeU' {s = s} _)) (NU (NeU' {s = s'} _)) with decSpine s s'
+... | No = No
+... | Yes e = Yes (setEq TODO)
+decTm {a = NU _} {a' = NU _} (NeNU {s = s} _) (NeNU {s = s'} _) with decSpine s s'
+... | No = No
+... | Yes e = Yes (setEq TODO)
+decTm _ _ = No
+
+---------------------------------------------- pattern match compilation
+
+{-
+f =
+  { a , b . TT . Left x .  b , a
+  }
+
+f =
+  \i j k ->
+  [ i = "a , b",  j = "TT";  k =  "Left x"        ,  "b , a"
+  ]
+
+f =
+  \i j k -> matchPair i \u v ->
+  [ u = "a" , v = "b",  j = "TT";  k =  "Left x"        ,  "b , a"
+  ]
+
+f =
+  \i j k -> matchPair i \u v -> let a = u in let b = v in
+  [ k =  "Left x"        ,  "b , a"
+  ]
+
+f =
+  \i j k -> matchPair i \u v -> let a = u in let b = v in
+            matchEither k
+              (\w -> let x = w in b , a
+              )
+              (\w -> impossible
+              )
+
+g = \i ->
+  [ half i = "Left TT , b" , "... b ..."
+  , half i = "Right TT , b" , "... b ..."
+  ]
+
+g = \i -> matchPair (half i) \u w ->
+  [ u = "Left TT" , v = "b" , "... b ..."
+  , u = "Right TT" , v = "b" , "... b ..."
+  ]
+
+g = \i -> matchPair (half i) \u w -> matchEither u
+    (\w -> let b = v in ... b ...)
+    (\w -> let b = v in ... b ...)
+
+
+f (S (S (S (S ... (S n))))) = ....
+f n = ... n ...
+
+f = \n -> matchEither n
+   (\_ -> ... n ...)
+   (\k -> matchEither k
+     (\_ -> ... n ...)
+     (\k -> matchEither k
+       (\_ -> ... n ...)
+       (\k -> matchEither k
+           ...
+   )))
+
+--  half : a -> a'
+--  a ~ typeOf i
+
+-}
+
+record PEq : Set where
+  pattern
+  constructor MkPE
+  field
+    pKey : TyTm
+    pDoc : Doc
+
+PMRow = List PEq
+
+PM = List (Pair PMRow Doc)
+
+addPE : TyTm -> Doc -> PMRow -> PMRow
+addPE k (DVar' dn {isVar} [ "@" ] d) e = addPE k (DVar' dn {isVar}) (addPE k d e)
+addPE k d e = MkPE k d :: e
+
+---------
+
+RowTr : Ty -> Set
+RowTr a = Tm a -> Doc -> Maybe (Maybe PMRow)
+
+mapPMRow : RowTr a -> Tm a -> PMRow -> TC (Maybe PMRow)
+mapPMRow f p [] = pure (Just [])
+mapPMRow f p (r :: rs) = do
+  Just r <- ff f p r where
+    _ -> pure Nothing
+  Just rs <- mapPMRow f p rs where
+    _ -> pure Nothing
+  pure (Just (r ++L rs))
+ where
+  ff : RowTr a -> Tm a -> PEq -> TC (Maybe PMRow)
+  ff f a p@(MkPE (_ ,, a') d) with decTm a a'
+  ... | No = pure (Just (p :: []))
+  ... | Yes Refl with f a d
+  ...   | Nothing = pure (Just (p :: []))
+  ...   | Just r  = pure r
+
+mapPM : RowTr a -> Tm a -> PM -> TC PM
+mapPM f p [] = pure []
+mapPM f p ((r , d) :: rs) = do
+  Just r <- mapPMRow f p r where
+    _ -> mapPM f p rs
+  rs <- mapPM f p rs
+  pure ((r , d) :: rs)
+
+takeOutRow : PMRow -> Maybe (Pair PEq (PMRow -> PMRow))
+takeOutRow (e@(MkPE _ (DVar' d)) :: es) = Just (e , \x -> x ++L es)
+takeOutRow (e@(MkPE _ (f [ "->" ] d)) :: es) = Just (e , \x -> x ++L es)
+takeOutRow _ = Nothing
+
+takeOut : PM -> Maybe (Pair PEq (PMRow -> PM))
+takeOut [] = Nothing
+takeOut ((r , d) :: rs) with takeOutRow r
+... | Just (e , f) = Just (e , \x -> (f x , d) :: rs)
+... | Nothing with takeOut rs
+...   | Just (e , f) = Just (e , \x -> (r , d) :: f x)
+...   | Nothing       = Nothing
+
+nameHint : String -> Doc -> String
+nameHint _ (DVar' n) = n
+nameHint _ (DVar' n [ "@" ] _) = n
+nameHint n _ = n
+
+
 {-# TERMINATING #-}
 checkLHS : Doc -> (a : Ty) -> TC (FLHS a)
+
+pm' : PM -> (a : Ty) -> TC (FLHS a)
+
+pm : PM -> (a : Ty) -> TC (FLHS a)
+pm rs a with takeOut rs
+... | Just (MkPE (_ ,, n) (DVar' d) , rs) = do
+  d <- newNameT d
+  addLocal'' d n (pm (rs []) a)
+... | Just (MkPE (a'' ,, n) (f [ "->" ] d) , rs) = do
+  a' => _ ,, f <- infer f where
+    Pi a' _ ,, f -> do
+      Refl <- convert a'' a'
+      pm (rs (addPE (_ ,, f ∙∙ n) d [])) a
+    _ -> throwError "pm view"
+  Refl <- convert a'' a'
+  pm (rs (addPE (_ ,, f ∙ n) d [])) a
+... | _ = pm' rs a
+
+pmEither : Tm (a' ⊎ a'') -> PM -> Doc -> Doc -> (a : Ty) -> TC (FLHS a)
+pmEither p' d di dj aa = do
+  n  <- newNameT (nameHint "i" di)
+  k  <- newNameT "_"
+  d1 <- mapPM (left'' (var n)) p' d
+  e  <- addLocal n  (addLocal k  (pm d1 aa))
+  n' <- newNameT (nameHint "j" dj)
+  k' <- newNameT "_"
+  d2 <- mapPM (right'' (var n')) p' d
+  e' <- addLocal n' (addLocal k' (pm d2 aa))
+  pure (MatchEither p' n k e n' k' e')
+ where
+  left'' : Tm a -> RowTr (a ⊎ a')
+  left'' b _ (KW' "Left" (d2 :: [])) = Just (Just (addPE (_ ,, b) d2 []))
+  left'' b _ (KW' "Right" (_ :: []))         = Just Nothing
+  left'' b _ d = Nothing
+
+  right'' : Tm a' -> RowTr (a ⊎ a')
+  right'' b _ (KW' "Right" (d2 :: [])) = Just (Just (addPE (_ ,, b) d2 []))
+  right'' b _ (KW' "Left" (_ :: []))           = Just Nothing
+  right'' _ _ d = Nothing
+
+pm' d@((MkPE (Id x y ,, p) (KW' "Refl" []) :: _ , _) :: _) aa =
+  throwError "TODO Refl pattern match"
+
+pm' d@((MkPE (Bot ,, p) (KW' "absurd" []) :: _ , _) :: _) aa = do
+  pure (MatchBot p)
+
+pm' d@((MkPE (Top ,, p) (KW' "TT" []) :: _ , _) :: _) aa = do
+  d <- mapPM tt' p d
+  pm d aa
+ where
+  tt' : RowTr Top
+  tt' _ (KW' "TT" []) = Just (Just [])
+  tt' _ _ = Nothing
+ 
+pm' d@((MkPE (a × a' ,, p') (u [ "," ] v) :: _ , _) :: _) aa = do
+  n   <- newNameT (nameHint "u" u)
+  n'  <- newNameT (nameHint "v" v)
+  n'' <- newNameT "_"
+  d <- mapPM (pair'' (var n) (var n')) p' d
+  e <- addLocal n (addLocal n' (addLocal n'' (pm d aa)))
+  pure (MatchPair p' n n' n'' e)
+ where
+  pair'' : Tm a -> Tm a' -> RowTr (a × a')
+  pair'' b c _ (d1 [ "," ] d2) = Just (Just (addPE (_ ,, b) d1 (addPE (_ ,, c) d2 [])))
+  pair'' _ _ _ _ = Nothing
+
+pm' d@((MkPE (Sigma a b ,, p') (u [ "," ] v) :: _ , _) :: _) aa = do
+  n   <- newNameT (nameHint "u" u)
+  n'  <- newNameT (nameHint "v" v)
+  n'' <- newNameT "_"
+  d <- mapPM (pair'' (var n) (var n')) p' d
+  e <- addLocal n (addLocal n' (addLocal n'' (pm d aa)))
+  pure (MatchSigma p' n n' n'' e)
+ where
+  pair'' : (x : Tm a) -> Tm (b ∙ x) -> RowTr (Sigma a b)
+  pair'' b c _ (d1 [ "," ] d2) = Just (Just (addPE (_ ,, b) d1 (addPE (_ ,, c) d2 [])))
+  pair'' _ _ _ _ = Nothing
+
+pm' d@((MkPE p@(a ⊎ a' ,, p') (KW' "Left"  (di :: [])) :: _ , _) :: _) aa = pmEither p' d di (DVar "j") aa
+pm' d@((MkPE p@(a ⊎ a' ,, p') (KW' "Right" (dj :: [])) :: _ , _) :: _) aa = pmEither p' d (DVar "i") dj aa
+
+pm' d@((MkPE p@(Rec rc ps ,, p') (KW' "Wrap" (w :: [])) :: _ , _) :: _) aa = do
+  n <- newNameT (nameHint "w" w)
+  k <- newNameT "_"
+  d <- mapPM (wrap'' (var n)) p' d
+  e  <- addLocal n (addLocal k (pm d aa))
+  pure (MatchRecord p' n k e)
+ where
+  wrap'' : Tm (rFields rc ∙ ps) -> RowTr (Rec rc ps)
+  wrap'' b _ (KW' "Wrap" (d2 :: [])) = Just (Just (addPE (_ ,, b) d2 []))
+  wrap'' _ _ d = Nothing
+
+pm' (([] , d) :: _) aa = checkLHS d aa   -- TODO: warning if _ is not []?
+pm' ((MkPE (a ,, n) d :: _ , _) :: _) aa = throwError' ("pm': " +++ showTm n +++ " : " +++ showTm a +++ " -- " +++ pure (showDoc d))
+pm' _ aa = throwError' ("pm': " +++ showTm aa)
+
+mkPM : Doc -> TC PM
+mkPM (a [ ";" ] b) = do
+  pm <- mkPM b
+  pure (([] , a) :: pm)
+mkPM a = pure (([] , a) :: [])
+
+lookup : String -> List (Pair String A) -> Maybe A
+lookup s [] = Nothing
+lookup s ((s' , p) :: ps) with eqString s s'
+... | False = lookup s ps
+... | True  = Just p
+
+findPattern : String -> Patterns -> Maybe PatternDef
+findPattern = lookup
+
+getApps : Doc -> Maybe (Pair String (Nat ** Vec Doc))
+getApps d = getApps' d \s vs -> Just (s , vs) where
+  getApps' : Doc -> (String -> Nat ** Vec Doc -> Maybe (Pair String (Nat ** Vec Doc))) -> Maybe (Pair String (Nat ** Vec Doc))
+  getApps' (DVar' n) cont = cont n (_ ,, [])
+  getApps' (f $ d) cont = getApps' f \h (_ ,, args) -> cont h (_ ,, d ::V args)
+  getApps' _ cont = Nothing
+
+getApps' : List Doc -> Maybe (List String)
+getApps' [] = Just []
+getApps' (DVar' n :: ds) with getApps' ds
+... | Nothing = Nothing
+... | Just ds = Just (n :: ds)
+getApps' _ = Nothing
+
+
+replace : List (Pair String Doc) -> Doc -> Doc
+replace env d@(DVar' n) with lookup n env
+... | Nothing = d
+... | Just d  = d
+replace env (KW' n {isOp} ds) = KW' n {isOp} (map (replace env) ds)
+replace env (d $ d') = replace env d $ replace env d'
+replace env (FFI x) = FFI x
+replace env (BinOp d s {isOp} d') = BinOp (replace env d) s {isOp} (replace env d')
+
+vecToList : ∀ {n} -> Vec A n -> List A
+vecToList [] = []
+vecToList (x ::V xs) = x :: vecToList xs
+
+listToVec : List A -> Nat ** Vec A
+listToVec [] = _ ,, []
+listToVec (a :: as) with listToVec as
+... | _ ,, as = _ ,, a ::V as
+
+zipWith : ∀ {n} -> (A -> B -> C) -> Vec A n -> Vec B n -> Vec C n
+zipWith f [] [] = []
+zipWith f (a ::V as) (b ::V bs) = f a b ::V zipWith f as bs
+
+compilePatSym : ∀ {n} -> Vec String n -> Doc -> Vec Doc n -> Doc
+compilePatSym ss d ds = replace (vecToList (zipWith _,_ ss ds)) d
+
+mapVec : ∀ {n} -> (A -> TC B) -> Vec A n -> TC (Vec B n)
+mapVec f [] = pure []
+mapVec f (a ::V as) = do
+  b <- f a
+  bs <- mapVec f as
+  pure (b ::V bs)
+
+mapM : (A -> TC B) -> List A -> TC (List B)
+mapM f [] = pure []
+mapM f (a :: as) = do
+  b <- f a
+  bs <- mapM f as
+  pure (b :: bs)
+
+unfoldPatterns : Patterns -> Doc -> TC Doc
+unfoldPatterns pts (a [ "->" ] b) = do
+  b <- unfoldPatterns pts b
+  pure (a [ "->" ] b)
+unfoldPatterns pts (BinOp a n {isOp} b) = do
+  a <- unfoldPatterns pts a
+  b <- unfoldPatterns pts b
+  pure (BinOp a n {isOp} b)
+unfoldPatterns pts (KW' n {isOp} ds) = do
+  ds <- mapM (unfoldPatterns pts) ds
+  pure (KW' n {isOp} ds)
+unfoldPatterns pts d with getApps d
+... | Nothing = pure d
+... | Just (s , n ,, args) with findPattern s pts
+...   | Nothing = pure d --throwError ("can't find " ++ s ++ " " ++ foldr _++_ "" (map (\{(n , _) -> n}) pts))
+...   | Just (n' ,, p) with decNat n n'
+...     | No = throwError "uff"
+...     | Yes Refl = do
+  args <- mapVec (unfoldPatterns pts) args
+  pure (p args)
+
+lamPM : TyTm -> PM -> TC PM
+lamPM _ [] = pure []
+lamPM n ((ps , p [ "." ] rhs) :: rs) = do
+  rs <- lamPM n rs
+  pts <- getPatterns
+  p <- unfoldPatterns pts p
+  pure (((ps ++L addPE n p []) , rhs) :: rs)
+lamPM _ _ = throwError "lamPM"
+
+
+initPM : PM -> (a : Ty) -> TC (FLHS a)
+initPM d@((_ , p [ "." ] _) :: _) (a => a') = do
+  n <- newNameT (nameHint "x" p)
+  p <- lamPM (_ ,, var n) d
+  t <- addLocal n (initPM p a')
+  pure (Lam n t)
+initPM d@((_ , p [ "." ] _) :: _) (Pi a b) = do
+  n <- newNameT (nameHint "x" p)
+  p <- lamPM (_ ,, var n) d
+  t <- addLocal n (initPM p (b ∙ var n))
+  pure (DLam n t)
+initPM d a = pm d a
+
+checkLHS (KW' "Brace" (d :: [])) aa = do
+  d <- mkPM d
+  initPM d aa
 checkLHS (n [ "." ] t) (a => a') = do
+--  n , t <- mkLam' n t
   n <- newTName n
   t <- addLocal n (checkLHS t a')
   pure (Lam n t)
 checkLHS (n [ "." ] t) (Pi a b) = do
+--  n , t <- mkLam' n t
   n <- newTName n
   t <- addLocal n (checkLHS t (b ∙ var n))
   pure (DLam n t)
@@ -1791,7 +2226,15 @@ checkLHS d a = do
 addFFI : String -> TC T
 addFFI s = addShow (MkTName {a = Top} (MkName "FFI" 0)) (FFI s)
 
+compPatSym : List Doc -> Doc -> TC A -> TC A
+compPatSym (DVar' n :: ps) d m with getApps' ps
+...   | Nothing = throwError "pattern"
+...   | Just ps with listToVec ps
+...     | i ,, ps = addPattern n (i ,, compilePatSym ps d) m
+compPatSym _ _ _  = throwError "pattern"
+
 inferTop : Doc -> TC TyTm
+inferTop ((KW' "pattern" ps [ "=" ] d) [ ";" ] ds) = compPatSym (reverse ps) d (inferTop ds)
 inferTop (FFI hs [ ";" ] ds) = do
   _ <- addFFI hs
   inferTop ds
@@ -1844,7 +2287,7 @@ tc' : (s : String) -> {{IsRight (tc s)}} -> TyTm
 tc' s = getRight (tc s)
 
 --------
-
+{-
 testTC : tc' "f : Top -> U  = x. Top;  U : U"
        ≡ (U ,, U)
 testTC = Refl
@@ -1856,7 +2299,7 @@ testTC3 = Refl
 testTC4 : tc' "idFun : U -> U  = A. A -> A;  id : Pi U idFun  = A. x. x;  id U U : U"
        ≡ (U ,, U)
 testTC4 = Refl
-
+-}
 renderHS : Doc -> Doc
 renderHS (FFI s) = FFI s
 renderHS (f $ x) = renderHS f $ renderHS x
@@ -1911,15 +2354,11 @@ main = bindIO getArgs \args -> interact \s -> showEither (runTC (mainTC args s))
 
 {- TODOs
 
-- eliminators for Id proofs: solveLeft, solveRight, inj, conflict, delete
-- pattern matching to case tree compilation
 - data desugaring
-- metavariables
-- implicit coercions
-- Csip.agda --> Csip.csip translation
-- Csip.hs file generation with staging
+- eliminators for Id proofs: solveLeft, solveRight, inj, conflict, delete
 
 - refactorings
+  - optional main expression
   - env to Tm with vars
   - first order Lambda in Core?
   - NameT instead of Name in Ns?

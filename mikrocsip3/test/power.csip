@@ -5,6 +5,13 @@ Bool = bool TT
 False : Bool = Wrap $ Left  TT
 True  : Bool = Wrap $ Right TT
 
+pattern False' = Wrap (Left  TT)
+pattern True'  = Wrap (Right TT)
+
+-- data Nat where
+--   Zero : Nat
+--   Suc  : Nat -> Nat
+
 Nat : U
 
 nat = record Top (_. Top + Nat)
@@ -14,17 +21,20 @@ Nat = nat TT
 Zero :        Nat =    Wrap $ Left TT
 Suc  : Nat -> Nat = n. Wrap $ Right n
 
+pattern Zero'  = Wrap (Left TT)
+pattern Suc' n = Wrap (Right n)
+
 Half = Bool * Nat
 
 sucHalf : Half -> Half
-  = p. p => b , n $ b , Suc n
+  = {b , n . b , Suc n}
 
 half : Nat -> Half
-half = n. n => Wrap n $ either n
-  (_ _. False , Zero)
-  (n _. n => Wrap n $ either n
-     (_ _. True , Zero)
-     (n _. sucHalf $ half n))
+half =
+  { Zero'        . False , Zero
+  ; Suc' Zero'   . True  , Zero
+  ; Suc' (Suc' n). sucHalf $ half n
+  }
 
 # {-# language PatternSynonyms #-}
 
@@ -44,7 +54,7 @@ ap :: (a b : Ty) -> Tm (Arr a b) -> (Tm a -> Tm b)
 # ap = id
 
 Let : (A B : Ty) -> (Tm A -> Tm B) -> Tm A -> Tm B
-  = A B f. ap A B (la A B f)
+  = A. B. f. ap A B (la A B f)
 
 IO  :: Ty -> Ty
 Unit :: Ty
@@ -67,14 +77,17 @@ bindIO :: (A B : Ty) -> Tm (IO A) -> (Tm A -> Tm (IO B)) -> Tm (IO B)
 # bindIO :: IO a -> (a -> IO b) -> IO b
 # bindIO = (>>=)
 
+exfalso : Bot -> Top
+exfalso = {absurd. _}
+
+
 pow : (Tm ONat -> Tm ONat) -> Nat -> Tm ONat -> Tm ONat
-pow = sqr n m. n => Wrap n' $ either n'
-  (_ _. one)
-  (n' _. n' => Wrap n' $ either n'
-    (_ _. m)
-    (_ _. half n => b , n $ b => Wrap b $ either b
-      (_ _.         sqr $ pow sqr n m)
-      (_ _. mul m $ sqr $ pow sqr n m)))
+pow =
+ { sqr. Zero'.                 m. one
+ ; sqr. Suc' Zero'.            m. m
+ ; sqr. (half -> (False', n)). m.         sqr $ pow sqr n m
+ ; sqr. (half -> (True' , n)). m. mul m $ sqr $ pow sqr n m
+ }
 
 powA = pow sqr
 powB = pow (n. mul n n)

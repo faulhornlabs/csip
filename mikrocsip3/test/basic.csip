@@ -1,26 +1,38 @@
 id : (A : U) -> A -> A
-  = A x. x
+  = A. x. x
 
 f : U * U -> U * U
-  = p. p => A , B $ B , A
+  = {A, B. B, A}
 
 bool = record Top (_. Top + Top)
 Bool  : U    =  bool TT
+
 False : Bool =  Wrap $ Left  TT
 True  : Bool =  Wrap $ Right TT
 
+pattern False' = Wrap (Left  TT)
+pattern True'  = Wrap (Right TT)
+
 and : (a b : Bool) -> Bool
-  = a b. a => Wrap a $ either a (_ _. False) (_ _. b)
+  = { False'. b. False
+    ; True' . b. b
+    }
 
 ite : (A : U) -> Bool -> A -> A -> A
-  = A b t f. b => Wrap b $ either b (_ _. f) (_ _. t)
+  = { A. False'. t. f. f
+    ; A. True' . t. f. t
+    }
 
 exfalso : (A : U) -> Bot -> A
-  = A b. absurd b
+  = A. b. absurd b
 
 Maybe = record U (A. Top + A)
-Nothing : (A : U) ->      Maybe A  = A.   Wrap (Left TT)
-Just    : (A : U) -> A -> Maybe A  = A a. Wrap (Right a)
+
+Nothing : (A : U) ->      Maybe A  = A.    Wrap (Left TT)
+Just    : (A : U) -> A -> Maybe A  = A. a. Wrap (Right a)
+
+pattern Nothing' = Wrap (Left TT)
+pattern Just' n  = Wrap (Right n)
 
 ---------------------
 
@@ -30,20 +42,20 @@ id2 : U -> U  = A. A
 lamEtaTest : id1 == id2  = Refl
 
 J : (A : U) (a : A) (P : (x : A) -> a == x -> U) -> P a Refl -> (x : A) (e : a == x) -> P x e
-  = A a P w x e. jRule e P w
+  = A. a. P. w. x. e. jRule e P w
 
 K : (A : U) (a : A) (e : a == a) -> e == Refl
-  = A a e. kRule e (e. e == Refl) Refl
+  = A. a. e. kRule e (e. e == Refl) Refl
 
 ---------------------
 
 idField : (A : U) * A * A -> U
-  = s. s => A , xy $ xy => x , y $ x == y
+  = {A , x , y. x == y}
 
 Id = record ((A : U) * A * A) idField
 
 refl : (A : U) (x : A) -> Id (A , x , x)
-  = A x. Wrap Refl
+  = A. x. Wrap Refl
 
 ---------------------
 
@@ -56,16 +68,27 @@ Nat = nat TT
 Zero :        Nat =    Wrap (Left TT)
 Suc  : Nat -> Nat = n. Wrap (Right n)
 
+pattern Zero'  = Wrap (Left TT)
+pattern Suc' n = Wrap (Right n)
+
 add : Nat -> Nat -> Nat
-add = n m. n => Wrap n $ either n (_ _. m) (n _. Suc $ add n m)
+add =
+  { Zero' . m. m
+  ; Suc' n. m. Suc $ add n m
+  }
 
 two : Nat = Suc (Suc Zero)
 
 isZero : Nat -> Top + Top
-  = n. n => Wrap n $ either n (_ _. Left TT) (_ _. Right TT)
+  = { Zero' . Left  TT
+    ; Suc' _. Right TT
+    }
 
 double : Nat -> Nat
-double = n. n => Wrap n $ either n (_ _. Zero) (n _. Suc $ Suc $ double n)
+double =
+  { Zero' . Zero
+  ; Suc' n. Suc $ Suc $ double n
+  }
 
 add two two : Nat
 
