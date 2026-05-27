@@ -1,3 +1,4 @@
+-- written by Bálint Török
 Type : U
     = (Ty : U) -> (nat top bot : Ty) -> (arr prod sum : Ty -> Ty -> Ty) -> Ty
 
@@ -140,11 +141,11 @@ ifthenelse : (G : Con) -> (A : Type) -> Tm G (arr tbool (arr A (arr A A)))
 
 times4 : (G : Con) -> (A : Type) -> Tm G (arr (arr A A) (arr A A))
   = G. A. lam G (arr A A) (arr A A) (lam (snoc G (arr A A)) A A
-        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
-        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
-        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
-        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
-        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A) (v0 (snoc G (arr A A)) A)
+        ((a'@(app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)))
+        (a'
+        (a'
+        (a'
+        (a' (v0 (snoc G (arr A A)) A)
         )))))
     )
 
