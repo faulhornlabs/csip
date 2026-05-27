@@ -1,0 +1,383 @@
+Type : U
+    = (Ty : U) -> (nat top bot : Ty) -> (arr prod sum : Ty -> Ty -> Ty) -> Ty
+
+nat : Type = _. nt. _. _. _. _. _. nt
+top : Type = _. _. tp. _. _. _. _. tp
+bt : Type = _. _. _. bt. _. _. _. bt
+
+arr : Type -> Type -> Type = A. B. Ty. nat. top. bot. arr. prod. sum.
+     arr (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+
+prod : Type -> Type -> Type
+ = A. B. Ty. nat. top. bot. arr. prod. sum.
+     prod (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+
+sum : Type -> Type -> Type
+ = A. B. Ty. nat. top. bot. arr. prod. sum.
+     sum (A Ty nat top bot arr prod sum) (B Ty nat top bot arr prod sum)
+
+Con : U
+ = (Con : U)
+   (nil  : Con)
+   (snoc : Con -> Type -> Con)
+ -> Con
+
+nil : Con
+ = Con. nil. snoc. nil
+
+snoc : Con -> Type -> Con
+ = G. A. Con. nil. snoc. snoc (G Con nil snoc) A
+
+Var : Con -> Type -> U
+ = G. A.
+   (Var : Con -> Type -> U)
+   (vz  : (G : Con) -> (A : Type) -> Var (snoc G A) A)
+   (vs  : (G : Con) -> (A B : Type) -> Var G A -> Var (snoc G B) A)
+ -> Var G A
+
+vz  : (G : Con) -> (A : Type) -> Var (snoc G A) A
+    = G. A. Var. vz. vs. vz G A
+vs  : (G : Con) -> (A B : Type) -> Var G A -> Var (snoc G B) A
+    = G. A. B. x. Var. vz. vs. vs G A B (x Var vz vs)
+
+Tm : Con -> Type -> U
+ = G. A.
+   (Tm    : Con -> Type -> U)
+   (var   : (G : Con) -> (A : Type) -> Var G A -> Tm G A)
+   (lam   : (G : Con) -> (A B : Type) -> Tm (snoc G A) B -> Tm G (arr A B))
+   (app   : (G : Con) -> (A B : Type) -> Tm G (arr A B) -> Tm G A -> Tm G B)
+   (tt    : (G : Con) -> Tm G top)
+   (pair  : (G : Con) -> (A B : Type) -> Tm G A -> Tm G B -> Tm G (prod A B))
+   (fst   : (G : Con) -> (A B : Type) -> Tm G (prod A B) -> Tm G A)
+   (snd   : (G : Con) -> (A B : Type) -> Tm G (prod A B) -> Tm G B)
+   (left  : (G : Con) -> (A B : Type) -> Tm G A -> Tm G (sum A B))
+   (right : (G : Con) -> (A B : Type) -> Tm G B -> Tm G (sum A B))
+   (case  : (G : Con) -> (A B C : Type) -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C)
+   (zero  : (G : Con) -> Tm G nat)
+   (suc   : (G : Con) -> Tm G nat -> Tm G nat)
+   (rec   : (G : Con) -> (A : Type) -> Tm G nat -> Tm G (arr nat (arr A A)) -> Tm G A -> Tm G A)
+ -> Tm G A
+
+var : (G : Con) -> (A : Type) -> Var G A -> Tm G A
+ = G. A. x. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     var G A x
+
+lam : (G : Con) -> (A B : Type) -> Tm (snoc G A) B -> Tm G (arr A B)
+    = G. A. B. t. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     lam G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+app : (G : Con) -> (A B : Type) -> Tm G (arr A B) -> Tm G A -> Tm G B
+    = G. A. B. t. u. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     app G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+         (u Tm var lam app tt pair fst snd left right case zero suc rec)
+
+tt : (G : Con) -> Tm G top
+    = G. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec. tt G
+
+pair : (G : Con) -> (A B : Type) -> Tm G A -> Tm G B -> Tm G (prod A B)
+    = G. A. B. t. u. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     pair G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+          (u Tm var lam app tt pair fst snd left right case zero suc rec)
+
+fst : (G : Con) -> (A B : Type) -> Tm G (prod A B) -> Tm G A
+    = G. A. B. t. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     fst G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+snd : (G : Con) -> (A B : Type) -> Tm G (prod A B) -> Tm G B
+    = G. A. B. t. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     snd G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+left : (G : Con) -> (A B : Type) -> Tm G A -> Tm G (sum A B)
+    = G. A. B. t. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     left G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+right : (G : Con) -> (A B : Type) -> Tm G B -> Tm G (sum A B)
+    = G. A. B. t. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     right G A B (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+case : (G : Con) -> (A B C : Type) -> Tm G (sum A B) -> Tm G (arr A C) -> Tm G (arr B C) -> Tm G C
+    = G. A. B. C. t. u. v. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+     case G A B C (t Tm var lam app tt pair fst snd left right case zero suc rec)
+          (u Tm var lam app tt pair fst snd left right case zero suc rec)
+          (v Tm var lam app tt pair fst snd left right case zero suc rec)
+
+zero  : (G : Con) -> Tm G nat
+    = G. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec. zero G
+
+suc : (G : Con) -> Tm G nat -> Tm G nat
+    = G. t. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+       suc G (t Tm var lam app tt pair fst snd left right case zero suc rec)
+
+rec : (G : Con) -> (A : Type) -> Tm G nat -> Tm G (arr nat (arr A A)) -> Tm G A -> Tm G A
+    = G. A. t. u. v. Tm. var. lam. app. tt. pair. fst. snd. left. right. case. zero. suc. rec.
+       rec G A (t Tm var lam app tt pair fst snd left right case zero suc rec)
+         (u Tm var lam app tt pair fst snd left right case zero suc rec)
+         (v Tm var lam app tt pair fst snd left right case zero suc rec)
+
+v0 : (G : Con) -> (A : Type) -> Tm (snoc G A) A
+ = G. A. var (snoc G A) A (vz G A)
+
+v1 : (G : Con) -> (A B : Type)  -> Tm (snoc (snoc G A) B) A
+ = G. A. B. var (snoc (snoc G A) B) A (vs (snoc G A) A B (vz G A))
+
+v2 : (G : Con) -> (A B C : Type)  -> Tm (snoc (snoc (snoc G A) B) C) A
+ = G. A. B. C. var (snoc (snoc (snoc G A) B) C) A (vs (snoc (snoc G A) B) A C (vs (snoc G A) A B (vz G A)))
+
+v3 : (G : Con) -> (A B C D : Type)  -> Tm (snoc (snoc (snoc (snoc G A) B) C) D) A
+ = G. A. B. C. D. var (snoc (snoc (snoc (snoc G A) B) C) D) A (vs (snoc (snoc (snoc G A) B) C) A D (vs (snoc (snoc G A) B) A C (vs (snoc G A) A B (vz G A))))
+
+tbool : Type
+    = sum top top
+
+true : (G : Con) -> Tm G tbool
+    = G. left G top top (tt G)
+
+tfalse : (G : Con) -> Tm G tbool
+    = G. right G top top (tt G)
+
+ifthenelse : (G : Con) -> (A : Type) -> Tm G (arr tbool (arr A (arr A A)))
+ = G. A. lam G tbool (arr A (arr A A)) (lam (snoc G tbool) A (arr A A) (lam (snoc (snoc G tbool) A) A A (case (snoc (snoc (snoc G tbool) A) A) top top A (v2 G tbool A A) (lam (snoc (snoc (snoc G tbool) A) A) top A (v2 (snoc G tbool) A A top)) (lam (snoc (snoc (snoc G tbool) A) A) top A (v1 (snoc (snoc G tbool) A) A top)))))
+
+times4 : (G : Con) -> (A : Type) -> Tm G (arr (arr A A) (arr A A))
+  = G. A. lam G (arr A A) (arr A A) (lam (snoc G (arr A A)) A A
+        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
+        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
+        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
+        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A)
+        (app (snoc (snoc G (arr A A)) A) A A (v1 G (arr A A) A) (v0 (snoc G (arr A A)) A)
+        )))))
+    )
+
+add : (G : Con) -> Tm G (arr nat (arr nat nat))
+ = G. lam G nat (arr nat nat)
+     (rec (snoc G nat) (arr nat nat) (v0 G nat)
+          (lam (snoc G nat) nat (arr (arr nat nat) (arr nat nat))
+               (lam (snoc (snoc G nat) nat) (arr nat nat) (arr nat nat)
+                    (lam (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat nat
+                         (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat nat (v1 (snoc (snoc G nat) nat) (arr nat nat) nat) (suc (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) (v0 (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat))))))
+          (lam (snoc G nat) nat nat (v0 (snoc G nat) nat)))
+
+
+mul : (G : Con) -> Tm G (arr nat (arr nat nat))
+ = G. lam G nat (arr nat nat) (rec (snoc G nat) (arr nat nat) (v0 G nat)
+          (lam (snoc G nat) nat (arr (arr nat nat) (arr nat nat))
+               (lam (snoc (snoc G nat) nat) (arr nat nat) (arr nat nat)
+               (lam (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat nat
+               (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat nat
+                    (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat (arr nat nat)
+                         (add (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat))
+                         (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat nat
+                              (v1 (snoc (snoc G nat) nat) (arr nat nat) nat)
+                              (v0 (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat)))
+               (v0 (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat)))))
+     (lam (snoc G nat) nat nat (zero (snoc (snoc G nat) nat))))
+
+mult : (G : Con) -> Tm G (arr nat (arr nat nat))
+ = G. lam G nat (arr nat nat) (app (snoc G nat) nat (arr nat nat)
+          (rec (snoc G nat) (arr nat (arr nat nat)) (v0 G nat)
+               (lam (snoc G nat) nat (arr (arr nat (arr nat nat)) (arr nat (arr nat nat)))
+               (lam (snoc (snoc G nat) nat) (arr nat (arr nat nat)) (arr nat (arr nat nat))
+               (lam (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat (arr nat nat)
+               (lam (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat nat
+                    (app (snoc (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat)
+                    nat nat
+                         (app (snoc (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat)
+                         nat (arr nat nat) (v2 (snoc (snoc G nat) nat) (arr nat (arr nat nat)) nat nat)
+                              (app (snoc (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat)
+                              nat nat
+                                   (app (snoc (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat)
+                                   nat (arr nat nat) (add (snoc (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat))
+                                   (v1 (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat nat))
+                              (v0 (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat)))
+                    (v0 (snoc (snoc (snoc (snoc G nat) nat) (arr nat (arr nat nat))) nat) nat))))))
+          (lam (snoc G nat) nat (arr nat nat) (lam (snoc (snoc G nat) nat) nat nat (v1 (snoc G nat) nat nat))))
+     (zero (snoc G nat)))
+
+fact : (G : Con) -> Tm G (arr nat nat)
+ = G. lam G nat nat (rec (snoc G nat) nat (v0 G nat)
+          (lam (snoc G nat) nat (arr nat nat)
+               (lam (snoc (snoc G nat) nat) nat nat
+                    (app (snoc (snoc (snoc G nat) nat) nat) nat nat
+                         (app (snoc (snoc (snoc G nat) nat) nat) nat (arr nat nat)
+                              (mul (snoc (snoc (snoc G nat) nat) nat))
+                              (suc (snoc (snoc (snoc G nat) nat) nat) (v1 (snoc G nat) nat nat)))
+                    (v0 (snoc (snoc G nat) nat) nat))))
+     (suc (snoc G nat) (zero (snoc G nat))))
+
+factt : (G : Con) -> Tm G (arr nat nat)
+ = G. lam G nat nat (app (snoc G nat) nat nat
+     (rec (snoc G nat) (arr nat nat) (v0 G nat)
+          (lam (snoc G nat) nat (arr (arr nat nat) (arr nat nat))
+          (lam (snoc (snoc G nat) nat) (arr nat nat) (arr nat nat)
+          (lam (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat nat
+               (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat nat
+               (v1 (snoc (snoc G nat) nat) (arr nat nat) nat)
+                    (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat nat
+                         (app (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat) nat (arr nat nat)
+                         (mult (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat))
+                              (suc (snoc (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat)
+                              (v2 (snoc G nat) nat (arr nat nat) nat)))
+                    (v0 (snoc (snoc (snoc G nat) nat) (arr nat nat)) nat))))))
+     (lam (snoc G nat) nat nat (v0 (snoc G nat) nat)))
+     (suc (snoc G nat) (zero (snoc G nat))))
+
+----------------
+
+subst : (A : U) -> (P : A -> U) -> (x y : A) -> x == y -> P x -> P y
+  = A. P. x. y. r. Px. jRule r (a. _. P a) Px
+
+sym : (A : U) -> (x y : A) -> x == y -> y == x
+    = A. x. y. r. subst A (a. a == x) x y r Refl
+
+five : Tm nil nat
+    = (suc nil (suc nil (suc nil (suc nil (suc nil (zero nil))))))
+
+ten : Tm nil nat
+    = app nil nat nat (app nil nat (arr nat nat) (mul nil) (suc nil (suc nil (zero nil)))) five
+
+-- fact 8 works, fact 9 is too much
+
+main : Tm nil nat
+    = app nil nat nat (app nil nat (arr nat nat) (app nil tbool (arr nat (arr nat nat)) (ifthenelse nil nat) (true nil)) (app nil nat nat (factt nil) $ suc nil $ suc nil $ suc nil five)) (zero nil)
+
+Nat : U
+nat' = record Top (_. Top + Nat)
+Nat = nat' TT
+
+Z : Nat
+    = Wrap $ Left TT
+
+S : Nat -> Nat
+    = n. Wrap $ Right n
+
+recNat : (A : U) -> Nat -> (Nat -> A -> A) -> A -> A
+recNat = A. n. f. a. n => Wrap n' $ either n' (_. _. a) (m. _. f m (recNat A m f a))
+
+stdType : Type -> U
+    = f. f U Nat Top Bot (a. b. a -> b) (a. b. a * b) (a. b. a + b)
+
+List : U -> U
+list' = record U (A. Top + A * List A)
+List = list'
+
+Nil : (A : U) -> List A
+    = _. Wrap $ Left TT
+
+Cons : (A : U) -> A -> List A -> List A
+    = _. a. ls. Wrap $ Right (a , ls)
+
+stdCon : Con -> List U
+    = f. f (List U) (Nil U) (ls. a. Cons U (stdType a) ls)
+
+Varr : (List U) -> U -> U
+var'' : List U * U -> U
+    = p. p => G , A $ (G' : List U) * ((Cons U A G') == G) + (G' : List U) * (B : U) * ((Cons U B G') == G) * Varr G' A
+var' = record (List U * U) var''
+Varr = ls. u. var' (ls , u)
+
+vz' : (ls : List U) -> (A : U) -> Varr (Cons U A ls) A
+    = ls. A. Wrap $ Left (ls , Refl)
+
+vs' : (ls : List U) -> (A B : U) -> Varr ls A -> Varr (Cons U B ls) A
+ = ls. A. B. vrls. Wrap $ Right (ls , B , Refl , vrls)
+
+stdVar : (c : Con) -> (t : Type) -> Var c t -> Varr (stdCon c) (stdType t)
+stdVar = c. t. v. v (c'. t'. Varr (stdCon c') (stdType t'))
+        (G. A. vz' (stdCon G) (stdType A))
+        (G. A. B. o. vs' (stdCon G) (stdType A) (stdType B) o)
+
+Reader : U -> U -> U
+readerTyL : (U * U) -> U
+    = p. p => (p1 , p2) $ p1 -> p2
+readerTy = record (U * U) readerTyL
+Reader = A. B. readerTy (A , B)
+
+runReader : (A B : U) -> Reader A B -> A -> B
+    = A. B. st. st => Wrap f $ f
+
+local : (A B C : U) -> Reader A C -> (B -> A) -> Reader B C
+    = A. B. C. rd. f. rd => Wrap f' $ Wrap (b. f' (f b))
+
+fst' : (A B : U) -> A * B -> A
+ = _. _. p. p => f , _ $ f
+
+fst'' : (A : U) -> (B : A -> U) -> (x : A) * (B x) -> A
+ = _. _. p. p => f , _ $ f
+
+snd' : (A B : U) -> A * B -> B
+ = _. _. p. p => _ , s $ s
+
+snd'' : (A : U) -> (B : A -> U) -> (p : (x : A) * (B x)) -> B (fst'' A B p )
+ = A. B. p. p => f , s @ e $ subst ((x : A) *  B x) (p'. B (fst'' A B p')) (f , s) p e s
+
+Context : (List U) -> U
+Context = ls. ls => Wrap ls' $ either ls' (_. _. Top) (p. _. fst' U (List U) p * Context (snd' U (List U) p))
+
+h : (G : List U) -> (A : Type) -> Varr G (stdType A) -> Reader (Context G) (stdType A)
+h = G. A. vrr. vrr => Wrap var' $ either var'
+        (t. _. Wrap (c. fst' (stdType A) (Context (fst'' (List U) (G'. Cons U (stdType A) G' == G) t))
+            (subst (List U) (Context) G (Cons U (stdType A) (fst'' (List U) (G'. Cons U (stdType A) G' == G) t))
+                (sym (List U) (Cons U (stdType A) (fst'' (List U) (G'. Cons U (stdType A) G' == G) t)) G
+                    (snd'' (List U) (G'. Cons U (stdType A) G' == G) t)) c)))
+        (s. _. subst (List U) (x. Reader (Context x) (stdType A))
+            (Cons U (fst'' U (t. ((Cons U t (fst'' (List U) (ls. (t' : U) * (((Cons U t' ls) == G) * Varr ls (stdType A))) s)) == G) * Varr (fst'' (List U) (ls. (t' : U) * (((Cons U t' ls) == G) * Varr ls (stdType A))) s) (stdType A))
+                    (snd'' (List U) (ls. (t' : U) * (((Cons U t' ls) == G) * Varr ls (stdType A))) s))
+                (fst'' (List U) (ls. (t' : U) * (((Cons U t' ls) == G) * Varr ls (stdType A))) s))
+            G
+            (fst' ((Cons U
+                    (fst'' U
+                        (t. ((Cons U t
+                            (fst'' (List U)
+                                (ls. ((t' : U) * (((Cons U t' ls) == G) * Varr ls (stdType A))))
+                                s)
+                        ) == G) * Varr
+                            (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)
+                            (stdType A))
+                        (snd'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)
+                    ) (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) == G)
+                (Varr (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) (stdType A))
+                (snd'' U (t. ((Cons U t (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) == G) *
+                    Varr (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) (stdType A))
+                    (snd'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)))
+            (Wrap (x. (
+                ((runReader (Context (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) (stdType A)
+                    (h (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) A
+                        (snd' ((Cons U (fst'' U (t. ((Cons U t (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) == G) * Varr (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) (stdType A)) (snd'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) == G)
+                            (Varr (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) (stdType A))
+                                (snd'' U (t. ((Cons U t (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) == G) * Varr (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) (stdType A)) (snd'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s))))
+                        (snd' (fst'' U (t. ((Cons U t (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) == G) * Varr (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s) (stdType A)) (snd'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) (Context (fst'' (List U) (ls. (t : U) * (((Cons U t ls) == G) * Varr ls (stdType A))) s)) x)
+                        ))))))
+
+fmapS : (A B C : U) -> (B -> C) -> Reader A B -> Reader A C
+    = A. B. C. f. st. st => Wrap st' $ Wrap (a. f (st' a))
+
+app : (A B : U) -> (A -> B) -> A -> B
+    = A. B. f. f -- Must have hack
+
+appS : (A B C : U) -> Reader A (B -> C) -> Reader A B -> Reader A C
+    = A. B. C. fs. st. fs => Wrap fs' $ st => Wrap st' $ Wrap (ctx. (( fs' ctx )) $ ((st' ctx)))
+
+case : (A B C : Type) -> ((stdType A) + (stdType B)) -> ((stdType A) -> (stdType C)) -> ((stdType B) -> (stdType C)) -> (stdType C)
+    = A. B. C. e. af. bf. either e (n. _. af n) (n. _. bf n)
+
+stdTm : (c : Con) -> (t : Type) -> Tm c t -> Reader (Context (stdCon c)) (stdType t)
+stdTm = c. t. tm. tm (c. t. Reader (Context (stdCon c)) (stdType t))
+    (G. t'. A. h (stdCon G) t' (stdVar G t' A)) -- var
+    (G. A. B. x. Wrap (ctx. (a. (runReader ((stdType A) * Context (stdCon G)) (stdType B) x (a , ctx))))) -- lam
+    (G. A. B. x. x1. appS (Context (stdCon G)) (stdType A) (stdType B) x x1)
+    (G. Wrap (ctx. TT)) -- tt
+    (G. A. B. x. x1. appS (Context (stdCon G)) (stdType B) ((stdType A) * (stdType B)) (fmapS (Context (stdCon G)) (stdType A) ((stdType B) -> (stdType A) * (stdType B)) (a. b. a , b ) x ) x1) -- pair
+    (G. A. B. x. Wrap (ctx. fst' (stdType A) (stdType B) (runReader (Context (stdCon G)) ((stdType A) * (stdType B)) x ctx))) -- fst
+    (G. A. B. x. Wrap (ctx. snd' (stdType A) (stdType B) (runReader (Context (stdCon G)) ((stdType A) * (stdType B)) x ctx))) -- snd
+    (G. A. B. x. fmapS (Context (stdCon G)) (stdType A) ((stdType A) + (stdType B)) (a. Left a) x) -- left
+    (G. A. B. x. fmapS (Context (stdCon G)) (stdType B) ((stdType A) + (stdType B)) (a. Right a) x) -- right
+    (G. A. B. C. x. x1. x2. appS (Context (stdCon G)) ((stdType B) -> (stdType C)) (stdType C) (appS (Context (stdCon G)) ((stdType A) -> (stdType C)) (((stdType B) -> (stdType C)) -> (stdType C)) (fmapS (Context (stdCon G)) ((stdType A) + (stdType B)) (((stdType A) -> (stdType C)) -> ((stdType B) -> (stdType C)) -> (stdType C)) (e. af. bf. case A B C e af bf) x) x1) x2) -- case
+    (G. Wrap (ctx. Z)) -- zero
+    (G. x. fmapS (Context (stdCon G)) Nat Nat S x) -- suc
+    (G. A. x. x1. x2. appS (Context (stdCon G)) (stdType A) (stdType A) (appS (Context (stdCon G)) (Nat -> (stdType A) -> (stdType A)) ((stdType A) -> (stdType A)) (fmapS (Context (stdCon G)) Nat ((Nat -> (stdType A) -> (stdType A)) -> (stdType A) -> (stdType A)) (n. f. a. recNat (stdType A) n f a) x) x1) x2) --rec
+
+
+eval : (t : Type) -> Tm nil t -> (stdType t)
+    = t. tm. (runReader Top (stdType t) (stdTm nil t tm) TT)
+
+eval nat main

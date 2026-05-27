@@ -288,8 +288,10 @@ Tm (NU a) = TmNU a
 _=>U : Ty -> Set    --   Tm (a => U)
 
 -- record description
+{-# ETA_EQUALITY #-}
 record UnnamedRDesc : Set where
   constructor Record
+  inductive
   field
     rParams : Ty
     rFields : rParams =>U
@@ -843,8 +845,9 @@ record TCState : Set where
 open TCState
 
 {-# NO_POSITIVITY_CHECK #-}
+{-# ETA_EQUALITY #-}
 record TCEnv : Set where
-  pattern
+  inductive
   constructor MkTCEnv
   field
     globalEnv : Ctx
@@ -1419,7 +1422,7 @@ convert {a = U} (NU (Id' {a = a} x y)) (NU (Id' {a = a'} x' y')) = do
   pure Refl
 convert {a = U} a@(Rec rc x) b@(Rec rc' x') = do
   Yes Refl <- pure (decNamed rc rc')  where
-    No -> throwError' (showTm a +++ "  =?=  " +++ showTm b)
+    No -> throwError' (showTm a +++ "\n=?=\n" +++ showTm b)
   Refl <- convert x x'
   pure Refl
 convert {a = U} (NU (NeU' {s = s} g)) (NU (NeU' {s = s'} g')) = do
@@ -1625,6 +1628,7 @@ infer (KW' "Pi" ds) = do
   a <- check a U
   b <- check b (a => U)
   pure (U ,, Pi a b)
+infer (KW' "?" ds) = printGoal ds U
 infer (KW' "Sigma" ds) = do
   b , ds <- getArg ds
   a <- firstArg ds
@@ -1766,6 +1770,7 @@ newTName' : Doc -> TC (Pair (TName a) Doc)
 newTName' (n [ "." ] d) = do
   n <- newTName n
   pure (n , d)
+--newTName' (KW' "?" ds) = printGoal ds {!  !}
 newTName' d = throwError ("lambda expected instead of: " ++ showDoc d)
 
 getArg' : List Doc -> TC (Pair (TName a) (List Doc))
@@ -2180,10 +2185,21 @@ checkLHS ((p [ "=>" ] ds) $ e) a'' = checkMatch (optEq ds) a''
     e <- addLocal n (addLocal n' (addLocal n'' (checkLHS e a'')))
     pure (MatchPair p n n' n'' e)
   checkMatch _ _ = throwError "checkMatch"
-checkLHS (KW' "either" ds) a'' = do
-  e' , ds <- getArg ds
-  e  , ds <- getArg ds
-  p <- firstArg ds
+checkLHS (KW' "either" ds) a'' = let
+    firstArg' ds' = do
+      (KW' "?" ds'') <- firstArg ds' where
+        p -> pure p
+      printGoal ds'' (U ⊎ U)
+    getArg' : List Doc -> TC (Pair Doc (List Doc))
+    getArg' ds' = do
+      (KW' "?" dss) , ds'' <- getArg ds' where
+        p -> pure p
+      -- TODO: Print better types!
+      printGoal dss (U => U => a'')
+  in do
+  e' , ds <- getArg' ds
+  e  , ds <- getArg' ds
+  p <- firstArg' ds
   _ ⊎ _ ,, p <- infer p where
     r ,, _ -> throwError' ("either: " +++ showTm r)
   n , e <- newTName' e
