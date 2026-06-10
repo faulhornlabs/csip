@@ -1,0 +1,36 @@
+Functor : (U -> U) -> U
+Functor = record (U -> U) (F. (A B :U) -> (A -> B) -> F A -> F B)
+
+Pure : (F : U -> U) -> Functor F -> U
+p : (F : U -> U) * Functor F -> U
+    = f. f => F , _ $ (A : U) -> A -> F A
+pureT = record ((F : U -> U) * Functor F) p
+Pure = F f. pureT (F , f)
+
+List : U -> U
+list = record U (A. Top + A * List A)
+List = list
+
+Nil : (A : U) -> List A
+    = A. Wrap (Left TT)
+
+Cons : (A : U) -> A -> List A -> List A
+    = A a ls. Wrap (Right (a , ls))
+
+--caseList : (A B : U) -> List A -> B -> (A -> List A -> B) -> B
+--    = A B ls z s. ls => Wrap ls' $ either ls' (_ _. z) (p _. p => p1 , p2 $ s p1 p2)
+
+--iteList : (A B : U) -> List A -> B -> (A -> B -> B) -> B
+--iteList = A B ls z f. caseList A B ls z (a lsa. iteList A B lsa (f a z) f)
+
+iteList : (A B : U) -> List A -> B -> (A -> B -> B) -> B
+iteList = A B ls z f. ls => Wrap ls' $ either ls' (_ _. z) (lsa _. lsa => p1 , p2 $ iteList A B p2 (f p1 z) f)
+
+
+listFunctor : Functor List
+    = Wrap (A B f ls. iteList A (List B) ls (Nil B) (a ls'. Cons B (f a) ls'))
+
+listPure : Pure List listFunctor
+ = ? --<- this hangs!
+
+U

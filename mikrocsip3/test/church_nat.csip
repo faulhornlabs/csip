@@ -1,0 +1,57 @@
+Nat = (A : U) -> (A -> A) -> A -> A
+
+Nat' : U
+
+nat = record Top (_. Top + Nat')
+
+Nat' = nat TT
+
+Zero : Nat'
+    = Wrap $ Left TT
+
+Suc : Nat' -> Nat'
+    = n. Wrap $ Right n
+
+fix : (A : U) -> (A -> A) -> A
+fix = A f. f (fix A f)
+
+iteHelper : (Nat' -> Nat) -> Nat' -> Nat
+    = ite n A s z. n => Wrap n' $ either n' (_ _. z) (n'' _. ite n'' A s (s z))
+
+iteNat' : Nat' -> Nat
+    = fix (Nat' -> Nat) iteHelper
+--n A s z. n => Wrap n' $ either n' (_ _. z) (n'' _. s (iteNat' n'' A s z))
+
+Z : Nat
+    = A _ z. z
+
+S : Nat -> Nat
+    = f A s z. s (f A s z)
+
+one = S Z
+
+two = S one
+
+add : Nat -> Nat -> Nat
+    = n m A s z. m A s (n A s z)
+
+
+add' : Nat' -> Nat' -> Nat'
+    = fix (Nat' -> Nat' -> Nat') (add'' n m. iteNat' n Nat' Suc m)
+
+add'' : Nat' -> Nat' -> Nat'
+add'' = n m. n => Wrap n' $ either n' (_ _. m) (n'' _. Suc (add'' n'' m))
+
+mul : Nat -> Nat -> Nat
+    = n m A s z. n A (m A s) z
+
+conv : Nat' -> Nat
+    = n. iteNat' n Nat (m A s z. s (m A s z)) (_ _ z. z)
+
+vnoc : Nat -> Nat'
+    = n. n Nat' Suc Zero
+
+--add' ((Suc Zero)) (Suc Zero)
+--mul two two Nat' Suc Zero
+
+U

@@ -1,0 +1,9 @@
+Tup2 = record U (A. A)
+T2 : (A : U) -> A -> Tup2 A
+    = A. a. Wrap a
+
+
+swap : (A : U) -> Tup2 A -> Tup2 A
+    = A. t. t => Wrap t' $ Wrap t'
+
+swap U (T2 U U)

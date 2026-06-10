@@ -1,0 +1,42 @@
+Nat : U
+nat = record Top (_ .Top + Nat)
+Nat = nat TT
+
+Z : Nat = Wrap $ Left TT
+S : Nat -> Nat = n. Wrap $ Right n
+
+caseNat : (A : U) -> Nat -> A -> (Nat -> A) -> A
+    = A n z s. n => Wrap n' $ either n' (_ _. z) (n'' _. s n'')
+
+iteNat : (A : U) -> Nat -> A -> (A -> A) -> A
+iteNat = A n z s. caseNat A n z (n'. s (iteNat A n' z s))
+--iteNat = A n z s. n => Wrap n' $ either n' (_ _. z) (n'' _. s (iteNat A n'' z s))
+
+bool = record Top (_. Top + Top)
+Bool : U
+    = bool TT
+
+True : Bool = Wrap $ Left TT
+False : Bool = Wrap $ Right TT
+
+not : Bool -> Bool
+    = b. b => Wrap b' $ either b' (_ _. False) (_ _. True)
+-- = b. b => Wrap b' $ either ? ? ? <- infer: ?
+
+Predic : U
+predic = record Top (_ . Nat -> Bool)
+Predic = predic TT
+
+
+Unive : Predic -> U
+unive = record Predic (_. Nat -> Nat -> Bool)
+Unive = unive
+
+p1 : Predic
+    = Wrap (n. iteNat Bool n True not)
+
+u1 : Unive p1
+    = ?
+
+U
+

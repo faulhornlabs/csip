@@ -1,0 +1,31 @@
+Nat : U
+nat = record Top (_ .Top + Nat)
+Nat = nat TT
+
+caseNat : (A : U) -> Nat -> A -> (Nat -> A) -> A
+    = A n z s. n => Wrap n' $ either n' (_ _. z) (n'' _. s n'')
+
+fix : (A : U) -> (A -> A) -> A
+fix = A f. f (fix A f)
+
+const : (A B : U) -> A -> B -> A
+ = _ _ a _. a
+
+iteNat : (A : U) -> Nat -> A -> (A -> A) -> A
+--iteNat = A n z s. caseNat A n z (n'. s (iteNat A n' z s)) -- <- this loops
+--    = A. fix (Nat -> A -> (A -> A) -> A) (ite n z s. caseNat A n z (n'. s (ite n' z s))) -- <- loops too
+iteNat = A n z s. n => Wrap n' $ either n' (_ _. z) (n'' _. s (iteNat A n'' z s)) -- <- this works
+
+P : U
+p = record Top (_ . Nat -> U)
+P = p TT
+
+Ind = record P (_. Nat -> U)
+
+p1 : P
+    = Wrap (n. iteNat U n Top (A. A + Top)) -- <- iterator used here
+
+u1 : Ind p1
+    = ?
+
+U

@@ -1487,9 +1487,9 @@ addLocal : TName a -> TC A -> TC A
 addLocal n m = do
   _ <- updateAtEnv (_::_ [])
   ln <- newPName "lam"
-  r <- addLocal' n ln m
+  g <- addLocal' n ln m
   _ <- updateAtEnv tail
-  pure r
+  pure g
 
 addLocal'' : TName a -> Tm a -> TC A -> TC A
 getTC (addLocal'' n t m) (MkTCEnv g l l' f) =
@@ -1536,6 +1536,12 @@ getTC locals env c = c , Right (localEnv env)
 locals' : TC LCtx'
 getTC locals' env c = c , Right (localEnv' env)
 
+showLocals : LCtx -> TC StringBuilder
+showContext : Ctx -> TC StringBuilder
+
+evalTC : {A : Set} -> TCEnv → TCState → TC A → Pair TCState (Either Error A)
+evalTC x x₁ x₂ = getTC x₂ x x₁
+
 lookupTm : String -> TC TyTm
 getTC (lookupTm s) env c = lookupSMStr s (localEnv env) & \where
   (Just (_ ,, n , Nothing))  -> c , Right (_ ,, var n)
@@ -1544,7 +1550,12 @@ getTC (lookupTm s) env c = lookupSMStr s (localEnv env) & \where
     (Just (_ ,, n , x))  -> c , Right (_ ,, x)
     Nothing              -> lookupSMStr s (globalEnv env) & \where
       (Just (_ ,, n , x))  -> c , Right (_ ,, x)
-      Nothing              -> c , Left ("Not defined: " <> fromString s)
+      Nothing              -> evalTC env c (do
+          loc <- showLocals (env .localEnv)
+          at <- showContext (concat (atExpEnv c))
+          throwError ("Not defined: " <> fromString s <>
+            "\n local context: " <> loc <>
+            "\n at context: " <> at ))
 
 instance
   IsString[TC_String] : IsString (TC String)
@@ -1645,12 +1656,12 @@ showSpine t = do
 
 --------------------
 
-showLocals : LCtx -> TC StringBuilder
 showLocals [] = ""
 showLocals ((a ,, n , Nothing) :: ls) = showLocals ls <>m "\n" <>m showDoc <$>  (printName (tName n) [ ":" ]m printTm a)
 showLocals ((a ,, n , Just t)  :: ls) = showLocals ls <>m "\n" <>m showDoc <$> ((printName (tName n) [ ":" ]m printTm a) [ "=" ]m printTm t)
 
-
+showContext [] = ""
+showContext ((a ,, n , x) :: ls) = showContext ls <>m "\n" <>m showDoc <$> (printName (tName n) [ ":" ]m printTm a) [ "=" ]m printTm x
 
 ----------------------------------
 
@@ -1871,6 +1882,11 @@ printGoal : Ty -> TC A
 infer : Doc -> TC TyTm
 
 check : Doc -> (a : Ty) -> TC (Tm a)
+check (n [ "@" ] e) a = do
+  n <- newTName {a} n
+  g <- check e a
+  _ <- addAtExp n g
+  pure g
 check (KW "Paren" (x :: [])) a = check x a
 check (KW "Left" (x :: [])) (a ⊎ a') = do
   x <- check x a
@@ -2128,9 +2144,13 @@ inferTop (FFI hs [ ";" ] ds) = do
   _ <- addFFI hs
   inferTop ds
 inferTop (((n [ ":" ] a) [ "=" ] t) [ ";" ] ds) = do
+  _ <- updateAtEnv (_::_ [])
   a <- check a U
-  n <- newTName n
+  _ <- updateAtEnv (_::_ [])
   t <- checkLHS t a
+  _ <- updateAtEnv tail
+  _ <- updateAtEnv tail
+  n <- newTName n
   addGlobal n (quoteFTmLR t) (inferTop ds)
 inferTop ((n [ "=" ] KW "record" (ps :: fs :: [])) [ ";" ] ds') = do
   ps <- check ps U
@@ -2139,27 +2159,39 @@ inferTop ((n [ "=" ] KW "record" (ps :: fs :: [])) [ ";" ] ds') = do
   let desc = named (tName dn) (Record ps fs)
   addGlobal dn (Lam' \x -> RHS (Rec desc x)) (inferTop ds')
 inferTop ((n [ ":" ] a) [ ";" ] ds) = do
+  _ <- updateAtEnv (_::_ [])
   a <- check a U
+  _ <- updateAtEnv tail
   n <- newTName {a = a} n
+  --TODO: Add back the at context to future
   futureTC n \t' -> addGlobal n (quoteFTmLR t') (inferTop ds)
 inferTop ((n [ "::" ] a) [ ";" ] ds) = do
   a <- check a U
   n <- newTName {a = a} n
   addGlobal n stuckTmLR (inferTop ds)
 inferTop ((Var n [ "=" ] t) [ ";" ] ds) = do
-  lookupFill' n (\(a ,, fill) -> do
-    t <- checkLHS t a
-    fill t (inferTop ds)
-   ) (do
-    a ,, t <- infer t
-    n <- newNameT n
-    addGlobal n (RHS t) (inferTop ds)
-   )
+  _ <- updateAtEnv (_::_ [])
+  g <- lookupFill' n (\(a ,, fill) -> do
+      t <- checkLHS t a
+      fill t (inferTop ds)
+    ) (do
+      a ,, t <- infer t
+      n <- newNameT n
+      addGlobal n (RHS t) (inferTop ds)
+    )
+  _ <- updateAtEnv tail
+  pure g
 inferTop (t [ ":" ] a) = do
+  _ <- updateAtEnv (_::_ [])
   a <- check a U
   t <- check t a
+  _ <- updateAtEnv tail
   pure (a ,, t)
-inferTop t = infer t
+inferTop t = do
+  _ <- updateAtEnv (_::_ [])
+  g <- infer t
+  _ <- updateAtEnv tail
+  pure g
 
 tc : String -> Either Error TyTm
 tc s = runTC (parse s >>= inferTop)

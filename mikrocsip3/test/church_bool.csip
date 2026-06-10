@@ -1,0 +1,19 @@
+Bool = (A : U) -> A -> A -> A
+
+bool = record Top (_. Top + Top)
+
+Bool' = bool TT
+
+False : Bool
+False = A t f. f
+
+True : Bool
+True = A t f. t
+
+false : Bool'
+false = Wrap $ Left TT
+
+true : Bool'
+true = Wrap $ Right TT
+
+False Bool' true false

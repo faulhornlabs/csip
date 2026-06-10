@@ -1,0 +1,20 @@
+Nat : U
+nat = record Top (_. Top + Nat)
+Nat = nat TT
+
+Z : Nat
+    = Wrap $ Left TT
+S : Nat -> Nat
+    = n . Wrap $ Right n
+
+add : Nat -> Nat -> Nat
+add = n. m. n => Wrap n' $ either n' ? ? --n' (_ _. m) (n'' _. S (add n'' m))
+
+fib' : Nat -> Nat -> Nat -> Nat
+fib' = a b n. n => Wrap n' $ either n' (_ _. a) (n'' _. fib' (add a b) a n'')
+
+fib : Nat -> Nat = fib' Z (S Z)
+
+fib (S $ S $ S $ S $ S Z)
+
+
