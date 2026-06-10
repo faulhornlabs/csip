@@ -311,7 +311,7 @@ snd' : (A B : U) -> A * B -> B
  = _. _. p. p => _ , s $ s
 
 snd'' : (A : U) -> (B : A -> U) -> (p : (x : A) * (B x)) -> B (fst'' A B p )
- = A. B. p. p => f , s @ e $ subst ((x : A) *  B x) (p'. B (fst'' A B p')) (f , s) p e s
+ = A. B. p. p => f , s $ s
 
 Context : (List U) -> U
 Context = ls. ls => Wrap ls' $ either ls' (_. _. Top) (p. _. fst' U (List U) p * Context (snd' U (List U) p))
