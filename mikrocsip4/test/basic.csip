@@ -1,0 +1,71 @@
+
+id : (A : U) -> A -> A
+  = A x. x
+
+const : (A : U) (_ : U) -> A -> U = _ A' _. A'
+
+arr : (_ : U) -> U -> U = A A'. (x : A) -> const A A' x
+
+arrU : (A : U) -> arr (arr A U) (A -> U) = A f x. f x
+
+bool = record Top (_. Top + Top)
+Bool  : U    =  bool TT
+False : Bool =  Wrap (Left  TT)
+True  : Bool =  Wrap (Right TT)
+
+and : (a b : Bool) -> Bool
+  = a. matchLeft  (proj a) (_ _. b. False)
+  | a. matchRight (proj a) (_ _. b. b)
+
+
+Nat : U
+
+nat = record Top (_. Top + Nat)
+
+Nat = nat TT
+
+Zero :        Nat =    Wrap (Left TT)
+Suc  : Nat -> Nat = n. Wrap (Right n)
+
+add : Nat -> Nat -> Nat
+add
+  = n m. matchLeft  (proj n) (_ _. m)
+  | n m. matchRight (proj n) (n _. Suc $ add n m)
+
+two = Suc (Suc Zero)
+
+Stream : U -> U
+stream = record U (A. Sigma A (_. Stream A))
+Stream = stream
+
+head : (A : U) -> Stream A -> A
+  = A s. fst (proj s)
+
+tail : (A : U) -> Stream A -> Stream A
+  = A s. snd (proj s)
+
+map : (A B : U) -> (A -> B) -> Stream A -> Stream B
+map = A B f s.
+  Wrap (f (head A s) , map A B f (tail A s))
+
+from : Nat -> Stream Nat
+from = n. Wrap (n , from (Suc n))
+
+nats = from Zero
+
+-----------------
+
+ite : U -> U -> Bool -> U
+  = A B b. (matchLeft (proj b) (_ _. A) | matchRight (proj b) (_ _. B))
+
+f : Pi Bool (ite Bool (Bool -> Bool))
+
+-----------
+
+tail Nat (map Nat Nat (add two) nats)
+
+
+
+
+
+
