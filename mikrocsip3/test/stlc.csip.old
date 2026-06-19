@@ -236,7 +236,7 @@ ten : Tm nil nat
 -- fact 8 works, fact 9 is too much
 
 main : Tm nil nat
-    = app nil nat nat (app nil nat (arr nat nat) (app nil tbool (arr nat (arr nat nat)) (ifthenelse nil nat) (true nil)) (app nil nat nat (factt nil) $ (suc'@(suc nil)) $ suc' five)) (zero nil)
+    = app nil nat nat (app nil nat (arr nat nat) (app nil tbool (arr nat (arr nat nat)) (ifthenelse nil nat) (true nil)) (app nil nat nat (factt nil) $ (suc'@(suc nil)) $ suc' $ suc' $ suc' five)) (zero nil)
 
 Nat : U
 nat' = record Top (_. Top + Nat)

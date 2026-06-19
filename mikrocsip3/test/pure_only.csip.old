@@ -31,6 +31,6 @@ listFunctor : Functor List
     = Wrap (A B f ls. iteList A (List B) ls (Nil B) (a ls'. Cons B (f a) ls'))
 
 listPure : Pure List listFunctor
- = Wrap (A. a. Cons A a (Nil A))
+ = ? --<- this hangs!
 
 U

@@ -1,0 +1,29 @@
+eqTy : ((A : U) * A * A) -> U
+    = p. p => A , fs $ fs => f , s $ (f == s)
+eqT = record ((A : U) * A * A) eqTy
+Eq : (A : U) -> A -> A -> U
+    = A. f. s. eqT (A , f , s)
+
+refl : (A : U) -> (x : A) -> Eq A x x
+    = A. x. Wrap Refl
+
+subst: (A : U) -> (P : A -> U) -> (x y : A) -> Eq A x y -> P x -> P y
+    = A. P. x. y. eq. Px. eq => Wrap e $ jRule e (a. _. P a) Px
+
+sym : (A : U) -> (x y : A) -> Eq A x y -> Eq A y x
+    = A. x. y. r. subst A (a. Eq A a x) x y r (refl A x)
+
+trans : (A : U) -> (x y z : A) -> Eq A x y -> Eq A y z -> Eq A x z
+    = A. x. y. z. r. (subst A (a. Eq A a z -> Eq A x z) x y r) (e. e)
+
+cong : (A B : U) -> (f : A -> B) -> (x y : A) -> Eq A x y -> Eq B (f x) (f y)
+    = A. B. f. x. y. eq. subst A (z. Eq B (f x) (f z)) x y eq (refl B (f x))
+
+f1 : U -> U
+    = a. a
+
+id : (A : U) -> A -> A
+    = _. a. a
+
+x : Eq (U -> U) f1 (id U) = refl (U -> U) (id U)
+x

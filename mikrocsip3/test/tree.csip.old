@@ -3,10 +3,10 @@ tree = record U (A. A + Tree A * Tree A)
 Tree = tree
 
 Leaf : (A : U) -> A -> Tree A
-    = A a. Wrap (Left a)
+    = A a. Wrap $ Left a
 
 Node : (A : U) -> Tree A -> Tree A -> Tree A
-    = A l r. Wrap (Right (l , r))
+    = A l r. Wrap $ Right (l , r)
 
 caseTree : (B A : U) -> (A -> B) -> (Tree A -> Tree A -> B) -> Tree A -> B
     = B A z c t. t => Wrap t' $ either t' (a _. z a) (t' _. t' => (t1 , t2) $ c t1 t2)

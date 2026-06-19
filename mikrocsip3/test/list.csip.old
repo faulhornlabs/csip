@@ -5,25 +5,16 @@ list = record U (A . Top + A * List A)
 List = list
 
 Nil : (A : U) -> List A
-    = A. Wrap (Left TT)
+    = A. Wrap $ Left TT
 
 Cons : (A : U) -> A -> List A -> List A
-    = A a ls. Wrap (Right (a , ls))
-
-uncurry : (A B C : U) -> (A -> B -> C) -> (A * B -> C)
-    = A. B. C. f. p. p => p' , p'' $ f p' p''
+    = A a ls. Wrap $ Right $ a , ls
 
 caseList : (A B : U) -> List A -> B -> (A -> List A -> B) -> B
-    = A B ls nil cns. ls => Wrap ls' $ either ls' (_ _. nil) (p _. uncurry A (List A) B cns p)
-
-fst : (A B : U) -> A * B -> A
-    = _. _. p. p => p' , _ $ p'
-
-snd : (A B : U) -> A * B -> B
-    = _. _. p. p => _ , p' $ p'
+    = A B ls nil cns. ls => Wrap ls' $ either ls' (_ _. nil) (p _. p => p' , p'' $ cns p' p'')
 
 iteList : (A B : U) -> (A -> B -> B) -> B -> List A -> B
-iteList = A B f z list. list => Wrap list' $ either list' (_ _. z) (p _. f (fst A (List A) p) (iteList A B f z (snd A (List A) p))) 
+iteList = A B f z list. list => Wrap list' $ either list' (_ _. z) (p _. (p => p' , p'' $ f p' (iteList A B f z p''))) 
 
 append : (A : U) -> List A -> List A -> List A
 append = A xs ys. xs => Wrap xs' $ either xs' (_ _. ys) (r _. r => r1 , r2 $ Cons A r1 (append A r2 ys))
@@ -33,13 +24,13 @@ comp = record Top (_. Top + Top + Top)
 Comp = comp TT
 
 GT  : Comp
-    = Wrap (Left TT)
+    = Wrap $ Left TT
 
 EQ  : Comp
-    = Wrap (Right (Left TT))
+    = Wrap $ Right $ Left TT
 
 LS  : Comp
-    = Wrap (Right (Right TT))
+    = Wrap $ Right $ Right TT
 
 caseComp : (A : U) -> Comp -> A -> A -> A -> A
     = A cmp a b c. cmp => Wrap cmp' $ either cmp' (_ _. a) (cm _. either cm (_ _. b) (_ _. c))
@@ -48,9 +39,9 @@ bool = record Top (_ . Top + Top)
 Bool = bool TT
 
 False : Bool
-    = Wrap (Right TT)
+    = Wrap $ Right TT
 True : Bool
-    = Wrap (Left TT)
+    = Wrap $ Left TT
 
 ite : (A : U) -> Bool -> A -> A -> A
     = _ b t f. b => Wrap e $ either e (_ _. t) (_ _. f)
@@ -75,8 +66,8 @@ order : (A : U) -> (e : Eq A) -> Ord A e -> A -> A -> Comp
       = _ _ o. o => Wrap o' $ o'
 
 eqList : (A : U) -> Eq A -> Eq (List A)
-eqList = A eqa. eqa => Wrap eq' $ Wrap (xs ys. caseList A Bool xs (caseList A Bool ys True (_ _. False))
-    (x xs'. caseList A Bool ys False (y ys'. and (eq' x y) (eq (List A) (eqList A eqa) xs' ys'))) )
+eqList = A eqa. Wrap (xs ys. caseList A Bool xs (caseList A Bool ys True (_ _. False))
+    (x xs'. caseList A Bool ys False (y ys'. and (eq A eqa x y) (eq (List A) (eqList A eqa) xs' ys'))) )
 
 ordList : (A : U) -> (e : Eq A) -> Ord A e -> Ord (List A) (eqList A e)
 ordList = A eq ord. Wrap (xs ys. caseList A Comp xs

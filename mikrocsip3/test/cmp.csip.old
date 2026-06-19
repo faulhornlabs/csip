@@ -38,7 +38,7 @@ fst': (A : U) -> (B : A -> U) -> (a : A) * B a -> A
     = A. B. p. p => f , _ $ f
 
 snd': (A : U) -> (B : A -> U) -> (p : (a : A) * B a) -> B (fst' A B p)
-    = A. B. p. p => f , s $ s
+    = A. B. p. p => f , s @ e $ subst ((x : A) *  B x) (p'. B (fst' A B p')) (f , s) p e s
 
 cmp' : (n m : Nat) -> Cmp n m -> Cmp (S n) (S m)
     = n. m. c. c => Wrap c' $ either c' (r. _. subst Nat (n'. Cmp (S n) (S n')) n m r (CmpEQ (S n)))
@@ -59,22 +59,22 @@ cmp' : (n m : Nat) -> Cmp n m -> Cmp (S n) (S m)
         ))
 
 cmp : (n m : Nat) -> Cmp n m
-cmp = n. m. n => Wrap n' $ m => Wrap m' $ either n'
+cmp = n. m. n => Wrap n' @ eq $ m => Wrap m' @ eq' $ either n'
     (z. e. either m' (z'. e'. subst Nat (n. cmpT (n , m)) (Wrap (Left z)) n
-        (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e)
+        (trans Nat (l@(Wrap (Left z))) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) eq)
         (subst Nat (m. cmpT (Wrap (Left z), m)) (Wrap (Left z')) m
-        (cong (Top + Nat) Nat (k. Wrap k) (Left z') m' e')
+        (trans Nat (l'@(Wrap (Left z'))) (Wrap m') m (cong (Top + Nat) Nat (k. Wrap k) (Left z') m' e') eq')
         (CmpEQ (Wrap (Left TT)))))
-        (s'. e'. subst Nat (n. cmpT (n, m)) (Wrap (Left z)) n (cong (Top + Nat) Nat (n. Wrap n) (Left z) n' e)
-        (subst Nat (m. Cmp (Wrap (Left z)) m) (Wrap (Right s')) m (cong (Top + Nat) Nat (n. Wrap n) (Right s') m' e') (CmpLT (Wrap (Left z)) s'))))
+        (s'. e'. subst Nat (n. cmpT (n, m)) (Wrap (Left z)) n (trans Nat (Wrap (Left z)) (Wrap n') n (cong (Top + Nat) Nat (n. Wrap n) (Left z) n' e) eq)
+        (subst Nat (m. Cmp (Wrap (Left z)) m) (Wrap (Right s')) m (trans Nat (Wrap (Right s')) (Wrap m') m (cong (Top + Nat) Nat (n. Wrap n) (Right s') m' e') eq') (CmpLT (Wrap (Left z)) s'))))
     (s. e. either m' (z'. e'. subst Nat (n. cmpT (n , m)) (Wrap (Right s)) n
-        (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e)
+        (trans Nat (Wrap (Right s)) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) eq)
         (subst Nat (m. Cmp (Wrap (Right s)) m) (Wrap (Left z')) m
-        (cong (Top + Nat) Nat (k. Wrap k) (Left z') m' e') (CmpGT (Wrap (Left z')) s)))
+        (trans Nat (Wrap (Left z')) (Wrap m') m (cong (Top + Nat) Nat (k. Wrap k) (Left z') m' e') eq') (CmpGT (Wrap (Left z')) s)))
         (s'. e'.  subst Nat (n. cmpT (n , m)) (Wrap (Right s)) n
-        (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e)
+        (trans Nat (Wrap (Right s)) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) eq)
         (subst Nat (m. Cmp (Wrap (Right s)) m) (Wrap (Right s')) m
-        (cong (Top + Nat) Nat (n. Wrap n) (Right s') m' e')
+        (trans Nat (Wrap (Right s')) (Wrap m') m (cong (Top + Nat) Nat (n. Wrap n) (Right s') m' e') eq')
         (cmp' s s' (cmp s s')))))
 
 cmp (S Z) (S (S (S Z)))

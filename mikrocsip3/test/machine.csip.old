@@ -112,4 +112,4 @@ one :: Nat
 #type Nat = Int
 #one = 1
 
-get IO IOFunctor Nat ? $ pure (IOMachine Nat) (MachineFunctor IO IOFunctor Nat) (MachinePure IO IOFunctor IOPure Nat) Nat one
+get IO IOFunctor Nat Nat $ pure (IOMachine Nat) (MachineFunctor IO IOFunctor Nat) (MachinePure IO IOFunctor IOPure Nat) Nat one

@@ -40,13 +40,13 @@ weaken = n. fn. fn => Wrap fn' $ fn' => f , fss $ fss => fs , s $ either s (t. _
 
 
 shift : (n m : Nat) -> Fin n -> Fin (add m n)
-shift = n. m. m => Wrap m' $ either m'
-    (z. e. f. subst Nat (z'. Fin (add z' n)) (Wrap (Left z)) m (cong (Top + Nat) Nat (k. Wrap k) (Left z) m' e) f)
-    (s. e. f. subst Nat (z'. Fin (add z' n)) (Wrap (Right s)) m (cong (Top + Nat) Nat (k. Wrap k) (Right s) m' e) (FS (add s n) (shift n s f)))
+shift = n. m. m => Wrap m' @ eq $ either m'
+    (z. e. f. subst Nat (z'. Fin (add z' n)) (Wrap (Left z)) m (trans Nat (Wrap (Left z)) (Wrap m') m (cong (Top + Nat) Nat (k. Wrap k) (Left z) m' e) eq) f)
+    (s. e. f. subst Nat (z'. Fin (add z' n)) (Wrap (Right s)) m (trans Nat (Wrap (Right s)) (Wrap m') m (cong (Top + Nat) Nat (k. Wrap k) (Right s) m' e) eq) (FS (add s n) (shift n s f)))
 
 last : (n : Nat) -> Fin (S n)
-last = n. n => Wrap n' $ either n' (z. e. subst Nat (m. Fin (S m)) (Wrap (Left z)) n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (FZ Z))
-    (s. e. subst Nat (m. Fin (S m)) (Wrap (Right s)) n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) (FS (S s) (last s)))
+last = n. n => Wrap n' @ eq $ either n' (z. e. subst Nat (m. Fin (S m)) (Wrap (Left z)) n (trans Nat (Wrap (Left z)) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) eq) (FZ Z))
+    (s. e. subst Nat (m. Fin (S m)) (Wrap (Right s)) n (trans Nat (Wrap (Right s)) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) eq) (FS (S s) (last s)))
 
 complement : (n : Nat) -> Fin n -> Fin n
 complement = n. f. f => Wrap f' $ f' => fs , sn $ sn => s , nd $ either nd (z. e. subst Nat Fin (S fs) n s (last fs))
@@ -60,7 +60,7 @@ map : (A B : U) -> (A -> B) -> List A -> List B
 map = A. B. f. ls. ls => Wrap ls' $ either ls' (z. _. Wrap (Left z)) (s. _. s => fs , sn $ Wrap ( Right (f fs , map A B f sn )))
 
 allFins : (n : Nat) -> List (Fin n)
-allFins = n. n => Wrap n' $ either n' (z. e. subst Nat (m. List (Fin m)) (Wrap (Left z)) n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (Wrap (Left TT)))
-    (s. e. subst Nat (m. List (Fin m)) (Wrap (Right s)) n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) (Wrap (Right (FZ s , map (Fin s) (Fin (S s)) (FS s) (allFins s)))))
+allFins = n. n => Wrap n' @ eq $ either n' (z. e. subst Nat (m. List (Fin m)) (Wrap (Left z)) n (trans Nat (Wrap (Left z)) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) eq) (Wrap (Left TT)))
+    (s. e. subst Nat (m. List (Fin m)) (Wrap (Right s)) n (trans Nat (Wrap (Right s)) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) eq) (Wrap (Right (FZ s , map (Fin s) (Fin (S s)) (FS s) (allFins s)))))
 
 allFins (S (S Z))

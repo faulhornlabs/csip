@@ -49,9 +49,9 @@ length : (A : U) -> List A -> Nat
 length = A. ls. ls => Wrap ls' $ either ls' (_. _. Z) (s. _. s => _ , sn $ S (length A sn))
 
 ListToVec : (A : U) -> (ls : List A) -> Vector A (length A ls)
-ListToVec = A. ls. ls => Wrap ls' $ either ls'
-    (t. e. subst (List A) (ls. Vector A (length A ls)) (Wrap (Left TT)) ls (cong (Top + A * List A) (List A) (k. Wrap k) (Left TT) ls' e) (Wrap (Left Refl)))
-    (s. e. s => x , xs $ subst (List A) (ls. Vector A (length A ls)) (Wrap (Right s)) ls (cong (Top + A * List A) (List A) (k. Wrap k) (Right s) ls' e) (Wrap (Right ((length A xs), Refl, x, ListToVec A xs))))
+ListToVec = A. ls. ls => Wrap ls' @ eq $ either ls'
+    (t. e. subst (List A) (ls. Vector A (length A ls)) (Wrap (Left TT)) ls (trans (List A) (Wrap (Left TT)) (Wrap ls') ls (cong (Top + A * List A) (List A) (k. Wrap k) (Left TT) ls' e) eq) (Wrap (Left Refl)))
+    (s. e. s => x , xs @ eq' $ subst (List A) (ls. Vector A (length A ls)) (Wrap (Right s)) ls (trans (List A) (Wrap (Right s)) (Wrap ls') ls (cong (Top + A * List A) (List A) (k. Wrap k) (Right s) ls' e) eq) (subst (A * List A) (m. Vector A (length A (Wrap (Right m)))) (x , xs) s eq' (Wrap (Right ((length A xs), Refl, x, ListToVec A xs)))))
 
 decNat : Nat -> U
     = n. n => Wrap n' $ either n' (_. _. Top) (_. _. Bot)
@@ -70,19 +70,19 @@ tail = A. n. vec. vec => Wrap vec' $ either vec' (t. e. absurd (ZNS n (sym Nat (
 --tail = A. n. vec. vec => Wrap vec' $ either vec' (t. e. absurd (ZNS n (sym Nat (S n) Z t))) (s. e. s => _ , k $ k => _ , k $ k => _ , v $ ?) -- <- v get's replaced with v377
 
 index : (A : U) -> (n : Nat) -> Vector A n -> Fin n -> A
-index = A. n. vec. fin. n => Wrap n' $ fin => Wrap fin' $ fin' => k , k' $ k' => eq' , ei $ vec => Wrap vec' $
-    either n' (z. e. absurd (ZNS k (trans Nat Z (Wrap n') (S k) (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (sym Nat (S k) n eq')))) (s'. e. either ei
+index = A. n. vec. fin. n => Wrap n' @eq $ fin => Wrap fin' $ fin' => k , k' $ k' => eq' , ei $ vec => Wrap vec' $
+    either n' (z. e. absurd (ZNS k (trans Nat Z (Wrap n') (S k) (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (trans Nat (Wrap n') n (S k) eq (sym Nat (S k) n eq'))))) (s'. e. either ei
         (t. eq''. either vec'
             (tt. e''. absurd (ZNS k (sym Nat (S k) Z (trans Nat (S k) n Z eq' tt))))
             (n. e''. n => m , p $ p => e'' , a' $ a' => a , _ $ a))
         (t. eq''. index A k (tail A k (subst Nat (o. Vector A o) n (S k) (sym Nat (S k) n eq') vec)) t))
 
 map : (A B : U) -> (A -> B) -> (n : Nat) -> Vector A n -> Vector B n
-map = A. B. f. n. vec. vec => Wrap vec' $ either vec' (zp. e. subst Nat (Vector B) Z n (sym Nat n Z zp) (Wrap (Left Refl))) (s. e. s => m , o $ o => sp , o' $ o' => a , xs $ (Wrap (Right (m , sp , (f a) , map A B f m xs))))
+map = A. B. f. n. vec. vec => Wrap vec' @ e $ either vec' (zp. e. subst Nat (Vector B) Z n (sym Nat n Z zp) (Wrap (Left Refl))) (s. e. s => m , o $ o => sp , o' $ o' => a , xs $ (Wrap (Right (m , sp , (f a) , map A B f m xs))))
 
 allFin : (n : Nat) -> Vector (Fin n) n
-allFin = n. n => Wrap n' $ either n' (t. e. subst Nat (n. Vector (Fin n) n) Z n (cong (Top + Nat) Nat (k. Wrap k) (Left t) n' e) (Wrap (Left Refl)))
-    (s. e. subst Nat (n. Vector (Fin n) n) (S s) n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) (Wrap (Right (s , Refl, (FZ s), map (Fin s) (Fin (S s)) (FS s) s (allFin s)))))
+allFin = n. n => Wrap n' @ eq $ either n' (t. e. subst Nat (n. Vector (Fin n) n) Z n (trans Nat Z (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Left t) n' e) eq) (Wrap (Left Refl)))
+    (s. e. subst Nat (n. Vector (Fin n) n) (S s) n (trans Nat (S s) (Wrap n') n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) eq) (Wrap (Right (s , Refl, (FZ s), map (Fin s) (Fin (S s)) (FS s) s (allFin s)))))
 
 tabulate : (A : U) -> (n : Nat) -> (Fin n -> A) -> Vector A n
     = A. n. f. map (Fin n) A f n (allFin n)

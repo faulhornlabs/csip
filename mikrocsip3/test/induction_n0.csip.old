@@ -2,8 +2,8 @@ Nat : U
 nat = record Top (_ .Top + Nat)
 Nat = nat TT
 
-Z : Nat = Wrap (Left TT)
-S : Nat -> Nat = n. Wrap (Right n)
+Z : Nat = Wrap $ Left TT
+S : Nat -> Nat = n. Wrap $ Right n
 
 caseNat : (A : U) -> Nat -> A -> (Nat -> A) -> A
     = A n z s. n => Wrap n' $ either n' (_ _. z) (n'' _. s n'')
@@ -16,8 +16,8 @@ bool = record Top (_. Top + Top)
 Bool : U
     = bool TT
 
-True : Bool = Wrap (Left TT)
-False : Bool = Wrap (Right TT)
+True : Bool = Wrap $ Left TT
+False : Bool = Wrap $ Right TT
 
 not : Bool -> Bool
     = b. b => Wrap b' $ either b' (_ _. False) (_ _. True)

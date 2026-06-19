@@ -1,0 +1,87 @@
+Functor : (U -> U) -> U
+Functor = record (U -> U) (F. (A B :U) -> (A -> B) -> F A -> F B)
+
+fmap : (F : U -> U) -> Functor F -> (A B : U) -> (A -> B) -> F A -> F B
+    = _ f. f => Wrap f' $ f'
+
+Pure : (F : U -> U) -> Functor F -> U
+p : (F : U -> U) * Functor F -> U
+    = f. f => F , _ $ (A : U) -> A -> F A
+pureT = record ((F : U -> U) * Functor F) p
+Pure = F f. pureT (F , f)
+
+pure : (F : U -> U) -> (f : Functor F) -> Pure F f -> (A : U) -> A -> F A
+    = _ _ p. p => Wrap f $ f
+
+App : (F : U -> U) -> Functor F -> U
+a : (F : U -> U) * Functor F -> U
+    = f. f => F , _ $ (A B : U) -> F (A -> B) -> F A -> F B
+appT = record ((F : U -> U) * Functor F) a
+App = F f. appT (F , f)
+
+app : (F : U -> U) -> (f : Functor F) -> App F f -> (A B : U) -> F (A -> B) -> F A -> F B
+    = _ _ a. a => Wrap f $ f
+
+Monad : (F : U -> U) -> ((f : Functor F) * Pure F f * App F f) -> U
+m : (F : U -> U) * ((f : Functor F) * (Pure F f) * (App F f)) -> U
+    = f. f => F , _ $ (A B : U) -> (A -> F B) -> F A -> F B
+monadT = record ((F : U -> U) * (f : Functor F) * Pure F f * App F f) m
+Monad = F c. monadT (F , c)
+
+chain : (F : U -> U) -> (f : Functor F) -> (p : Pure F f) -> (a : App F f) -> Monad F (f , p , a)
+        -> (A B : U) -> (A -> F B) -> F A -> F B
+    = _ _ _ _ m. m => Wrap f $ f
+
+List : U -> U
+list = record U (A. Top + A * List A)
+List = list
+
+Nil : (A : U) -> List A
+    = A. Wrap (Left TT)
+
+Cons : (A : U) -> A -> List A -> List A
+    = A a ls. Wrap (Right (a , ls))
+
+caseList : (A B : U) -> List A -> B -> (A -> List A -> B) -> B
+    = A B ls z s. ls => Wrap ls' $ either ls' (_ _. z) (p _. p => p1 , p2 $ s p1 p2)
+
+iteList : (A B : U) -> List A -> B -> (A -> B -> B) -> B
+iteList = A B ls z f. ls => Wrap ls' $ either ls' (_ _. z) (alsa _. alsa => a , lsa $ iteList A B lsa (f a z) f)
+
+append : (A : U) -> List A -> List A -> List A
+    = A xs ys. iteList A (List A) xs ys (Cons A)
+
+
+--listFunctor : Functor List
+--    = Wrap $ A B f. ?
+-- infer: Wrap (A B f) . ?
+
+listFunctor : Functor List
+    = Wrap (A B f ls. iteList A (List B) ls (Nil B) (a ls'. Cons B (f a) ls'))
+
+listPure : Pure List listFunctor
+-- = ? --<- this hangs!
+    = Wrap (A a. Cons A a (Nil A))
+
+listApp : App List listFunctor
+--listApp = Wrap (A B fls lsa. caseList (A -> B) (List B) fls (Nil B) (f xs. caseList A (List B) lsa (Nil B)
+--    (a ys. Cons B (f a) (app List listFunctor ?)))) <- this hangs!
+--listApp = Wrap (A B fls lsa. caseList (A -> B) (List B) fls (Nil B) (f xs. caseList A (List B) lsa (Nil B)
+--    (a ys. Cons B (f a) (app List listFunctor listApp ?)))) <- this hangs
+--listApp = Wrap (A B fls lsa. caseList (A -> B) (List B) fls (Nil B) (f xs. caseList A (List B) lsa (Nil B)
+--    (a ys. Cons B (f a) (app List listFunctor listApp A B ?)))) <- still hangs!
+listApp' : (A B : U) -> List (A -> B) -> List A -> List B
+    = A B fls lsa. fls => Wrap fls' $ either fls' (_ _. Nil B) (fxs _. fxs => f , xs $ caseList A (List B) lsa (Nil B)
+    (a ys. Cons B (f a) (app List listFunctor listApp A B xs ys)))
+listApp = Wrap listApp' --<- this can't typecheck?
+
+--listApp :: App List listFunctor
+
+--app List listFunctor --<- This loops!
+
+listMonad : Monad List (listFunctor , listPure , listApp) --<- this loops too ?!
+listMonad = Wrap (A B fm ls. caseList A (List B) ls (Nil B) (a lsa. append B (fm a)
+    (chain List listFunctor listPure listApp listMonad A B fm lsa))
+)
+
+U
