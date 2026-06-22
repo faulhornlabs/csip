@@ -1,0 +1,90 @@
+Nat : U
+nat = record Top (_. Top + Nat)
+Nat = nat TT
+
+Z : Nat
+    = Wrap (Left TT)
+
+S : Nat -> Nat
+    = n. Wrap (Right n)
+
+add : Nat -> Nat -> Nat
+add = n. n => Wrap n' $ either n' (_. _. m. m) (s. _. m. S (add s m))
+
+subst : (A : U) -> (P : A -> U) -> (x y : A) -> x == y -> P x -> P y
+    = A. P. x. y. eq. Px. jRule eq (a. _. P a) Px
+
+sym : (A : U) -> (x y : A) -> x == y -> y == x
+    = A. x. y. r. subst A (a. a == x) x y r Refl
+
+trans : (A : U) -> (x y z : A) -> x == y -> y == z -> x == z
+    = A. x. y. z. r. (subst A (a. a == z -> x == z) x y r) (e. e)
+
+cong : (A B : U) -> (f : A -> B) -> (x y : A) -> x == y -> f x == f y
+    = A. B. f. x. y. eq. subst A (z. f x == f z) x y eq Refl
+
+Fin : Nat -> U
+finT = record Nat (n. (k : Nat) * ((S k) == n) * (Top + Fin k))
+Fin = finT
+
+FZ : (n : Nat) -> Fin (S n)
+    = n. Wrap (n , Refl , Left TT)
+FS : (n : Nat) -> Fin n -> Fin (S n)
+    = n. fn. Wrap ( n , Refl , Right fn)
+
+finToNat : (n : Nat) -> Fin n -> Nat
+finToNat = n. fn. fn => Wrap fn' $ fn' => f , fss $ fss => fs , s $ either s (t. _. Z) (s. _. S (finToNat f s))
+
+Vector : U -> Nat -> U
+vectorTy : U * Nat -> U
+    = p. p => f , s $ (s == Z) + ((k : Nat) * ((S k) == s) * f * Vector f k)
+vectorT = record (U * Nat) vectorTy
+Vector = A. n. vectorT (A, n)
+
+List : U -> U
+listT = record U (A. Top + A * List A)
+List = listT
+
+length : (A : U) -> List A -> Nat
+length = A. ls. ls => Wrap ls' $ either ls' (_. _. Z) (s. _. s => _ , sn $ S (length A sn))
+
+ListToVec : (A : U) -> (ls : List A) -> Vector A (length A ls)
+ListToVec = A. ls. ls => Wrap ls' $ either ls'
+    (t. e. subst (List A) (ls. Vector A (length A ls)) (Wrap (Left TT)) ls (cong (Top + A * List A) (List A) (k. Wrap k) (Left TT) ls' e) (Wrap (Left Refl)))
+    (s. e. s => x , xs $ subst (List A) (ls. Vector A (length A ls)) (Wrap (Right s)) ls (cong (Top + A * List A) (List A) (k. Wrap k) (Right s) ls' e) (Wrap (Right ((length A xs), Refl, x, ListToVec A xs))))
+
+decNat : Nat -> U
+    = n. n => Wrap n' $ either n' (_. _. Top) (_. _. Bot)
+
+ZNS : (n : Nat) -> (Z == (S n)) -> Bot
+ = n. eq. subst Nat decNat Z (S n) eq TT
+
+pred : Nat -> Nat
+    = n. n => Wrap n' $ either n' (z. _. Wrap (Left z)) (s. _. s)
+
+Sinj : (n m : Nat) -> (S n) == (S m) -> n == m
+    = n. m. eq. cong Nat Nat pred (S n) (S m) eq
+
+tail : (A : U) -> (n : Nat) -> Vector A (S n) -> Vector A n
+tail = A. n. vec. vec => Wrap vec' $ either vec' (t. e. absurd (ZNS n (sym Nat (S n) Z t))) (s. e. s => m , k $ k => e' , k $ k => _ , ve $ subst Nat (o. Vector A o) m n (Sinj m n e') ve)
+--tail = A. n. vec. vec => Wrap vec' $ either vec' (t. e. absurd (ZNS n (sym Nat (S n) Z t))) (s. e. s => _ , k $ k => _ , k $ k => _ , v $ ?) -- <- v get's replaced with v377
+
+index : (A : U) -> (n : Nat) -> Vector A n -> Fin n -> A
+index = A. n. vec. fin. n => Wrap n' $ fin => Wrap fin' $ fin' => k , k' $ k' => eq' , ei $ vec => Wrap vec' $
+    either n' (z. e. absurd (ZNS k (trans Nat Z (Wrap n') (S k) (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (sym Nat (S k) n eq')))) (s'. e. either ei
+        (t. eq''. either vec'
+            (tt. e''. absurd (ZNS k (sym Nat (S k) Z (trans Nat (S k) n Z eq' tt))))
+            (n. e''. n => m , p $ p => e'' , a' $ a' => a , _ $ a))
+        (t. eq''. index A k (tail A k (subst Nat (o. Vector A o) n (S k) (sym Nat (S k) n eq') vec)) t))
+
+map : (A B : U) -> (A -> B) -> (n : Nat) -> Vector A n -> Vector B n
+map = A. B. f. n. vec. vec => Wrap vec' $ either vec' (zp. e. subst Nat (Vector B) Z n (sym Nat n Z zp) (Wrap (Left Refl))) (s. e. s => m , o $ o => sp , o' $ o' => a , xs $ (Wrap (Right (m , sp , (f a) , map A B f m xs))))
+
+allFin : (n : Nat) -> Vector (Fin n) n
+allFin = n. n => Wrap n' $ either n' (t. e. subst Nat (n. Vector (Fin n) n) Z n (cong (Top + Nat) Nat (k. Wrap k) (Left t) n' e) (Wrap (Left Refl)))
+    (s. e. subst Nat (n. Vector (Fin n) n) (S s) n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) (Wrap (Right (s , Refl, (FZ s), map (Fin s) (Fin (S s)) (FS s) s (allFin s)))))
+
+tabulate : (A : U) -> (n : Nat) -> (Fin n -> A) -> Vector A n
+    = A. n. f. map (Fin n) A f n (allFin n)
+
+index Nat (n@(S (n'@(S (n''@(S (S (S Z)))))))) (tabulate Nat n (finToNat n)) (FS n' (FZ n''))

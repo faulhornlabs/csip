@@ -1,0 +1,181 @@
+List : U -> U
+
+list = record U (A . Top + A * List A)
+
+List = list
+
+Nil : (A : U) -> List A
+    = A. Wrap $ Left TT
+
+Cons : (A : U) -> A -> List A -> List A
+    = A a ls. Wrap $ Right $ a , ls
+
+caseList : (A B : U) -> List A -> B -> (A -> List A -> B) -> B
+    = A B ls nil cns. ls => Wrap ls' $ either ls' (_ _. nil) (p _. p => p' , p'' $ cns p' p'')
+
+iteList : (A B : U) -> (A -> B -> B) -> B -> List A -> B
+iteList = A B f z list. list => Wrap list' $ either list' (_ _. z) (p _. (p => p' , p'' $ f p' (iteList A B f z p''))) 
+
+append : (A : U) -> List A -> List A -> List A
+append = A xs ys. xs => Wrap xs' $ either xs' (_ _. ys) (r _. r => r1 , r2 $ Cons A r1 (append A r2 ys))
+
+comp = record Top (_. Top + Top + Top)
+
+Comp = comp TT
+
+GT  : Comp
+    = Wrap $ Left TT
+
+EQ  : Comp
+    = Wrap $ Right $ Left TT
+
+LS  : Comp
+    = Wrap $ Right $ Right TT
+
+caseComp : (A : U) -> Comp -> A -> A -> A -> A
+    = A cmp a b c. cmp => Wrap cmp' $ either cmp' (_ _. a) (cm _. either cm (_ _. b) (_ _. c))
+
+bool = record Top (_ . Top + Top)
+Bool = bool TT
+
+False : Bool
+    = Wrap $ Right TT
+True : Bool
+    = Wrap $ Left TT
+
+ite : (A : U) -> Bool -> A -> A -> A
+    = _ b t f. b => Wrap e $ either e (_ _. t) (_ _. f)
+
+and : Bool -> Bool -> Bool
+    = a b. ite Bool a b a
+eqT = record U (A. A -> A -> Bool)
+Eq : U -> U
+    = eqT
+
+eq : (A : U) -> Eq A -> A -> A -> Bool
+    = _ eq. eq => Wrap f $ f
+
+ord' : (A : U) * Eq A -> U
+        = p. p => A , _ $ A -> A -> Comp
+ord = record ((A : U) * Eq A) ord'
+
+Ord : (A : U) -> Eq A -> U
+    = u eq. ord (u , eq)
+
+order : (A : U) -> (e : Eq A) -> Ord A e -> A -> A -> Comp
+      = _ _ o. o => Wrap o' $ o'
+
+eqList : (A : U) -> Eq A -> Eq (List A)
+eqList = A eqa. Wrap (xs ys. caseList A Bool xs (caseList A Bool ys True (_ _. False))
+    (x xs'. caseList A Bool ys False (y ys'. and (eq A eqa x y) (eq (List A) (eqList A eqa) xs' ys'))) )
+
+ordList : (A : U) -> (e : Eq A) -> Ord A e -> Ord (List A) (eqList A e)
+ordList = A eq ord. Wrap (xs ys. caseList A Comp xs
+    (caseList A Comp ys EQ (_ _. LS))
+    (x xs'. caseList A Comp ys GT (y ys'. caseComp Comp (order A eq ord x y)
+        GT
+        (order (List A) ? (ordList A eq ord) xs' ys') --(eqList A eq) <- this makes it looop if I fill the hole
+        LS)))
+
+U
+
+--Nat : U
+
+--nat = record Top (_. Top + Nat)
+
+--Nat = nat TT
+
+--caseNat : Nat -> (A : U) -> A -> (Nat -> A) -> A
+--        = n A z s. n => Wrap n' $ either n' (_ _. z) (n'' _. s n'')
+
+--ordNat : Ord Nat
+--ordNat = Wrap (n m. caseNat n Comp (caseNat m Comp EQ (_. LS)) (n'. caseNat m Comp GT (m'. order Nat ordNat n' m')) )
+
+--insert : (A : U) -> Ord A -> A -> List A -> List A
+--insert = A ord i ls. caseList A (List A) ls (Cons A i $ Nil A)
+--    (x xs. caseComp (List A) (order A ord i x)
+--        (Cons A i (Cons A x xs))
+--        (Cons A x (insert A ord i xs))
+--        (Cons A x (insert A ord i xs)))
+
+--Z  : Nat = Wrap (Left TT)
+--S : Nat -> Nat
+--    = n. Wrap (Right n)
+
+--one = S Z
+--two = S one
+--three = S two
+--four = S three
+--five = S four
+--six = S five
+--seven = S six
+--eight = S seven
+--nine = S eight
+
+--listed = Cons Nat seven (Cons Nat three (Cons Nat five (Cons Nat one (Cons Nat nine (Cons Nat two (Nil Nat))))))
+
+--iSort : (A : U) -> Ord A -> List A -> List A
+--iSort = A ord ls. caseList A (List A) ls (Nil A) (x xs. insert A ord x (iSort A ord xs))
+
+--merge : (A : U) -> Ord A -> List A -> List A -> List A
+--merge = A ord xs ys. caseList A (List A) xs ys (x xs'. caseList A (List A) ys (Cons A x xs') 
+--    (y ys'. caseComp (List A) (order A ord x y)
+--        (Cons A x (merge A ord xs' (Cons A y ys')))
+--        (Cons A x (merge A ord xs' (Cons A y ys')))
+--        (Cons A y (merge A ord (Cons A x xs') ys'))))
+
+--len : (A : U) -> List A -> Nat
+--len = A ls. caseList A Nat ls Z (_ ls'. S (len A ls'))
+
+--take : (A : U) -> Nat -> List A -> List A
+--take = A n ls. caseNat n (List A) (Nil A) (n'. caseList A (List A) ls (Nil A) (x ls'. Cons A x (take A n' ls')))
+
+--drop : (A : U) -> Nat -> List A -> List A
+--drop = A n ls. caseNat n (List A) ls (n'. caseList A (List A) ls (Nil A) (x ls'. drop A n' ls'))
+
+--halfNat : Nat -> Nat
+--halfNat = n. caseNat n Nat Z (n'. caseNat n' Nat Z (n'' . S (halfNat n'')))
+
+--firstHalf : (A : U) -> List A -> List A
+--    = A ls. take A (halfNat (len A ls)) ls
+--secondHalf : (A : U) -> List A -> List A
+--    = A ls. drop A (halfNat (len A ls)) ls
+
+--mSort : (A : U) -> Ord A -> List A -> List A
+--mSort = A ord ls. caseList A (List A) ls ls (_ ls'. caseList A (List A) ls' ls (_ _.
+--    merge A ord
+--        (mSort A ord (firstHalf A ls))
+--        (mSort A ord (secondHalf A ls))))
+
+--les : (A : U) -> Ord A -> A -> List A -> List A
+--les = A ord i ls'. caseList A (List A) ls' ls' (x xs. caseComp (List A) (order A ord i x)
+--    (les A ord i xs)
+--    (les A ord i xs)
+--    (Cons A x (les A ord i xs)))
+
+--ge : (A : U) -> Ord A -> A -> List A -> List A
+--ge = A ord i ls'. caseList A (List A) ls' ls' (x xs. caseComp (List A) (order A ord i x)
+--    (Cons A x (ge A ord i xs))
+--    (Cons A x (ge A ord i xs))
+--    (ge A ord i xs))
+
+--qSort : (A : U) -> Ord A -> List A -> List A
+--qSort = A ord ls. caseList A (List A) ls ls (x xs. 
+--    append A (qSort A ord (les A ord x xs))
+--    (append A (Cons A x (Nil A)) (qSort A ord (ge A ord x xs)))
+--    )
+
+--swapUntill : (A : U) -> Ord A -> A -> List A -> List A
+--swapUntill = A ord x xs. caseList A (List A) xs (Cons A x xs) (y xs'.
+--    Cons A (caseComp A (order A ord x y) x x y) (swapUntill A ord (caseComp A (order A ord x y) y y x) xs'))
+
+--bSort : (A : U) -> Ord A -> List A -> List A
+--    = A ord ls. iteList A (List A) (swapUntill A ord) (Nil A) ls
+
+--order (List Nat) (ordList Nat ordNat) (mSort Nat ordNat listed) (iSort Nat ordNat listed)
+--order (List Nat) (ordList Nat ordNat) (mSort Nat ordNat listed) (qSort Nat ordNat listed)
+--order (List Nat) (ordList Nat ordNat) (qSort Nat ordNat listed) (bSort Nat ordNat listed)
+
+--- c . g => Wrap g' $ a b. k ~> c . g => Wrap g' (a b.) k
+
+--qSort Nat ordNat listed

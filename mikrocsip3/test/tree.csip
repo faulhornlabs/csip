@@ -1,0 +1,23 @@
+Tree : U -> U
+tree = record U (A. A + Tree A * Tree A)
+Tree = tree
+
+Leaf : (A : U) -> A -> Tree A
+    = A a. Wrap (Left a)
+
+Node : (A : U) -> Tree A -> Tree A -> Tree A
+    = A l r. Wrap (Right (l , r))
+
+caseTree : (B A : U) -> (A -> B) -> (Tree A -> Tree A -> B) -> Tree A -> B
+    = B A z c t. t => Wrap t' $ either t' (a _. z a) (t' _. t' => (t1 , t2) $ c t1 t2)
+
+iteTree : (B A : U) -> (A -> B) -> (B -> B -> B) -> Tree A -> B
+iteTree = B A z c t. t => Wrap t $ either t (a _. z a) (t' _. t' => (t1 , t2) $ c (iteTree B A z c t1) (iteTree B A z c t2))
+
+f : (A : U) -> Tree A -> Tree A
+--f = A t. iteTree (Tree A) A (Leaf A) (l r. iteTree (Tree A) A (_. iteTree (Tree A) A (_. t) (l' r'. iteTree (Tree A) A (_. l') (_ _. t) r') r) (_ _. t) l) t
+--(l r. iteTree (Tree A) A l (iteTree (Tree A) A r r (l1 r1. iteTree (Tree A) A r1 l1 (_ _. r1))) (_ _. l))
+    = A t. caseTree (Tree A) A (_. t) (l r. caseTree (Tree A) A (_. caseTree (Tree A) A (_. t) (l' r'. caseTree (Tree A) A (_. l') (_ _. t) r') r) (_ _. t) l) t
+
+f U (Node U (Leaf U Top) (Node U (Leaf U Top) (Leaf U Top)))
+

@@ -1,0 +1,51 @@
+-- Now this file hangs
+fst' : (A : U) -> (B : A -> U) -> ((a : A) * B a) -> A
+    = A. B. p. p => a , _ $ a
+
+fix' : (p : ((A : U) * (A -> A))) -> fst' U (A. A -> A) p
+fix' = p. p => A , f $
+    f (fix' p)
+
+-- EtaPair:
+-- fix' <- same as fix
+-- Not EtaPair
+-- fix' = < p. [(snd p) fix' p ] >
+-- So in the next system this will "fail", aka fix' = fix
+
+fix : (A : U) -> (A -> A) -> A
+    = A. f. fix' (A , f)
+
+flip : (A B C : U) -> (A -> B -> C) -> (B -> A -> C)
+    = A. B. C. f. b. a. f a b
+
+Nat : U
+nat = record Top (_. Top + Nat)
+Nat = nat TT
+
+Z : Nat = Wrap (Left TT)
+S : Nat -> Nat = n. Wrap (Right n)
+
+caseNat : (A : U) -> A -> (Nat -> A) -> Nat -> A
+    = A. z. s. n. n => Wrap n' $ either n' (_. _. z) (s'. _. s s')
+
+c : (A B C : U) -> (B -> C) -> (A -> B) -> (A -> C)
+    = A. B. C. f. g. a. f (g a)
+
+add : Nat -> Nat -> Nat
+--    = flip Nat Nat Nat (m. fix (NR@(Nat -> Nat)) (c NR NR NR (caseNat Nat m) (c Nat Nat Nat S)))
+    = fix (Nat -> Nat -> Nat) (r. caseNat (Nat -> Nat) (i. i) (s. c Nat Nat Nat S $ r s))
+
+--t : fix == (A. f. fix' (A , f)) = ?
+-- ^ This fails
+
+t' : (p : ((A : U) * (A -> A))) -> fst' U (A. A -> A) p
+    = p. p => A , f $ fix A f
+
+--t : fix' == t' = Refl
+-- ^ these are not equal
+
+t : fix' == fix' = Refl
+-- te : fix == fix = Refl
+--^ This will run forever
+
+add (S (S (S Z))) (S (S Z))

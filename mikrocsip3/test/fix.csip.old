@@ -1,0 +1,60 @@
+subst : (A : U) -> (P : A -> U) -> (x y : A) -> x == y -> P x -> P y
+    = A. P. x. y. eq. Px. jRule eq (a. _. P a) Px
+
+sym : (A : U) -> (x y : A) -> x == y -> y == x
+    = A. x. y. r. subst A (a. a == x) x y r Refl
+
+trans : (A : U) -> (x y z : A) -> x == y -> y == z -> x == z
+    = A. x. y. z. r. (subst A (a. a == z -> x == z) x y r) (e. e)
+
+fst' : (A : U) -> (B : A -> U) -> ((a : A) * B a) -> A
+    = A. B. p. p => a , _ $ a
+
+fix' : (p : ((A : U) * (A -> A))) -> fst' U (A. A -> A) p
+fix' = p. p => A , f @ e $
+    subst ((B : U) * (B -> B)) (p'. fst' U (C. C -> C) p') (A , f) p e
+        (f (subst ((B : U) * (B -> B)) (fst' U (C. C -> C)) p (A , f) (sym ((B : U) *  (B -> B)) (A , f) p e) (fix' p)))
+
+-- EtaPair:
+-- fix' <- same as fix
+-- Not EtaPair
+-- fix' = < p. [(snd p) fix' p ] >
+-- So in the next system this will "fai", aka fix' = fix
+
+fix : (A : U) -> (A -> A) -> A
+    = A. f. fix' (A , f)
+
+flip : (A B C : U) -> (A -> B -> C) -> (B -> A -> C)
+    = A. B. C. f. b. a. f a b
+
+Nat : U
+nat = record Top (_. Top + Nat)
+Nat = nat TT
+
+Z : Nat = Wrap (Left TT)
+S : Nat -> Nat = n. Wrap (Right n)
+
+caseNat : (A : U) -> A -> (Nat -> A) -> Nat -> A
+    = A. z. s. n. n => Wrap n' $ either n' (_. _. z) (s'. _. s s')
+
+c : (A B C : U) -> (B -> C) -> (A -> B) -> (A -> C)
+    = A. B. C. f. g. a. f (g a)
+
+add : Nat -> Nat -> Nat
+--    = flip Nat Nat Nat (m. fix (NR@(Nat -> Nat)) (c NR NR NR (caseNat Nat m) (c Nat Nat Nat S)))
+    = fix (Nat -> Nat -> Nat) (r. caseNat (Nat -> Nat) (i. i) (s. c Nat Nat Nat S $ r s))
+
+--t : fix == (A. f. fix' (A , f)) = ?
+-- ^ This fails
+
+t' : (p : ((A : U) * (A -> A))) -> fst' U (A. A -> A) p
+    = p. p => A , f @e $ subst ((A : U) * (A -> A)) (fst' U (C. C -> C)) (A , f) p e (fix A f)
+
+--t : fix' == t' = Refl
+-- ^ these are not equal
+
+t : fix' == fix' = Refl
+-- te : fix == fix = Refl
+--^ This will run forever
+
+add (S (S (S Z))) (S (S Z))

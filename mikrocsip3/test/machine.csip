@@ -1,0 +1,115 @@
+Functor : (U -> U) -> U
+Functor = record (U -> U) (F. (A B : U) -> (A -> B) -> F A -> F B)
+
+fmap : (F : U -> U) -> Functor F -> (A B : U) -> (A -> B) -> F A -> F B
+    = _ f. f => Wrap f' $ f'
+
+Pure : (F : U -> U) -> Functor F -> U
+p : (F : U -> U) * Functor F -> U
+    = f. f => F , _ $ (A : U) -> A -> F A
+pureT = record ((F : U -> U) * Functor F) p
+Pure = F f. pureT (F , f)
+
+pure : (F : U -> U) -> (f : Functor F) -> Pure F f -> (A : U) -> A -> F A
+    = _ _ p. p => Wrap f $ f
+
+App : (F : U -> U) -> Functor F -> U
+a : (F : U -> U) * Functor F -> U
+    = f. f => F , _ $ (A B : U) -> F (A -> B) -> F A -> F B
+appT = record ((F : U -> U) * Functor F) a
+App = F f. appT (F , f)
+
+app : (F : U -> U) -> (f : Functor F) -> App F f -> (A B : U) -> F (A -> B) -> F A -> F B
+    = _ _ a. a => Wrap f $ f
+
+Monad : (F : U -> U) -> ((f : Functor F) * Pure F f * App F f) -> U
+m : (F : U -> U) * ((f : Functor F) * (Pure F f) * (App F f)) -> U
+    = f. f => F , _ $ (A B : U) -> (A -> F B) -> F A -> F B
+monadT = record ((F : U -> U) * (f : Functor F) * Pure F f * App F f) m
+Monad = F c. monadT (F , c)
+
+chain : (F : U -> U) -> (f : Functor F) -> (p : Pure F f) -> (a : App F f) -> Monad F (f , p , a)
+        -> (A B : U) -> (A -> F B) -> F A -> F B
+    = _ _ _ _ m. m => Wrap f $ f
+
+fst : (A B : U) -> A * B -> A
+    = A B ab. ab => a , b $ a
+
+snd : (A B : U) -> A * B -> B
+    = A B ab. ab => a , b $ b
+
+Machine : (U -> U) -> U -> U -> U
+m' : ((U -> U ) * U * U) -> U
+    = fab. fab => f , ab $ (fst U U ab) -> f (snd U U ab * (Machine f (fst U U ab) (snd U U ab)))
+machine = record ((U -> U ) * U * U) m'
+Machine = f a b. machine (f , a , b)
+
+step : (M : U -> U) -> (A B : U) -> Machine M A B -> A -> M (B * Machine M A B)
+    = _ _ _ m. m => Wrap f $ f
+
+get : (M : U -> U) -> Functor M -> (A B : U) -> Machine M A B -> A -> M B
+    = M fu A B m a. m => Wrap f $ fmap M fu (B * Machine M A B) B (fst B (Machine M A B)) (f a)
+
+IO :: U -> U
+chainIO :: (A B : U) -> (A -> IO B) -> IO A -> IO B
+#chainIO f m = (>>=) m f
+
+pureIO :: (A : U) -> A -> IO A
+#pureIO = pure
+
+IOFunctor : Functor IO
+    = Wrap (A B f a. chainIO A B (a. pureIO B (f a)) a)
+
+IOPure : Pure IO IOFunctor
+    = Wrap pureIO
+
+IOApp : App IO IOFunctor
+--    = Wrap (A B mf ma. chainIO (A -> B) B (f. chainIO A B (a. f a) ma) mf) -- convertSpine: B /= IO B
+    = Wrap (A B mf ma. chainIO (A -> B) B (f. chainIO A B (a. pureIO B (f a)) ma) mf)
+
+IOMonad : Monad IO (IOFunctor , IOPure , IOApp)
+    = Wrap chainIO
+
+
+mFunc : (M : U -> U) -> Functor M -> (A B C : U) -> (B -> C) -> Machine M A B -> Machine M A C
+mFunc = M fu A B C f ma. ma => Wrap ma' $ Wrap (
+--    a. fmap M fu (B * Machine M A B) (B * Machine M A B) (p. (f (fst B (Machine M A B) p) , ?)) (ma' a)
+    a. fmap M fu (B * Machine M A B) (C * Machine M A C) (p. (f (fst B (Machine M A B) p) , mFunc M fu A B C f (snd B (Machine M A B) p)))
+        (ma' a)
+)
+
+MachineFunctor : (M : U -> U) -> Functor M -> (A : U) -> Functor (Machine M A)
+--    = Wrap ? --infer: Wrap ?
+    = M fu A. Wrap (B C f ma. mFunc M fu A B C f ma)
+
+id : (A : U) -> A -> A = A a. a
+
+IOMachine : U -> U -> U = Machine IO
+IDMachine : U -> U -> U = Machine (id U)
+
+MachinePure : (M : U -> U) -> (fu : Functor M) -> Pure M fu -> (A : U)
+    -> Pure (Machine M A) (MachineFunctor M fu A)
+MachinePure = M fu pu A. Wrap (B b. Wrap (_ . pure M fu pu (B * Machine M A B)
+    (b , pure (Machine M A) (MachineFunctor M fu A) (MachinePure M fu pu A) B b)))
+
+curry : (A B C : U) -> (A -> B -> C) -> (A * B -> C)
+    = A B C f p. p => a , b $ f a b
+
+MachineApp : (M : U -> U) -> (fu : Functor M) -> (pu : Pure M fu) -> (a : App M fu) -> Monad M (fu , pu, a) -> (A : U)
+    -> App (Machine M A) (MachineFunctor M fu A)
+ma : (M : U -> U) -> (fu : Functor M) -> (pu : Pure M fu) -> (a : App M fu) -> Monad M (fu , pu, a) -> (A : U) ->
+    (B C : U) -> (A -> M ((B -> C) * Machine M A (B -> C))) -> (A -> M (B * Machine M A B)) -> (A -> M (C * Machine M A C))
+    = M fu pu a mo A B C mf mb a'. chain M fu pu a mo ((B -> C) * Machine M A (B -> C)) (C * Machine M A C)
+        (curry (B -> C) (Machine M A (B -> C)) (M $ C * Machine M A C) (f fx.
+            chain M fu pu a mo (B * Machine M A B) (C * Machine M A C) 
+            (curry B (Machine M A B) (M $ C * Machine M A C)
+                (b mb'. pure M fu pu (C * Machine M A C) (f b ,
+                    app (Machine M A) (MachineFunctor M fu A) (MachineApp M fu pu a mo A) B C fx mb'))) (mb a'))) (mf a')
+MachineApp = M fu pu a mo A. Wrap (B C mf mb. Wrap (ma M fu pu a mo A B C (step M A (B -> C) mf) (step M A B mb)))
+
+Nat :: U
+one :: Nat
+#type Nat = Int
+#one = 1
+
+get IO IOFunctor Nat ? $ pure (IOMachine Nat) (MachineFunctor IO IOFunctor Nat) (MachinePure IO IOFunctor IOPure Nat) Nat one

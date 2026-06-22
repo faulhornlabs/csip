@@ -1,0 +1,136 @@
+id : (A : U) -> A -> A
+    = _. a. a
+
+compose : (A B C : U) -> (B -> C) -> (A -> B) -> (A -> C)
+    = _. _. _. f. g. a. f (g a)
+
+subst : (A : U) -> (P : A -> U) -> (x y : A) -> x == y -> P x -> P y
+    = A. P. x. y. eq. Px. jRule eq (a. _. P a) Px
+
+sym : (A : U) -> (x y : A) -> x == y -> y == x
+    = A. x. y. r. subst A (a. a == x) x y r Refl
+
+trans : (A : U) -> (x y z : A) -> x == y -> y == z -> x == z
+    = A. x. y. z. r. (subst A (a. a == z -> x == z) x y r) (e. e)
+
+cong : (A B : U) -> (f : A -> B) -> (x y : A) -> x == y -> f x == f y
+    = A. B. f. x. y. eq. subst A (z. f x == f z) x y eq Refl
+
+isoTy : U * U -> U
+    = p. p => A , B $ (f : A -> B) * (g : B -> A) * ((compose B A B f g)  == id B) * (compose A B A g f == id A)
+isoT = record (U * U) isoTy
+Iso : U -> U -> U
+    = A. B. isoT (A , B)
+
+to : (A B : U) -> Iso A B -> (A -> B)
+    = _. _. iso. iso => Wrap iso' $ iso' => f , _ $ f
+
+from : (A B : U) -> Iso A B -> (B -> A)
+    = _. _. iso. iso => Wrap iso' $ iso' => _ , o $ o => g , _ $ g
+
+bool = record Top (_. Top + Top)
+Bool : U = bool TT
+
+fext :: (A B : U) -> (f g : A -> B) -> ((a : A) -> f a == g a) -> f == g
+fapp : (A B : U) -> (f g : A -> B) -> f == g -> ((a : A) -> f a == g a)
+    = A. B. f. g. eq. a. subst (A -> B) (h. f a == h a) f g eq Refl
+
+BITPT'f : Bool -> Top + Top
+    = b. b => Wrap b' $ b'
+
+BITPT'eq : (b : Bool) -> b == (Wrap (BITPT'f b))
+    = b. b => Wrap b' @ e $ subst Bool (c. b == Wrap (BITPT'f c)) (Wrap b') b e (sym Bool (Wrap b') b e)
+
+BITPT : Iso Bool (Top + Top)
+    = Wrap (BITPT'f , (g@(t. Wrap t)) , Refl , fext Bool Bool (compose Bool (Top + Top) Bool g BITPT'f) (id Bool) (b. sym Bool b (Wrap (BITPT'f b)) (BITPT'eq b)))
+
+refl : (A : U) -> Iso A A
+    = A. Wrap (id A , id A , Refl , Refl)
+
+sym' : (A B : U) -> Iso A B -> Iso B A
+    = A. B. iso. iso => Wrap iso' $ iso' => f , o $ o => g , o $ o => pr1 , pr2 $ Wrap (g , f , pr2 , pr1)
+
+symsym : (A B : U) -> (iso : Iso A B) -> (sym' B A (sym' A B iso)) == iso
+    = A. B. iso. iso => Wrap iso' @ e $ iso' => f , o @ e' $ o => g , o' @ e'' $ o' => pr1 , pr2 @ e''' $
+        subst (Iso A B) (i. sym' B A (sym' A B i) == i) (Wrap (f , g , pr1 , pr2)) iso
+        (trans (Iso A B) (Wrap (f , g, pr1 , pr2)) (Wrap iso') iso (
+        (cong (T@((h : A -> B) * (i : B -> A) * (compose B A B h i == id B) * (compose A B A i h == id A))) (Iso A B) (k. Wrap k) (f , g, pr1 , pr2) iso'
+        (trans T (f , g , pr1 , pr2) (f , o) iso' (cong (T'@((i : B -> A) * (compose B A B f i == id B) * (compose A B A i f == id A))) T (m. (f , m)) (g , pr1 , pr2) o
+        (trans T' (g , pr1, pr2) (g , o') o (cong ((compose B A B f g == id B) * (compose A B A g f == id A)) T' (m. (g , m)) (pr1 , pr2) o' e''') e'')) e'))) e)
+        Refl
+
+tofrom : (A B : U) -> (iso : Iso A B) -> (to A B iso) == (from B A (sym' A B iso))
+    = A. B. iso. iso => Wrap iso' @ e $ iso' => f , o @ e' $ o => g , o' @ e'' $ o' => pr1 , pr2 @ e''' $
+        subst (is@(Iso A B)) (i. (to A B i) == (from B A (sym' A B i))) (Wrap (f , g, pr1 , pr2)) iso
+        (trans is (Wrap (f , g, pr1 , pr2)) (Wrap iso') iso
+        (cong (T@((h : A -> B) * (i : B -> A) * (compose B A B h i  == id B) * (compose A B A i h == id A))) is (k. Wrap k) (f , g , pr1 , pr2) iso'
+        (trans T (f , g , pr1 , pr2) (f , o) iso' (cong ((i : B -> A) * (compose B A B f i  == id B) * (compose A B A i f == id A)) T (m. (f , m)) (g , pr1 , pr2) o
+        (trans ((i : B -> A) * (compose B A B f i  == id B) * (compose A B A i f == id A)) (g , pr1 , pr2) (g , o') o
+        (cong ((compose B A B f g  == id B) * (compose A B A g f == id A)) ((i : B -> A) * (compose B A B f i  == id B) * (compose A B A i f == id A)) (m. (g , m)) (pr1 , pr2) o' e''') e'')) e'))
+        e)
+        Refl
+
+tofrom' : (A B : U) -> (iso : Iso A B) -> (to B A (sym' A B iso)) == (from A B iso)
+    = A. B. iso. trans (B -> A) (to B A (sym' A B iso)) (from A B (sym' B A (sym' A B iso))) (from A B iso) (tofrom B A (sym' A B iso))
+        (cong (Iso A B) (B -> A) (from A B) (sym' B A (sym' A B iso)) iso (symsym A B iso))
+
+trans' : (A B C : U) -> Iso A B -> Iso B C -> Iso A C
+    = A. B. C. iso1. iso2.
+     iso1 => Wrap iso1' $ iso1' => f1 , o $ o => g1 , o $ o => pr1 , pr1' $
+     iso2 => Wrap iso2' $ iso2' => f2 , o $ o => g2 , o $ o => pr2 , pr2' $
+        Wrap ((f@(compose A B C f2 f1)) , (g@(compose C B A g1 g2)) , fext C C (compose C A C f g) (id C) (c. trans C (f (g c)) (f2 (g2 c)) c (cong B C f2 (f1 (g c)) (g2 c) (fapp B B (compose B A B f1 g1) (id B) pr1 (g2 c))) (fapp C C (compose C B C f2 g2) (id C) pr2 c)) , fext A A (compose A C A g f) (id A) (a. trans A (g (f a)) (g1 (f1 a)) a (cong B A g1 (g2 (f a)) (f1 a) (fapp B B (compose B C B g2 f2) (id B) pr2' (f1 a))) (fapp A A (compose A B A g1 f1) (id A) pr1' a)))
+
+over : (A B C : U) -> Iso A B -> (A -> C) -> B -> C
+    = A. B. C. iso. P. b. iso => Wrap iso' $ iso' => _ , o $ o => g , _ $ P (g b)
+
+under : (A B C : U) -> Iso A B -> (B -> C) -> A -> C
+    = A. B. C. iso. over B A C (sym' A B iso)
+
+with : (A B : U) -> (iso : Iso A B) -> (P : A -> U)
+        -> (Q : B -> U) * ((a : A) -> P a == Q (to A B iso a))
+    = A. B. iso. P. iso => Wrap iso' @ e1 $ iso' => f , o @ e2 $ o => g , o' @ e3 $ o' => pr1 , pr2 @ e4 $
+        (over A B U iso P, (a. subst (is@(Iso A B)) (i. P a == over A B U i P (to A B i a)) (start@(Wrap (start'@(f , g , pr1 , pr2)))) iso
+        (trans is start (Wrap iso') iso (cong (T@((h : A -> B) * (i : B -> A) * ((compose B A B h i)  == id B) * (compose A B A i h == id A))) (Iso A B) (k. Wrap k) start' iso'
+        (trans T (f , g , pr1 , pr2) (f , o) iso' (cong (T'@((h : B -> A) * (compose B A B f h == id B) * (compose A B A h f == id A))) T (m. (f, m)) (g, pr1, pr2) o
+        (trans T' (g , pr1 , pr2) (g , o') o (cong ((compose B A B f g == id B) * (compose A B A g f == id A)) T' (m. (g , m)) (pr1 , pr2) o' e4)
+        e3)) e2)) e1)
+        (cong A U P a (g (f a)) (sym A (g (f a)) a (fapp A A (compose A B A g f) (id A) pr2 a)))))
+
+alas : (A B : U) -> (iso : Iso A B) -> (P : B -> U)
+        -> (Q : A -> U) * ((b : B) -> P b == Q (from A B iso b))
+    = A. B. iso. P. subst (B -> A) (conv. (Q : A -> U) * ((b : B) -> P b == Q (conv b))) (to B A (sym' A B iso)) (from A B iso)
+        (tofrom' A B iso) (with B A (sym' A B iso) P)
+
+Dec : Top + Top -> U
+    = t. either t (_. _. Top) (_. _. Bot)
+
+Nat : U
+nat = record Top (_. Top + Nat)
+Nat = nat TT
+
+Z : Nat
+    = Wrap (Left TT)
+S : Nat -> Nat
+    = n. Wrap (Right n)
+
+Fin : Nat -> U
+finT = record Nat (n. (k : Nat) * ((S k) == n) * (Top + Fin k))
+Fin = finT
+
+F2TB'f : (Fin (S (S Z))) -> Bool
+    = f. f => Wrap f' $ f' => _ , o $ o => _ , t $ either t (_. _. (Wrap (Left TT))) (_. _. (Wrap (Right TT)))
+
+F2TB'g : Bool -> (Fin (S (S Z)))
+    = b. b => Wrap b' $ either b' (t. _. Wrap (S Z , Refl , Left TT)) (t. _. Wrap ((S Z) , Refl , Right (Wrap (Z , Refl , Left TT))))
+
+F2TB'e : (b : Bool) -> F2TB'f (F2TB'g b) == b
+    = b. b => Wrap b' @ e $ either b' (k. eq. trans Bool (F2TB'f (F2TB'g b)) (F2TB'f (F2TB'g (Wrap (Left k)))) b (cong Bool Bool (j. F2TB'f (F2TB'g j)) b (Wrap (Left k)) (trans Bool b (Wrap b') (Wrap (Left k)) (sym Bool (Wrap b') b e) (cong (Top + Top) Bool (k. Wrap k) b' (Left k) (sym (Top + Top) (Left k) b' eq)))) (trans Bool (Wrap (Left k)) (Wrap b') b (cong (Top + Top) Bool (k. Wrap k) (Left k) b' eq) e)) (k. eq. subst Bool (j. F2TB'f (F2TB'g j) == j) (Wrap (Right k)) b (trans Bool (Wrap (Right k)) (Wrap b') b (cong (Top + Top) Bool (k. Wrap k) (Right k) b' eq) e) Refl)
+
+F2TB'q : (f : (Fin (S (S Z)))) -> F2TB'g (F2TB'f f) == f
+    = f. f => Wrap f' @ e $ f' => k , o @ e' $ o => pr , h @ e'' $ either h (t. q. ?) (t. q. ?)
+
+F2TB : Iso (Fin (S (S Z))) Bool
+    = Wrap (F2TB'f , F2TB'g , fext Bool Bool (b. F2TB'f (F2TB'g b)) (id Bool) F2TB'e , ?)
+
+under Bool (Top + Top) U BITPT Dec (Wrap (Right TT))
+

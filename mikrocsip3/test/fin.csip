@@ -1,0 +1,66 @@
+Nat : U
+nat = record Top (_. Top + Nat)
+Nat = nat TT
+
+Z : Nat
+    = Wrap (Left TT)
+
+S : Nat -> Nat
+    = n. Wrap (Right n)
+
+add : Nat -> Nat -> Nat
+add = n. n => Wrap n' $ either n' (_. _. m. m) (s. _. m. S (add s m))
+
+subst : (A : U) -> (P : A -> U) -> (x y : A) -> x == y -> P x -> P y
+    = A. P. x. y. eq. Px. jRule eq (a. _. P a) Px
+
+sym : (A : U) -> (x y : A) -> x == y -> y == x
+    = A. x. y. r. subst A (a. a == x) x y r Refl
+
+trans : (A : U) -> (x y z : A) -> x == y -> y == z -> x == z
+    = A. x. y. z. r. (subst A (a. a == z -> x == z) x y r) (e. e)
+
+cong : (A B : U) -> (f : A -> B) -> (x y : A) -> x == y -> f x == f y
+    = A. B. f. x. y. eq. subst A (z. f x == f z) x y eq Refl
+
+Fin : Nat -> U
+finT = record Nat (n. (k : Nat) * ((S k) == n) * (Top + Fin k))
+Fin = finT
+
+FZ : (n : Nat) -> Fin (S n)
+    = n. Wrap (n , Refl , Left TT)
+FS : (n : Nat) -> Fin n -> Fin (S n)
+    = n. fn. Wrap ( n , Refl , Right fn)
+
+finToNat : (n : Nat) -> Fin n -> Nat
+finToNat = n. fn. fn => Wrap fn' $ fn' => f , fss $ fss => fs , s $ either s (t. _. Z) (s. _. S (finToNat f s))
+
+weaken : (n : Nat) -> Fin n -> Fin (S n)
+weaken = n. fn. fn => Wrap fn' $ fn' => f , fss $ fss => fs , s $ either s (t. _. FZ n) (s. _. FS n (subst Nat Fin (S f) n fs (weaken f s)))
+
+
+shift : (n m : Nat) -> Fin n -> Fin (add m n)
+shift = n. m. m => Wrap m' $ either m'
+    (z. e. f. subst Nat (z'. Fin (add z' n)) (Wrap (Left z)) m (cong (Top + Nat) Nat (k. Wrap k) (Left z) m' e) f)
+    (s. e. f. subst Nat (z'. Fin (add z' n)) (Wrap (Right s)) m (cong (Top + Nat) Nat (k. Wrap k) (Right s) m' e) (FS (add s n) (shift n s f)))
+
+last : (n : Nat) -> Fin (S n)
+last = n. n => Wrap n' $ either n' (z. e. subst Nat (m. Fin (S m)) (Wrap (Left z)) n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (FZ Z))
+    (s. e. subst Nat (m. Fin (S m)) (Wrap (Right s)) n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) (FS (S s) (last s)))
+
+complement : (n : Nat) -> Fin n -> Fin n
+complement = n. f. f => Wrap f' $ f' => fs , sn $ sn => s , nd $ either nd (z. e. subst Nat Fin (S fs) n s (last fs))
+    (s'. e. subst Nat Fin (S fs) n s (weaken fs (complement fs s')))
+
+List : U -> U
+listT = record U (A. Top + A * List A)
+List = listT
+
+map : (A B : U) -> (A -> B) -> List A -> List B
+map = A. B. f. ls. ls => Wrap ls' $ either ls' (z. _. Wrap (Left z)) (s. _. s => fs , sn $ Wrap ( Right (f fs , map A B f sn )))
+
+allFins : (n : Nat) -> List (Fin n)
+allFins = n. n => Wrap n' $ either n' (z. e. subst Nat (m. List (Fin m)) (Wrap (Left z)) n (cong (Top + Nat) Nat (k. Wrap k) (Left z) n' e) (Wrap (Left TT)))
+    (s. e. subst Nat (m. List (Fin m)) (Wrap (Right s)) n (cong (Top + Nat) Nat (k. Wrap k) (Right s) n' e) (Wrap (Right (FZ s , map (Fin s) (Fin (S s)) (FS s) (allFins s)))))
+
+allFins (S (S Z))
