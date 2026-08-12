@@ -1,0 +1,4 @@
+
+occursTest : (f : Top -> Top) (x : Top) -> x == f x -> U
+  = f x Refl. U
+

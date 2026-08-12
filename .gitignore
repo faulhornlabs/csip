@@ -1,11 +1,11 @@
 tmp
 trash
 other
-csip
 MAlonzo
-experiment/build
-mikrocsip2/build
+build
+csip/csip
 mikrocsip2/MikroCsip2
+mikrocsip4/Csip
 *.hi
 *.hi-boot
 *.o

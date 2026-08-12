@@ -1,4 +1,6 @@
 
+
+
 id : (A : U) -> A -> A
   = A x. x
 
@@ -8,61 +10,195 @@ arr : (_ : U) -> U -> U = A A'. (x : A) -> const A A' x
 
 arrU : (A : U) -> arr (arr A U) (A -> U) = A f x. f x
 
+---------------
+
 bool = record Top (_. Top + Top)
 Bool  : U    =  bool TT
-False : Bool =  Wrap (Left  TT)
-True  : Bool =  Wrap (Right TT)
+False : Bool =  wrap (Left  TT)
+True  : Bool =  wrap (Right TT)
 
 and : (a b : Bool) -> Bool
-  = a. matchLeft  (proj a) (_ _. b. False)
-  | a. matchRight (proj a) (_ _. b. b)
+  = (Wrap (Left  TT)) b. False
+--  = a. matchWrap a (a' e. matchRefl e (matchLeft a' (a'' e'. matchRefl e' (b. False))))
+  | (Wrap (Right TT)) b. b
 
+----------
 
 Nat : U
-
 nat = record Top (_. Top + Nat)
-
 Nat = nat TT
+Zero :        Nat =    wrap (Left TT)
+Suc  : Nat -> Nat = n. wrap (Right n)
 
-Zero :        Nat =    Wrap (Left TT)
-Suc  : Nat -> Nat = n. Wrap (Right n)
+z = proj (Suc Zero)
 
 add : Nat -> Nat -> Nat
 add
-  = n m. matchLeft  (proj n) (_ _. m)
-  | n m. matchRight (proj n) (n _. Suc $ add n m)
+  = (Wrap (Left TT)) m. m
+  | (Wrap (Right n)) m. Suc (add n m)
 
 two = Suc (Suc Zero)
+four = add two two
+
+half' : Nat -> (odd : Bool) * Nat
+  = undefined
+
+half : Nat -> (odd : Bool) * Nat
+half
+  = Wrap (Left TT). False , Zero
+  | Wrap (Right (Wrap (Left TT))). True , Zero
+--  | Wrap (Right (Wrap (Right n))). matchPair (half' n) (odd hn e. ?)
+  | Wrap (Right (Wrap (Right n))). matchPair (half n) (odd hn e. odd , Suc hn)
+--  | Wrap (Right (Wrap (Right n))). matchPair (half n) (odd hn e. matchRefl e (odd , Suc hn))
+--  | Wrap (Right (Wrap (Right n))). (bk <- half n; fst bk , Suc (snd bk))
+--  | Wrap (Right (Wrap (Right n))). ((odd , hn)~e <- half n; odd , Suc hn)
+
+--    half n ~ (odd , hn)
+
+--         Refl : (e1 , e2) == (e3 , e4) 
+--           eq1 : e1 == e3
+--           eq2 : e2 == e4
+--    .... (congPair eq1 eq2) ....
+
+two' = half four
 
 Stream : U -> U
-stream = record U (A. Sigma A (_. Stream A))
+stream = corecord U (A. (head : A) * Stream A)
 Stream = stream
 
 head : (A : U) -> Stream A -> A
-  = A s. fst (proj s)
+  = A (Wrap (h , t)). h
 
 tail : (A : U) -> Stream A -> Stream A
-  = A s. snd (proj s)
+  = A (Wrap (h , t)). t
 
 map : (A B : U) -> (A -> B) -> Stream A -> Stream B
 map = A B f s.
-  Wrap (f (head A s) , map A B f (tail A s))
+  wrap (f (head A s) & map A B f (tail A s))
 
 from : Nat -> Stream Nat
-from = n. Wrap (n , from (Suc n))
+from = n. wrap (n & from (Suc n))
 
 nats = from Zero
+x = tail Nat nats
 
------------------
-
-ite : U -> U -> Bool -> U
-  = A B b. (matchLeft (proj b) (_ _. A) | matchRight (proj b) (_ _. B))
-
-f : Pi Bool (ite Bool (Bool -> Bool))
+natsMapped = tail Nat (map Nat Nat (add two) nats)
+natsMapped' = map Nat Nat (add two) (tail Nat nats)
 
 -----------
 
-tail Nat (map Nat Nat (add two) nats)
+deleteTest : (x : Nat) (e : x == x) (y : Nat) -> e == Refl
+  = x Refl y. Refl
+
+deleteTestZeroReflZero = deleteTest Zero Refl Zero
+
+
+solveTest : (x : Nat) (e : x == Zero) -> Suc Zero == add x (Suc x)
+  = x Refl. Refl
+
+solveTestZeroRefl = solveTest Zero Refl
+
+solveTest' : (x : Nat) (e : x == Zero) -> Nat
+  = x Refl. x
+
+solveTest'ZeroRefl = solveTest' Zero Refl
+
+symm : (A : U) (x y : A) -> x == y -> y == x
+  = _ _ _ Refl. Refl
+
+trans : (A : U) (x y z : A) -> x == y -> y == z -> x == z
+  = _ _ _ _ Refl e. e
+
+cong : (A A' : U) (f : A -> A') (x y : A) -> x == y -> f x == f y
+  = _ _ _ _ _ Refl. Refl
+
+j : (A : U) (x y : A) (e : x == y) (P : (y : A) -> x == y -> U) -> P x Refl -> P y e
+  = _ _ _ Refl _ w. w
+
+liftTest1 : (x : Nat) (y : x == x) -> x == Zero -> Zero == x
+  = x y Refl. Refl
+
+liftTest1b : (x : Nat) (y : x == x) -> Zero == x -> x == Zero
+  = x y Refl. Refl
+
+liftTest2 : (x : Nat) (y : Nat) -> x == y -> y == x
+--  = x y Refl. Refl
+  = x y e. matchRefl e Refl
+
+-- G = .....; e : Id {A} x y; ....
+
+-- G = ....; ....; y: ...; u : B[y]; e : Id {A} x[u] y; ....
+
+
+
+-----------------
+
+f : Pi Bool ( (Wrap (Left  TT)). Bool
+            | (Wrap (Right TT)). Bool -> Bool
+            )
+  = (Wrap (Left  TT)). False
+  | (Wrap (Right TT)) (Wrap (Left  TT)). True
+  | (Wrap (Right TT)) (Wrap (Right TT)). False
+
+fFalse     = f False      -- False
+fTrue      = f True       -- f True
+fTrueTrue  = f True True  -- False
+fTrueFalse = f True False -- True
+
+--------------------
+
+Vec : U -> Nat -> U
+vec = record ((A : U) * Nat)
+             ((A , n). (n == Zero)
+                     + (m : Nat) * (a : A) * (as : Vec A m) * (n == Suc m)
+             )
+Vec = A n. vec (A , n)
+
+Nil  : (A : U) -> Vec A Zero
+  = A. wrap (Left Refl)
+Cons : (A : U) (n : Nat) -> A -> Vec A n -> Vec A (Suc n)
+  = A n a as. wrap (Right (n, a, as, Refl))
+
+mapVec : (A B : U) (f : A -> B) (n : Nat) -> Vec A n -> Vec B n
+mapVec =
+   A B f (Wrap (Left TT)) (Wrap (Left Refl)). Nil B
+ | A B f (Wrap (Right n)) (Wrap (Right (n' , a , as , Refl))). Cons B n' (f a) (mapVec A B f n' as)
+
+three = Suc (Suc (Suc Zero))
+
+testVec = Cons Nat (Suc Zero) three (Cons Nat Zero three (Nil Nat))
+
+testMapVec = mapVec Nat Nat Suc (Suc (Suc Zero)) testVec
+
+Id : (A : U) -> A -> A -> U
+  = A x y. x == y
+
+injTest : (x y : Top + Nat) -> Id Nat (Wrap x) (Wrap y) -> Id (Top + Nat) x y
+  = x y Refl. Refl
+
+injTest' : (x y : Nat) -> Id (Nat + Nat) (Right x) (Right y) -> Id Nat x y
+  = x y Refl. Refl
+
+injTest'' : (x y : Nat) -> Id Nat x (Wrap (Right Zero)) -> Id Nat x (Suc y) -> Id Nat Zero y
+  = x y Refl Refl. Refl
+
+dom = (n : Bool) * Bool
+
+injTest'4 : (x y : dom) -> Id dom x y -> U
+  = x y Refl. U
+
+cBool : Bool -> U = n. Bool
+cBool' : (x : Pi Bool cBool) -> Bool -> U
+  = x n. Bool
+cLam : Pi Bool cBool
+  = _. True
+
+--printTest : (x : Pi Bool cBool) -> Id (Pi Bool (cBool' x)) x cLam -> U
+--  = x Refl. ?
+
+--injTest'3 : (x y : Bool) -> Id ((n : Bool) * Bool) (x , x) (y , y) -> Id Bool x y
+--  = x y Refl. Refl
+
 
 
 

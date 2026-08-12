@@ -1,0 +1,9 @@
+
+cc : U -> U = A. U -> U
+constTy' : Pi U cc = A B. A -> B -> A
+constTy : U -> U = A. Pi U (constTy' A)
+const : Pi U constTy = A B x y. x
+main = const U U U U
+
+-- const : (A : U)(B : U) -> A -> B -> A = A B a b. a
+-- const = (A : U)(B : U)(a : A)(b : B). a

@@ -1,0 +1,11 @@
+
+data Id : a -> a -> Type where
+  Refl : {a : Type} -> {x : a} -> Id x x
+
+-- TODO
+g : {a b : Type} (f : a -> b) (x y : a) -> Id (f x) (f y) -> Id x y
+g f x _ Refl = Refl
+
+-- Jon Sterling --
+-- https://www.jonmsterling.com/sterling-2025-hottest/
+
